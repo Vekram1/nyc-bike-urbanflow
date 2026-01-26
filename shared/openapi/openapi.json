@@ -1,0 +1,9 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "UrbanFlow Twin API",
+    "version": "0.1.0",
+    "description": "Initial OpenAPI stub; generated spec will replace this file."
+  },
+  "paths": {}
+}
