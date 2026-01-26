@@ -22,3 +22,10 @@ def advance_step(state: StepState, delta: int) -> StepState:
         bikes_available=next_value,
         capacity=state.capacity,
     )
+
+
+def replay_deltas(states: list[StepState], deltas: list[int]) -> list[StepState]:
+    output: list[StepState] = []
+    for state, delta in zip(states, deltas, strict=False):
+        output.append(advance_step(state, delta))
+    return output
