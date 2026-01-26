@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Manhattan"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-74.03262, 40.70029],
+            [-73.91078, 40.70029],
+            [-73.91078, 40.88241],
+            [-74.03262, 40.88241],
+            [-74.03262, 40.70029]
+          ]
+        ]
+      }
+    }
+  ]
+}
