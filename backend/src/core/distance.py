@@ -14,6 +14,20 @@ def projected_distance_meters(
     return sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
 
+def travel_time_bins(
+    distance_meters: float, speed_kmh: float = 12.0, bin_minutes: int = 5
+) -> int:
+    if speed_kmh <= 0 or bin_minutes <= 0:
+        return 0
+    speed_mps = speed_kmh * 1000 / 3600
+    seconds = distance_meters / speed_mps
+    minutes = seconds / 60
+    bins = int(minutes // bin_minutes)
+    if minutes % bin_minutes > 0:
+        bins += 1
+    return max(1, bins)
+
+
 def _project_lon_lat(lon: float, lat: float) -> tuple[float, float]:
     lat0 = radians(40.72)
     meters_per_deg_lat = 111_132.92
