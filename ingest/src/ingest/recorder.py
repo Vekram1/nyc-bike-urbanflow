@@ -12,5 +12,9 @@ def write_snapshot(directory: Path, prefix: str, payload: dict[str, Any]) -> Pat
     return path
 
 
+def write_raw_payload(directory: Path, prefix: str, payload: dict[str, Any]) -> Path:
+    return write_snapshot(directory, f"{prefix}_raw", payload)
+
+
 def read_snapshot(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
