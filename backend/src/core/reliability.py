@@ -15,3 +15,19 @@ def mark_reliable(reason: str | None = None) -> ReliabilityResult:
 
 def mark_unreliable(reason: str) -> ReliabilityResult:
     return ReliabilityResult(is_reliable=False, reason=reason)
+
+
+def reason_offline() -> ReliabilityResult:
+    return mark_unreliable("offline")
+
+
+def reason_disabled() -> ReliabilityResult:
+    return mark_unreliable("disabled")
+
+
+def reason_capacity_missing() -> ReliabilityResult:
+    return mark_unreliable("capacity_missing")
+
+
+def reason_status_invalid() -> ReliabilityResult:
+    return mark_unreliable("status_invalid")
