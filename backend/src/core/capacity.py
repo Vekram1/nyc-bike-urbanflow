@@ -30,3 +30,13 @@ def effective_capacity(
             is_reliable=False,
         )
     return CapacityResult(capacity=None, source="missing", is_reliable=False)
+
+
+def reliability_reason(result: CapacityResult) -> str | None:
+    if result.is_reliable:
+        return None
+    if result.source == "station_info":
+        return "capacity_missing"
+    if result.source == "missing":
+        return "capacity_missing"
+    return "status_invalid"
