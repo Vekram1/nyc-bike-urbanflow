@@ -25,3 +25,16 @@ create table if not exists snapshot_station_status (
   num_bikes_disabled integer,
   num_docks_disabled integer
 );
+
+create table if not exists bins_5m (
+  station_id text not null,
+  ts timestamptz not null,
+  bikes_available integer,
+  docks_available integer,
+  delta_bikes integer,
+  delta_docks integer,
+  capacity_source text,
+  is_reliable boolean,
+  reliability_reason text,
+  primary key (station_id, ts)
+);
