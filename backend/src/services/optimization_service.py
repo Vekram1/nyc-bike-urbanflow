@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-from backend.api.schemas.optimize import OptimizeResponse
+from __future__ import annotations
+
+from ..api.schemas.optimize import OptimizeResponse
+from ..optimizer.candidates import build_candidates, score_candidates
 
 
 def run_optimization() -> OptimizeResponse:
-    return OptimizeResponse(status="no_plan", reason="not_implemented")
+    candidates = build_candidates(["donor"], ["receiver"], quantity=1)
+    scored = score_candidates(candidates)
+    if not scored:
+        return OptimizeResponse(status="no_plan", reason="no_candidates")
+    return OptimizeResponse(status="plan", reason=None)
