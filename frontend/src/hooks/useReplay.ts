@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { apiBaseUrl } from "../data/config";
 import { fetchReplay, ReplayResponse } from "../data/queries";
 
-export function useReplay(baseUrl: string) {
+export function useReplay(baseUrl: string = apiBaseUrl()) {
   const [data, setData] = useState<ReplayResponse>([]);
   const [loading, setLoading] = useState(true);
 

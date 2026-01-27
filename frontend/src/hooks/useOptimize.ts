@@ -1,10 +1,11 @@
 import { useCallback, useState } from "react";
 
 import { fetchJson } from "../data/api";
+import { apiBaseUrl } from "../data/config";
 
 export type OptimizeResponse = Record<string, unknown>;
 
-export function useOptimize(baseUrl: string) {
+export function useOptimize(baseUrl: string = apiBaseUrl()) {
   const [data, setData] = useState<OptimizeResponse | null>(null);
   const [loading, setLoading] = useState(false);
 

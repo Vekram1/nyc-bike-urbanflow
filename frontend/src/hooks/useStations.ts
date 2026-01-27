@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 
 import { fetchJson } from "../data/api";
+import { apiBaseUrl } from "../data/config";
 
 export type StationsResponse = Array<Record<string, unknown>>;
 
-export function useStations(baseUrl: string) {
+export function useStations(baseUrl: string = apiBaseUrl()) {
   const [data, setData] = useState<StationsResponse>([]);
   const [loading, setLoading] = useState(true);
 
