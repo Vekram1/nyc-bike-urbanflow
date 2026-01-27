@@ -23,3 +23,10 @@ Goal: demonstrate replay, diagnosis, and counterfactual improvement for a known 
 ## Notes
 - Replay uses Mode A (exogenous deltas) for deterministic comparison.
 - Unreliable minutes are reported separately from operational failures.
+
+## Checklist
+- [ ] Start ingest runner and confirm snapshots persist.
+- [ ] Run binning backfill for the replay window.
+- [ ] Load replay in UI and scrub timeline.
+- [ ] Run optimize and confirm plan arcs render.
+- [ ] Capture KPI delta before/after.
