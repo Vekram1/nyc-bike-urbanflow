@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ingest.db.engine import execute_sql
-from ingest.db.models import SnapshotHeader, SnapshotStationStatus
+from ..db.engine import execute_sql
+from ..db.models import SnapshotHeader, SnapshotStationStatus
 
 
 def write_snapshot(header: SnapshotHeader) -> None:
