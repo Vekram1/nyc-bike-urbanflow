@@ -31,3 +31,13 @@ def reason_capacity_missing() -> ReliabilityResult:
 
 def reason_status_invalid() -> ReliabilityResult:
     return mark_unreliable("status_invalid")
+
+
+def from_capacity_reason(reason: str | None) -> ReliabilityResult:
+    if reason is None:
+        return mark_reliable()
+    if reason == "capacity_missing":
+        return reason_capacity_missing()
+    if reason == "status_invalid":
+        return reason_status_invalid()
+    return mark_unreliable(reason)
