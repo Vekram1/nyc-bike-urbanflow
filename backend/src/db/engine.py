@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable, Sequence
+
+QueryResult = Iterable[Sequence[object]]
 
 
 def database_url() -> str:
@@ -11,3 +14,7 @@ def database_url() -> str:
     password = os.getenv("POSTGRES_PASSWORD", "urbanflow")
 
     return f"postgresql://{user}:{password}@{host}:{port}/{database}"
+
+
+def run_query(_: str, __: Sequence[object]) -> QueryResult:
+    return []

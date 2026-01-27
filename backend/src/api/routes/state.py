@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
-from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter
 
+from ...db.engine import run_query
 from ...db.queries import fetch_latest_state
 
 
@@ -14,9 +13,6 @@ router = APIRouter()
 
 @router.get("/state")
 def get_state() -> list[dict[str, Any]]:
-    def run_query(_: str, __: Sequence[object]) -> Iterable[Sequence[object]]:
-        return []
-
     records = fetch_latest_state(run_query)
     return [
         {
