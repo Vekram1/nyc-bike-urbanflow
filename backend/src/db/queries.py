@@ -23,6 +23,16 @@ def empty_stations() -> list[StationRecord]:
     return []
 
 
+def fetch_state_and_replay(
+    run_query: QueryRunner,
+    start: datetime,
+    end: datetime,
+) -> tuple[list[BinRecord], list[BinRecord]]:
+    latest = fetch_latest_state(run_query)
+    replay = fetch_replay_bins(run_query, start, end)
+    return latest, replay
+
+
 def fetch_latest_state(run_query: QueryRunner) -> list[BinRecord]:
     rows = run_query(STATE_QUERY, [])
     return [
