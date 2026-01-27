@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 
 
 def postgres_dsn() -> str:
@@ -11,3 +12,7 @@ def postgres_dsn() -> str:
     password = os.getenv("POSTGRES_PASSWORD", "urbanflow")
 
     return f"postgresql://{user}:{password}@{host}:{port}/{database}"
+
+
+def execute_sql(_: str, __: Sequence[object]) -> None:
+    return None
