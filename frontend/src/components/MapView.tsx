@@ -22,7 +22,8 @@ export default function MapView() {
           center: [-73.9857, 40.7484],
           zoom: 12,
         });
-        setStatus("MapLibre initialized");
+        mapInstance.on("load", () => setStatus("Map loaded"));
+        mapInstance.on("error", () => setStatus("Map error"));
       } catch (error) {
         setStatus("MapLibre unavailable");
       }
