@@ -28,3 +28,13 @@ def build_candidates(
                 )
             )
     return candidates
+
+
+@dataclass(frozen=True)
+class ScoredCandidate:
+    candidate: CandidateMove
+    score: float
+
+
+def score_candidates(candidates: list[CandidateMove]) -> list[ScoredCandidate]:
+    return [ScoredCandidate(candidate=candidate, score=0.0) for candidate in candidates]
