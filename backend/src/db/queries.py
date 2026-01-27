@@ -13,6 +13,11 @@ STATE_QUERY = (
     "from bins_5m order by station_id, ts desc"
 )
 
+REPLAY_QUERY = (
+    "select station_id, ts, bikes_available, docks_available "
+    "from bins_5m where ts >= $1 and ts <= $2 order by ts, station_id"
+)
+
 
 def empty_stations() -> list[StationRecord]:
     return []
@@ -20,6 +25,23 @@ def empty_stations() -> list[StationRecord]:
 
 def fetch_latest_state(run_query: QueryRunner) -> list[BinRecord]:
     rows = run_query(STATE_QUERY, [])
+    return [
+        BinRecord(
+            station_id=cast(str, row[0]),
+            ts=cast(datetime, row[1]),
+            bikes_available=cast(int | None, row[2]),
+            docks_available=cast(int | None, row[3]),
+        )
+        for row in rows
+    ]
+
+
+def fetch_replay_bins(
+    run_query: QueryRunner,
+    start: datetime,
+    end: datetime,
+) -> list[BinRecord]:
+    rows = run_query(REPLAY_QUERY, [start, end])
     return [
         BinRecord(
             station_id=cast(str, row[0]),
