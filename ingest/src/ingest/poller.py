@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from .gbfs_client import fetch_station_information, fetch_station_status
+from .parser import station_information_data, station_status_data
+from .persistence import write_snapshot, write_station_status_rows
+from .stations import upsert_stations
 from .validators import feed_timestamp, is_feed_advanced
+from ..db.models import SnapshotHeader, SnapshotStationStatus
 
 PollHandler = Callable[
     [dict[str, Any], dict[str, Any], datetime | None, datetime | None], None
@@ -52,3 +56,42 @@ def run_polling(handler: PollHandler, interval_seconds: int = 60) -> None:
         elapsed = time.monotonic() - started_at
         sleep_for = max(0.0, interval_seconds - elapsed)
         time.sleep(sleep_for)
+
+
+def ingest_handler(
+    info: dict[str, Any], status: dict[str, Any], *_: datetime | None
+) -> None:
+    station_rows = station_information_data(info)
+    status_rows = station_status_data(status)
+    upsert_stations(station_rows)
+    snapshot_ts = datetime.now(tz=timezone.utc)
+    snapshot_id = str(int(snapshot_ts.timestamp()))
+    header = SnapshotHeader(
+        snapshot_id=snapshot_id,
+        ts=snapshot_ts,
+        feed_ts=feed_timestamp(status),
+        ingest_meta={},
+        is_valid=True,
+    )
+    status_records = [
+        SnapshotStationStatus(
+            snapshot_id=snapshot_id,
+            station_id=str(row.get("station_id")),
+            bikes_available=row.get("num_bikes_available"),
+            docks_available=row.get("num_docks_available"),
+            is_installed=_truthy(row.get("is_installed")),
+            is_renting=_truthy(row.get("is_renting")),
+            is_returning=_truthy(row.get("is_returning")),
+            num_bikes_disabled=row.get("num_bikes_disabled"),
+            num_docks_disabled=row.get("num_docks_disabled"),
+        )
+        for row in status_rows
+    ]
+    write_snapshot(header)
+    write_station_status_rows(status_records)
+
+
+def _truthy(value: object) -> bool | None:
+    if value is None:
+        return None
+    return bool(value)
