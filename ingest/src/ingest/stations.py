@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ingest.db.engine import execute_sql
+from ..db.engine import execute_sql
 
 
 def upsert_station(
@@ -23,12 +23,14 @@ def upsert_station(
 
 def upsert_stations(rows: Sequence[dict[str, object]]) -> None:
     for row in rows:
+        name = row.get("name")
+        lat = row.get("lat")
+        lon = row.get("lon")
+        capacity = row.get("capacity")
         upsert_station(
             station_id=str(row.get("station_id")),
-            name=row.get("name") if isinstance(row.get("name"), str) else None,
-            lat=row.get("lat") if isinstance(row.get("lat"), (int, float)) else None,
-            lon=row.get("lon") if isinstance(row.get("lon"), (int, float)) else None,
-            capacity=row.get("capacity")
-            if isinstance(row.get("capacity"), int)
-            else None,
+            name=name if isinstance(name, str) else None,
+            lat=float(lat) if isinstance(lat, (int, float)) else None,
+            lon=float(lon) if isinstance(lon, (int, float)) else None,
+            capacity=capacity if isinstance(capacity, int) else None,
         )
