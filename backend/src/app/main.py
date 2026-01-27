@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from backend.api.routes import replay, state, stations
+from api.routes import replay, state, stations
 
 
 def create_app() -> FastAPI:
