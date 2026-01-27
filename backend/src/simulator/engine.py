@@ -12,15 +12,20 @@ class StepState:
     ts: datetime
     bikes_available: int
     capacity: int
+    intervention: int = 0
 
 
 def advance_step(state: StepState, delta: int) -> StepState:
-    next_value = clamp_inventory(state.bikes_available + delta, state.capacity)
+    next_value = clamp_inventory(
+        state.bikes_available + state.intervention + delta,
+        state.capacity,
+    )
     return StepState(
         station_id=state.station_id,
         ts=state.ts,
         bikes_available=next_value,
         capacity=state.capacity,
+        intervention=0,
     )
 
 
@@ -28,4 +33,21 @@ def replay_deltas(states: list[StepState], deltas: list[int]) -> list[StepState]
     output: list[StepState] = []
     for state, delta in zip(states, deltas, strict=False):
         output.append(advance_step(state, delta))
+    return output
+
+
+def apply_interventions(
+    states: list[StepState], interventions: list[int]
+) -> list[StepState]:
+    output: list[StepState] = []
+    for state, intervention in zip(states, interventions, strict=False):
+        output.append(
+            StepState(
+                station_id=state.station_id,
+                ts=state.ts,
+                bikes_available=state.bikes_available,
+                capacity=state.capacity,
+                intervention=intervention,
+            )
+        )
     return output
