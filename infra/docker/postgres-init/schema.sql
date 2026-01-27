@@ -26,6 +26,10 @@ create table if not exists snapshot_station_status (
   num_docks_disabled integer
 );
 
+create index if not exists snapshot_status_snapshot_idx on snapshot_station_status (snapshot_id);
+create index if not exists snapshot_status_station_idx on snapshot_station_status (station_id);
+create index if not exists snapshots_ts_idx on snapshots (ts);
+
 create table if not exists bins_5m (
   station_id text not null,
   ts timestamptz not null,
