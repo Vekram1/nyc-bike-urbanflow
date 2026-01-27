@@ -10,6 +10,11 @@ def create_app() -> FastAPI:
     app.include_router(stations.router)
     app.include_router(state.router)
     app.include_router(replay.router)
+
+    @app.get("/")
+    def root() -> dict[str, str]:
+        return {"status": "ok", "service": "urbanflow-backend"}
+
     return app
 
 
