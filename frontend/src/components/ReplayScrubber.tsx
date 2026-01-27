@@ -7,6 +7,7 @@ import { useReplay } from "../hooks/useReplay";
 export default function ReplayScrubber() {
   const { data } = useReplay();
   const [value, setValue] = useState(0);
+  const current = data[value] ?? null;
 
   return (
     <label>
@@ -18,6 +19,7 @@ export default function ReplayScrubber() {
         value={value}
         onChange={(event) => setValue(Number(event.target.value))}
       />
+      <div>{current ? String(current.ts ?? "") : ""}</div>
     </label>
   );
 }
