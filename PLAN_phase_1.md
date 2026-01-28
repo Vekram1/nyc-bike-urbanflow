@@ -85,14 +85,15 @@ Deliver a baseline-only replay experience for Dec 1, 2025 12:00-1:00 PM with a m
 - capacity
 
 ### Replay State (Per Bin)
-- timestamp (5-minute boundary)
-- bikes_available
-- docks_available
-- capacity
-- delta_bikes (net)
-- risk (0-1)
-- is_reliable
-- failure_empty / failure_full
+- timestamp: ISO 8601 string, 5-minute boundary (left edge)
+- bikes_available: integer, >= 0
+- docks_available: integer, >= 0
+- capacity: integer, >= 0 (effective capacity for the bin)
+- delta_bikes: integer (net change over the bin; + means bikes added)
+- risk: float in [0, 1]
+- is_reliable: boolean
+- failure_empty: boolean
+- failure_full: boolean
 
 ## Demo Window Contract
 - Timezone: America/New_York.
