@@ -251,7 +251,7 @@ Phase 6 — Optimization (OR-Tools / Greedy)
   - Plan always feasible under constraints.
   - Optimization ignores unreliable bins.
 
-Phase 7 — Frontend (Next.js + MapLibre + deck.gl)
+Phase 7 — Frontend (Next.js + Mapbox GL + deck.gl)
 - Map: stations with risk/failure coloring; clusters/heatmaps.
 - Playback: 5-min scrubber + prefetch for smooth replay.
 - Controls: horizon (30/60/120), trucks, capacity, Optimize, Compare toggle.

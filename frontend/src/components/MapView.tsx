@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { mapboxStyleUrl, mapboxToken } from "../data/config";
+
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState("loading map...");
@@ -15,14 +17,18 @@ export default function MapView() {
       }
 
       try {
-        const mapboxgl = await import("mapbox-gl");
-        mapboxgl.accessToken =
-          process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+        const mapboxgl = (await import("mapbox-gl")).default;
+        const token = mapboxToken();
+        if (!token) {
+          setStatus("Missing Mapbox token");
+          return;
+        }
+        mapboxgl.accessToken = token;
         mapInstance = new mapboxgl.Map({
           container: containerRef.current,
-          style: "mapbox://styles/mapbox/streets-v12",
+          style: mapboxStyleUrl(),
           center: [-73.9857, 40.7484],
-          zoom: 12,
+          zoom: 9.5,
         });
         mapInstance.on("load", () => setStatus("Map loaded"));
         mapInstance.on("error", () => setStatus("Map error"));

@@ -45,8 +45,9 @@ Show at selected time:
 - Plan vs baseline delta shown when in plan mode.
 
 ## Map Provider
-- Current: MapLibre + local style JSON.
-- Optional: Mapbox (token required) for higher-quality basemap.
+- Current: Mapbox GL with Mapbox-hosted styles.
+- Optional: MapLibre + local style JSON when tokenless basemap is needed.
 
 ## Env Vars
 - `NEXT_PUBLIC_MAPBOX_TOKEN`: Mapbox access token for frontend map rendering.
+- `NEXT_PUBLIC_MAPBOX_STYLE`: Mapbox style URL for the basemap.

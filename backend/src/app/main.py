@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ..api.routes import replay, state, stations
+from ..api.routes import metrics, replay, state, stations
 
 
 def create_app() -> FastAPI:
@@ -18,6 +18,7 @@ def create_app() -> FastAPI:
     app.include_router(stations.router)
     app.include_router(state.router)
     app.include_router(replay.router)
+    app.include_router(metrics.router)
 
     @app.get("/")
     def root() -> dict[str, str]:
