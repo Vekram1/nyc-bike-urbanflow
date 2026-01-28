@@ -15,17 +15,19 @@ export default function MapView() {
       }
 
       try {
-        const maplibre = await import("maplibre-gl");
-        mapInstance = new maplibre.Map({
+        const mapboxgl = await import("mapbox-gl");
+        mapboxgl.accessToken =
+          process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+        mapInstance = new mapboxgl.Map({
           container: containerRef.current,
-          style: "/styles/map-style.json",
+          style: "mapbox://styles/mapbox/streets-v12",
           center: [-73.9857, 40.7484],
           zoom: 12,
         });
         mapInstance.on("load", () => setStatus("Map loaded"));
         mapInstance.on("error", () => setStatus("Map error"));
       } catch (error) {
-        setStatus("MapLibre unavailable");
+        setStatus("Mapbox unavailable");
       }
     }
 
