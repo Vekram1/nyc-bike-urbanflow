@@ -1,9 +1,0 @@
-{
-  "version": 8,
-  "name": "UrbanFlow Mapbox Style Placeholder",
-  "metadata": {
-    "note": "Mapbox GL uses NEXT_PUBLIC_MAPBOX_STYLE; file retained for local fallback."
-  },
-  "sources": {},
-  "layers": []
-}
