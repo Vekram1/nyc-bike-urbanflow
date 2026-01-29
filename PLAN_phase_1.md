@@ -81,8 +81,14 @@ Deliver a baseline-only replay experience for Dec 1, 2025 12:00-1:00 PM with a m
 ### Station Metadata
 - station_id
 - name
+- short_name (optional)
+- region_id (optional)
+- station_type (optional)
 - lat/lon
-- capacity
+- geom (Point, 4326)
+- capacity (nullable)
+- is_manhattan
+- active
 
 ### Replay State (Per Bin)
 - timestamp: ISO 8601 string, 5-minute boundary (left edge)
@@ -111,15 +117,163 @@ Deliver a baseline-only replay experience for Dec 1, 2025 12:00-1:00 PM with a m
 - Frontend owns replay clock; API is read-only.
 
 ### Storage + DB
-- Source of truth for Phase 1 is the existing backend storage (Postgres).
-- Only the fixed window is required for initial demo (Dec 1, 2025 12:00-1:00 PM).
-- No DuckDB/parquet in Phase 1; migration planned for Phase 2.
+- Use TimescaleDB for raw snapshots and 5-minute bins.
+- Store typed columns only; avoid raw JSON payloads for station_status.
+- Station metadata is slow-changing; upsert on change, not every minute.
+- Continuous aggregates power replay; Python batch reserved for later analytics.
 
 ### Data Flow
+- Ingest writes 60-second snapshot rows to Timescale hypertable.
+- Continuous aggregates compute 5-minute bins for replay.
 - Frontend loads station metadata once on startup.
 - Replay state is fetched by time window and cached client-side.
 - Prefetch one bin ahead and one bin behind for scrub smoothness.
 - Metrics are fetched once per session (baseline only).
+
+## Timescale Schema (Proposed)
+### Tables
+- stations: station metadata (slow-changing).
+- snapshots: snapshot headers with feed_ts and row counts.
+- snapshot_station_status: time-series rows (hypertable on ts).
+- station_bins_5m: continuous aggregate for replay bins.
+
+### SQL Plan
+```sql
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+CREATE TABLE IF NOT EXISTS stations (
+  station_id TEXT PRIMARY KEY,
+  name TEXT,
+  short_name TEXT NULL,
+  region_id TEXT NULL,
+  station_type TEXT NULL,
+  lat DOUBLE PRECISION NOT NULL,
+  lon DOUBLE PRECISION NOT NULL,
+  geom GEOGRAPHY(Point, 4326),
+  capacity INTEGER NULL,
+  is_manhattan BOOLEAN NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  last_updated TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS snapshots (
+  snapshot_id UUID PRIMARY KEY,
+  ts TIMESTAMPTZ NOT NULL,
+  feed_ts TIMESTAMPTZ NOT NULL,
+  station_row_count INTEGER NOT NULL,
+  is_valid BOOLEAN NOT NULL DEFAULT TRUE,
+  error_reason TEXT NULL,
+  ingest_meta JSONB NULL
+);
+
+CREATE TABLE IF NOT EXISTS snapshot_station_status (
+  ts TIMESTAMPTZ NOT NULL,
+  feed_ts TIMESTAMPTZ NOT NULL,
+  snapshot_id UUID NOT NULL,
+  station_id TEXT NOT NULL,
+  bikes_available INTEGER NOT NULL,
+  docks_available INTEGER NOT NULL,
+  is_installed BOOLEAN NOT NULL,
+  is_renting BOOLEAN NOT NULL,
+  is_returning BOOLEAN NOT NULL,
+  disabled_bikes INTEGER NOT NULL DEFAULT 0,
+  disabled_docks INTEGER NOT NULL DEFAULT 0,
+  is_reliable BOOLEAN NOT NULL DEFAULT TRUE,
+  PRIMARY KEY (station_id, ts)
+);
+
+SELECT create_hypertable('snapshot_station_status', 'ts', if_not_exists => TRUE);
+
+CREATE INDEX IF NOT EXISTS idx_status_station_ts ON snapshot_station_status (station_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_status_ts ON snapshot_station_status (ts DESC);
+CREATE INDEX IF NOT EXISTS idx_status_snapshot_id ON snapshot_station_status (snapshot_id);
+
+CREATE OR REPLACE VIEW manhattan_stations_v AS
+SELECT *
+FROM stations
+WHERE active = TRUE AND is_manhattan = TRUE;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS station_bins_5m
+WITH (timescaledb.continuous) AS
+SELECT
+  station_id,
+  time_bucket('5 minutes', ts) AS bin_ts,
+  last(bikes_available, ts) AS bikes_last,
+  last(docks_available, ts) AS docks_last,
+  min(bikes_available) AS bikes_min,
+  min(docks_available) AS docks_min,
+  count(*) AS snapshots_in_bin,
+  bool_and(is_installed) AS all_installed,
+  bool_and(is_renting) AS all_renting,
+  bool_and(is_returning) AS all_returning
+FROM snapshot_station_status
+GROUP BY station_id, time_bucket('5 minutes', ts);
+
+CREATE OR REPLACE VIEW station_bins_5m_v AS
+SELECT
+  station_id,
+  bin_ts,
+  bikes_last,
+  docks_last,
+  bikes_min,
+  docks_min,
+  snapshots_in_bin,
+  (snapshots_in_bin >= 3) AND all_installed AND all_renting AND all_returning AS is_reliable_bin,
+  (bikes_min = 0) AS empty_any,
+  (docks_min = 0) AS full_any
+FROM station_bins_5m;
+
+SELECT add_continuous_aggregate_policy('station_bins_5m',
+  start_offset => INTERVAL '6 hours',
+  end_offset   => INTERVAL '5 minutes',
+  schedule_interval => INTERVAL '5 minutes');
+
+ALTER TABLE snapshot_station_status
+  SET (timescaledb.compress, timescaledb.compress_orderby = 'ts DESC');
+
+SELECT add_compression_policy('snapshot_station_status', INTERVAL '2 days');
+SELECT add_retention_policy('snapshot_station_status', INTERVAL '14 days');
+
+ALTER MATERIALIZED VIEW station_bins_5m
+  SET (timescaledb.compress, timescaledb.compress_orderby = 'bin_ts DESC');
+
+SELECT add_compression_policy('station_bins_5m', INTERVAL '30 days');
+```
+
+### Continuity Checks
+```sql
+SELECT ts, feed_ts, station_row_count, is_valid, error_reason
+FROM snapshots
+ORDER BY ts DESC
+LIMIT 20;
+
+SELECT
+  COUNT(*) FILTER (WHERE feed_ts <= lag(feed_ts) OVER (ORDER BY ts)) AS non_monotonic
+FROM snapshots;
+
+WITH latest AS (
+  SELECT snapshot_id, ts
+  FROM snapshots
+  ORDER BY ts DESC
+  LIMIT 1
+),
+counts AS (
+  SELECT
+    (SELECT COUNT(*) FROM snapshot_station_status s
+     JOIN latest l ON s.snapshot_id = l.snapshot_id) AS row_count,
+    (SELECT COUNT(*) FROM manhattan_stations_v) AS station_count
+)
+SELECT row_count, station_count,
+       row_count::float / NULLIF(station_count, 0) AS coverage_ratio
+FROM counts;
+
+SELECT bin_ts, MIN(snapshots_in_bin) AS min_snapshots
+FROM station_bins_5m
+GROUP BY bin_ts
+ORDER BY bin_ts DESC
+LIMIT 12;
+```
 
 ## Animation + Interaction Decisions
 ### Replay
