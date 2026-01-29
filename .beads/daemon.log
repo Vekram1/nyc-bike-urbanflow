@@ -12461,3 +12461,33 @@ time=2026-01-29T14:45:49.531-05:00 level=INFO msg="Import triggered by file chan
 time=2026-01-29T14:45:49.532-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
 time=2026-01-29T14:45:49.534-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
 time=2026-01-29T14:46:08.409-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/issues.jsonl
+time=2026-01-29T14:46:08.580-05:00 level=INFO msg="JSONL removed/renamed, re-establishing watch"
+time=2026-01-29T14:46:08.631-05:00 level=INFO msg="Successfully re-established JSONL watch after %v" !BADKEY=50ms
+time=2026-01-29T14:46:08.631-05:00 level=INFO msg="JSONL file created: %s" !BADKEY=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/issues.jsonl
+time=2026-01-29T14:46:09.648-05:00 level=INFO msg="Import triggered by file change"
+time=2026-01-29T14:46:09.649-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-01-29T14:46:09.653-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-01-29T14:46:12.328-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/issues.jsonl
+time=2026-01-29T14:46:13.332-05:00 level=INFO msg="Import triggered by file change"
+time=2026-01-29T14:46:13.333-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-01-29T14:46:13.335-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-01-29T14:46:24.098-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/issues.jsonl
+time=2026-01-29T14:46:25.101-05:00 level=INFO msg="Import triggered by file change"
+time=2026-01-29T14:46:25.104-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-01-29T14:46:25.106-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-01-29T14:47:26.611-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/issues.jsonl
+time=2026-01-29T14:47:27.316-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/issues.jsonl
+time=2026-01-29T14:47:27.680-05:00 level=INFO msg="Import triggered by file change"
+time=2026-01-29T14:47:27.680-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-01-29T14:47:27.681-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-01-29T14:47:28.203-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/issues.jsonl
+time=2026-01-29T14:47:28.319-05:00 level=INFO msg="Import triggered by file change"
+time=2026-01-29T14:47:28.320-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-01-29T14:47:28.322-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-01-29T14:47:29.206-05:00 level=INFO msg="Import triggered by file change"
+time=2026-01-29T14:47:29.206-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-01-29T14:47:29.207-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
+time=2026-01-29T14:54:34.052-05:00 level=INFO msg="File change detected: %s" !BADKEY=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/issues.jsonl
+time=2026-01-29T14:54:35.053-05:00 level=INFO msg="Import triggered by file change"
+time=2026-01-29T14:54:35.054-05:00 level=INFO msg="Starting %s..." !BADKEY=auto-import
+time=2026-01-29T14:54:35.056-05:00 level=INFO msg="Skipping %s: JSONL content unchanged" !BADKEY=auto-import
