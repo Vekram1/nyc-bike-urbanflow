@@ -7,3 +7,6 @@ frontend/next-env.d.ts
 frontend/.env.local
 backend/src/**/__pycache__/
 backend/src/*.egg-info/
+
+# Beads runtime (local)
+.beads/
