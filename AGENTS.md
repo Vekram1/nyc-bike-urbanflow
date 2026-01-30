@@ -1,41 +1,54 @@
-# Agent Instructions
+# AGENTS.md — UrbanFlow Twin
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+## Safety and irreversible actions
 
-## Quick Reference
+- Never delete files or directories unless the user provides the exact command in the same session.
+- Never run destructive git commands (`git reset --hard`, `git clean -fd`, force push) unless the user provides the exact command in the same session.
+- If a destructive command is requested, restate the command, list affected paths, and wait for confirmation.
 
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
-```
+## Tooling rules
 
-## Landing the Plane (Session Completion)
+- Use Bun for all JS/TS tasks (`bun install`, `bun run ...`). Do not use npm/yarn/pnpm.
+- Prefer small, explicit edits; avoid bulk-modifying scripts or large refactors unless requested.
+- Do not edit generated outputs by hand. Generate artifacts via the documented commands.
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+## Target stack (budget-first)
 
-**MANDATORY WORKFLOW:**
+Goal: stay under $50/year by avoiding always-on servers.
 
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+Frontend:
+- React + TypeScript (Vite or Next.js).
+- Host on Cloudflare Pages (static + CDN).
+- Map: Mapbox GL JS (option to switch to MapLibre later).
 
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+API:
+- Cloudflare Workers (TypeScript) for read-only endpoints:
+  - `/api/as_of`, `/api/reliability`, `/api/reliability/explain`.
+- Use CDN caching keyed on `dataset_id` + `as_of`.
 
-Use 'bd' for task tracking
+Database:
+- Neon Postgres (serverless). Confirm PostGIS availability on chosen plan.
+
+Object storage:
+- Cloudflare R2 for raw archives, manifests, and precomputed artifacts (GeoJSON/PMTiles).
+
+## Data delivery strategy
+
+- Prefer precomputed artifacts for map layers (GeoJSON or PMTiles) served from R2 + CDN.
+- Keep the API thin; avoid per-pan/zoom DB queries.
+
+## Deployment notes
+
+- Cloudflare Workers do not run Bun in production; keep Worker code TS-compatible with the Workers runtime.
+- Use Bun locally for builds and tooling.
+
+## Security and reliability
+
+- Read-only public endpoints by default; no public write APIs.
+- Enforce strict cache keys and watermarks for reproducibility.
+- Lock Mapbox tokens to approved origins.
+
+## Session completion
+
+- Summarize changes with file references.
+- Do not push unless explicitly asked.
