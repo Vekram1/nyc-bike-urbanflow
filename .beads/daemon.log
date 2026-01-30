@@ -1,0 +1,15 @@
+time=2026-01-30T01:04:15.000-05:00 level=INFO msg="Daemon started (interval: %v, auto-commit: %v, auto-push: %v)" !BADKEY=5s !BADKEY=false !BADKEY=false
+time=2026-01-30T01:04:15.000-05:00 level=INFO msg="using database" path=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/beads.db
+time=2026-01-30T01:04:15.008-05:00 level=INFO msg="database opened" path=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/beads.db freshness_checking=true
+time=2026-01-30T01:04:15.008-05:00 level=INFO msg="upgrading .beads/.gitignore"
+time=2026-01-30T01:04:15.008-05:00 level=WARN msg="failed to upgrade .gitignore" error="open .beads/.gitignore: no such file or directory"
+time=2026-01-30T01:04:15.014-05:00 level=INFO msg="Repository fingerprint validated: %s" !BADKEY=eae8216e
+time=2026-01-30T01:04:15.015-05:00 level=INFO msg="starting RPC server" socket=/Users/vikramoddiraju/Scientific_Computation/nyc-bike-urbanflow/.beads/bd.sock
+time=2026-01-30T01:04:15.015-05:00 level=INFO msg="RPC server ready (socket listening)"
+time=2026-01-30T01:04:15.022-05:00 level=INFO msg="registered in global registry"
+time=2026-01-30T01:04:15.022-05:00 level=INFO msg="Starting %s..." !BADKEY="sync cycle"
+time=2026-01-30T01:04:15.022-05:00 level=INFO msg="Exported to JSONL"
+time=2026-01-30T01:04:15.255-05:00 level=INFO msg="Pull failed: %v" !BADKEY="git pull failed: exit status 128\nFrom https://github.com/Vekram1/nyc-bike-urbanflow\n * branch            master     -> FETCH_HEAD\nwarning: fetch updated the current branch head.\nfast-forwarding your working tree from\ncommit 282b8e962fa8c6efc00a084010119ff5717ffe51.\nerror: The following untracked working tree files would be overwritten by merge:\n\t.beads/issues.jsonl\nPlease move or remove them before you merge.\nAborting\nfatal: Cannot fast-forward your working tree.\nAfter making sure that you saved anything precious from\n$ git diff 282b8e962fa8c6efc00a084010119ff5717ffe51\noutput, run\n$ git reset --hard\nto recover.\n"
+time=2026-01-30T01:04:15.255-05:00 level=INFO msg="monitoring parent process" pid=0
+time=2026-01-30T01:04:15.255-05:00 level=INFO msg="using event-driven mode"
+time=2026-01-30T01:04:15.256-05:00 level=INFO msg="Auto-pull disabled: use 'git pull' manually to sync remote changes"
