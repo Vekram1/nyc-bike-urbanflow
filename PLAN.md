@@ -1508,3 +1508,41 @@ Milestone 3 — Tiles-first web app (exit criteria: bikemap-style HUD + permalin
 - MacWright bikeshare GBFS archive approach: https://macwright.com/2023/09/17/bikeshare-1
 - Citi Bike trip history downloads: https://citibikenyc.com/system-data
 - NYC Comptroller GBFS collection/analysis repo: https://github.com/NYCComptroller/citi-bike-gbfs
+
+## Commentary and rationale (expanded)
+
+### Product scope and UX
+
+The product is map-first with a full-bleed canvas to keep Mapbox stable and avoid reinitialization costs. HUD overlays are intentionally minimal and layered so panning/zooming remains primary. Inspect mode freezes playback to keep the view deterministic and trustworthy while reading evidence. This avoids UX drift (tiles changing while a user reads) and keeps cache keys stable.
+
+### Profiles and cost posture
+
+Profile A keeps the system under $50/year by minimizing always-on infra and leaning on CDN caches + object storage for replay. Profile B is explicitly opt-in. Any new infra or dependency should be justified in terms of cost, operational benefit, and why it cannot be done within Profile A.
+
+### Serving views and reproducibility
+
+Serving view tokens (`sv`) capture all upstream watermarks so replay is reproducible across GBFS, trips, severity specs, and tile schema versions. This also bounds cache keyspace and prevents mixing incompatible inputs in composite tiles. `sv` tokens are the only public-facing handle for state.
+
+### Data ingestion and raw archive
+
+Raw GBFS and trip artifacts are the source of truth. Every derived table is rebuildable via manifests and serving views. The archive layout is intentionally simple and deterministic to support replays and avoid silent drift in parsing or schema evolution.
+
+### Tile serving and cache safety
+
+Tiles are the highest QPS surface. Composite tiles in Profile A reduce request fan-out, and tile schema versioning prevents accidental cache poisoning when properties change. The tile compute contract enforces a stable SQL shape, deterministic caps, and fixed MVT settings to keep latency predictable.
+
+### Severity and policy versioning
+
+Severity and policy outputs are versioned, hashed, and tied to allowlists. This prevents silent behavior changes and keeps caches correct. Any change to formulas or constraints must result in a new namespace so old permalinks remain reproducible.
+
+### Policy plane intent
+
+Greedy v1 is designed as a budgeted, local control policy suitable for Profile A. It is deterministic, bounded, and meant for counterfactual evaluation in replay. Live mode is shadow-only until evaluation metrics are trusted.
+
+### Security and abuse model
+
+The system assumes anonymous, potentially abusive traffic. Keyspace is bounded by allowlists and `sv` tokens, while edge caching and deterministic degrade ladders prevent origin stampedes. Admin endpoints remain isolated and authenticated.
+
+### Testing and contract fixtures
+
+Fixtures and contract tests ensure that parsing, serving, and policy outputs remain deterministic. Any versioned change requires explicit fixture updates so future maintainers can reason about intentional differences.
