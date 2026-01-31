@@ -6,3 +6,9 @@ frontend/node_modules/
 # Node
 node_modules/
 frontend/node_modules/
+
+# bv (beads viewer) local config and caches
+.bv/
+
+# Local system registry overrides
+config/systems.local.json

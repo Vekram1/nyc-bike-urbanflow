@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "systems": [
+    {
+      "system_id": "citibike-nyc",
+      "gbfs_entrypoint_url": "https://gbfs.citibikenyc.com/gbfs/gbfs.json",
+      "default_map_bounds": [-74.25909, 40.477399, -73.700272, 40.917577],
+      "default_center": [-73.98513, 40.758896],
+      "timezone": "America/New_York",
+      "provider_name": "Citi Bike",
+      "provider_region": "NYC"
+    }
+  ]
+}
