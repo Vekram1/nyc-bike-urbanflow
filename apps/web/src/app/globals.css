@@ -1,0 +1,137 @@
+/* apps/web/src/app/globals.css */
+
+html,
+body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+}
+
+body {
+    overflow: hidden;
+    /* critical: full-bleed map, no page scroll */
+    background: #0b0f14;
+    color: #e6edf3;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
+        Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+/* App root container fills viewport */
+.uf-root {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+/* Map always full bleed behind HUD */
+.uf-map {
+    position: absolute;
+    inset: 0;
+}
+
+/* Single global HUD root: pointer-events NONE */
+.uf-hud-root {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+/* Each control card must re-enable pointer events */
+.uf-hud-pe-auto {
+    pointer-events: auto;
+}
+
+/* HUD card design system (required) */
+.uf-card {
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    background: rgba(12, 17, 23, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* Keycap styling */
+.uf-keycap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(230, 237, 243, 0.92);
+    font-size: 12px;
+    line-height: 1;
+    margin-left: 6px;
+}
+
+/* Layout anchors */
+.uf-top-center {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.uf-bottom {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+}
+
+.uf-left-stack {
+    position: absolute;
+    top: 76px;
+    left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.uf-right-stack {
+    position: absolute;
+    top: 76px;
+    right: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Station drawer: desktop side, mobile bottom */
+.uf-drawer {
+    position: absolute;
+    pointer-events: auto;
+    background: rgba(12, 17, 23, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Desktop default: right side */
+@media (min-width: 768px) {
+    .uf-drawer {
+        top: 12px;
+        right: 12px;
+        bottom: 12px;
+        width: min(420px, calc(100vw - 24px));
+        transform: translateX(0);
+    }
+}
+
+/* Mobile: bottom sheet */
+@media (max-width: 767px) {
+    .uf-drawer {
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        height: min(55vh, 520px);
+    }
+}

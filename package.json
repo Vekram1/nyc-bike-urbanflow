@@ -1,0 +1,10 @@
+{
+    "private": true,
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ],
+    "scripts": {
+        "dev:web": "bun --bun --cwd apps/web run dev"
+    }
+}
