@@ -1,5 +1,7 @@
 # CLAUDE.md — Codex Bootstrap Mirror (UrbanFlow Twin)
 
+Authoritative protocol lives in AGENTS.md; this is a bootstrap mirror for Codex.
+
 **Authoritative agent protocol lives in `AGENTS.md`.**
 This file is a minimal bootstrap mirror so Codex reliably ingests the non-negotiables.
 If `CLAUDE.md` conflicts with `AGENTS.md` or `PLAN.md`, STOP and request a doc diff.

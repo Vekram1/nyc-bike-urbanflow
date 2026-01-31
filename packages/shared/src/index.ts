@@ -16,3 +16,6 @@ export type {
   SystemRegistryIndex,
   SystemRegistryOverrides,
 } from "./system-registry";
+
+export { createTestLogger } from "./test";
+export type { TestLogContext, TestLogEntry, TestLogLevel, TestLogger, TestLoggerOptions } from "./test";
