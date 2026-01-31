@@ -12,3 +12,6 @@ frontend/node_modules/
 
 # Local system registry overrides
 config/systems.local.json
+
+# Local environment variables
+.env.local

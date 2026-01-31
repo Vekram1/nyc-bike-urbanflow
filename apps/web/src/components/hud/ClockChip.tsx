@@ -1,8 +1,8 @@
-// apps/web/src/components/hud/ClockChip.tsx
 "use client";
 
 import HUDCard from "./HUDCard";
 import { useNowClock } from "@/lib/useNowClock";
+import { useHasMounted } from "@/lib/useHasMounted";
 
 function formatDate(d: Date) {
     return d.toLocaleDateString(undefined, {
@@ -21,20 +21,24 @@ function formatTime(d: Date) {
 }
 
 export default function ClockChip() {
-    // For now: "live clock" only. Later: replay clock driven by scrubber state.
+    const mounted = useHasMounted();
+
+    // Don’t render real time/date until after mount (prevents hydration mismatch)
     const now = useNowClock(250);
 
-    // Stubs you’ll wire to your real data plane later:
     const mode: "live" | "replay" = "live";
     const sv = "sv:dev-0";
     const delayed = false;
+
+    const dateText = mounted ? formatDate(now) : "—";
+    const timeText = mounted ? formatTime(now) : "—";
 
     return (
         <HUDCard>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <div style={{ fontSize: 12, opacity: 0.8 }}>{formatDate(now)}</div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{formatTime(now)}</div>
+                    <div style={{ fontSize: 12, opacity: 0.8 }}>{dateText}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{timeText}</div>
                 </div>
 
                 <div
