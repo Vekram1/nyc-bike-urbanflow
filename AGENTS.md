@@ -1,8 +1,22 @@
 # AGENTS.md — UrbanFlow Twin
 
+## Gastown + Codex operating mode (read once)
+This repo is operated via Gastown workflow: work is executed in Gastown-managed worktrees (crew/hook dirs), coordinated via Beads work items (IDs).
+
+**Codex-only constraint:** these instructions assume Codex runtimes (no Claude hooks). If a workflow step mentions hooks, treat it as a manual Codex bootstrap step (see next section).
+
+Non-negotiable: **PLAN.md + this file govern all work.** If a worker instruction conflicts with PLAN.md, STOP and reconcile via a doc diff.
+
+
 ## What this file is (read once)
 This file is the operating protocol for coding agents working in this repo.
 PLAN.md is the product/architecture specification. If AGENTS.md conflicts with PLAN.md, STOP and reconcile via a doc diff.
+
+## Codex instruction pickup (mandatory)
+Codex must reliably ingest repo instructions. Therefore:
+1) Maintain a **CLAUDE.md** file at repo root that mirrors the critical rules from this AGENTS.md (see “60-second contract summary”, “STOP conditions”, and “Safety invariant”).
+2) If CLAUDE.md is missing or stale vs AGENTS.md, STOP and request a doc-sync change before any code work.
+3) CLAUDE.md must begin with: “Authoritative protocol lives in AGENTS.md; this is a bootstrap mirror for Codex.”
 
 ## 60-second contract summary (do not improvise)
 Core invariants from PLAN.md that MUST be preserved:
@@ -14,14 +28,30 @@ Core invariants from PLAN.md that MUST be preserved:
 - Map UX: MapShell mounts once per session; never remount the Mapbox map.
 - Inspect UX: station click freezes playback (no tile URL mutations) until drawer closes.
 
+## Codex compliance checklist (run mentally before acting)
+1) Am I operating under a Beads ID? If not, create/claim one first.
+2) Did I read PLAN.md sections governing this work?
+3) Is this a contract surface (tiles/severity/policy/sv)? If yes, follow the versioned contract protocol or STOP.
+4) Any new deps / Profile B / destructive ops / Gastown state mutations? If yes, STOP and ask the user.
+
 ## When you MUST stop and ask the user
 - Adding ANY dependency (runtime or dev) or changing bundler/build stack
 - Introducing Profile B infra (Timescale, Redis, dedicated queue/workers, replicas)
 - Changing any versioned contract: sv token claims, allowlist dimensions, tile_schema_version, severity_version, policy_version
 - Destructive actions (see safety invariant), including DB drops/truncates or deleting raw archives/artifacts
+- Gastown workspace mutations without explicit approval:
+  - `gt doctor --fix`
+  - removing/renaming rigs/crews/hooks
+  - any nuke/cleanup style commands that delete worktrees or reset orchestration state
 
-## BEFORE ANYTHING ELSE (Beads bootstrap)
+## BEFORE ANYTHING ELSE (Gastown + Beads bootstrap)
 
+### If running inside Gastown (Codex runtimes)
+1) Run `gt prime` to load rig + hook context (startup fallback for non-hook runtimes).
+2) If operating autonomously or expecting queued work, run `gt mail check --inject` to pull mail into context.
+3) If the session appears idle or waiting to be prompted, run `gt nudge deacon session-started`.
+
+### Then (always)
 - Run: `bd onboard` and follow its instructions.
 - If Beads is not initialized in this repo, a human should run: `bd init` (or `bd init --stealth` for local-only usage).
 
@@ -37,6 +67,12 @@ Run `bd prime` for workflow context, or install hooks (`bd hooks install`) for a
 - `bd sync` - Sync with git (run at session end)
 
 For full workflow details: `bd prime`
+
+## Gastown dispatch model (Beads-first)
+In Gastown, Beads IDs are the unit of work. When parallelizing:
+- Create/identify the Beads issue ID first.
+- Dispatch work using Gastown (`gt sling <beads-id> <rig>` or via convoys) so each agent gets a single, unambiguous assignment.
+- All agent communication must reference the Beads ID.
 
 ## RULE 1 — ABSOLUTE SAFETY INVARIANT (DO NOT VIOLATE)
 
@@ -74,6 +110,11 @@ If this audit trail is missing, treat the operation as not performed.
 - Do not add new dependencies (runtime or dev) without explicit user approval.
 - Prefer small, explicit edits; avoid bulk-modifying scripts or large refactors unless requested.
 - Do not edit generated outputs by hand. Generate artifacts via the documented commands.
+
+## Workspace invariant (Gastown)
+- Only perform work inside the active Gastown hook/worktree for this Beads ID.
+- If you discover you are not in the rig/crew/hook working directory, STOP and relocate before running any commands.
+- Never fix directory confusion by cloning a second copy of the repo.
 
 ## Generated files (never edit manually)
 
@@ -139,18 +180,19 @@ Rules:
   Architecture/spec questions are governed by PLAN.md.
 - If bv metrics are `approx|skipped`, say so and fall back to beads readiness + human judgment.
 
-## MCP Agent Mail — coordination + file reservations (mandatory in multi-agent work)
+## Gastown Mail — coordination + soft file reservations (mandatory in multi-agent work)
 
 Principles:
-- Use Agent Mail threads keyed to Beads IDs (e.g., `bd-a1b2c3`) for durable coordination.
-- Before editing files that another agent might touch, reserve them.
+- Use Gastown mailboxes for durable coordination:
+  - read: `gt mail inbox`
+  - send: `gt mail send <addr> -s "..." -m "..."`
+- Key all threads by Beads ID (e.g., `bd-a1b2c3`), and include the Beads ID in the subject line.
+- Before editing shared files, announce a soft reservation via mail (paths + intent + expected diff surface).
 
 Minimum workflow:
-1. Ensure project/agent registration (once per environment)
-2. Create/choose thread: `thread_id = <beads-id>`
-3. Reserve files before edits (prefer narrow patterns)
-4. Send messages with intent, files touched, expected diff surface
-5. Acknowledge inbound messages promptly
+1) Check inbox: `gt mail inbox`
+2) Announce reservation: `gt mail send <team-or-agent-addr> -s "<beads-id> reserve" -m "Touching: <paths>. Intent: <...>. Risk: <...>."`
+3) Acknowledge conflicts quickly; if conflict is active, STOP or choose different files.
 
 Reservation rules:
 - Prefer small, explicit path lists over broad globs.
@@ -180,6 +222,12 @@ Reservation defaults (use before edits):
 - security+abuse: reserve `packages/api/src/**` (narrow paths), plus config files touched
 
 Rule: if a change crosses roles, announce in Agent Mail thread first and split into separate Beads issues where possible.
+
+Additional enforcement (Gastown):
+- One Beads issue == one primary role owner by default.
+- Cross-role changes require:
+  1) mail announcement (Beads ID + files + reason)
+  2) either split issues, or explicit user approval to keep combined
 
 ## Stack and profiles
 
@@ -378,6 +426,11 @@ Recommended completion template (copy/paste):
   - closed/updated: <id> (<status>)
 - Commands:
   - <command> (ok/fail)
+
+## Gastown handoff discipline (required)
+After completing any logical chunk of work (or when context feels degraded), request a fresh session cycle via:
+- `gt handoff` (include the Beads ID + current status in the handoff message)
+Rationale: keeps hook state clean and prevents long-session drift from PLAN/contract invariants.
 
 Git rules:
 - Do not push unless the user explicitly asks in this session.
