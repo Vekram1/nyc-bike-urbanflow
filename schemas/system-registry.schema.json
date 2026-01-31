@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SystemRegistry",
+  "type": "object",
+  "required": ["version", "systems"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "systems": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "system_id",
+          "gbfs_entrypoint_url",
+          "default_map_bounds",
+          "default_center",
+          "timezone",
+          "provider_name",
+          "provider_region"
+        ],
+        "properties": {
+          "system_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "gbfs_entrypoint_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "default_map_bounds": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": { "type": "number" }
+          },
+          "default_center": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "number" }
+          },
+          "timezone": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_+-]+/[A-Za-z0-9_+-]+$"
+          },
+          "provider_name": { "type": "string" },
+          "provider_region": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
