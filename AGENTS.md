@@ -1,9 +1,13 @@
 # AGENTS.md — UrbanFlow Twin
 
-## Gastown + Codex operating mode (read once)
-This repo is operated via Gastown workflow: work is executed in Gastown-managed worktrees (crew/hook dirs), coordinated via Beads work items (IDs).
+## MCP Agent Mail + NTM + Codex operating mode (read once)
+This repo is operated via:
+- **NTM** for spawning/organizing **Codex-only** agent panes in tmux
+- **Beads (`bd`)** as the unit of work / source of truth for task tracking
+- **MCP Agent Mail** for durable coordination: threads + acknowledgments + advisory file reservations (leases)
 
-**Codex-only constraint:** these instructions assume Codex runtimes (no Claude hooks). If a workflow step mentions hooks, treat it as a manual Codex bootstrap step (see next section).
+**Codex-only constraint (hard):** use only Codex panes/agents. Do not spawn or rely on Claude/Gemini agents.
+**No Gastown:** do not use `gt` commands, Gastown worktrees/crews/hooks, or Gastown mail.
 
 Non-negotiable: **PLAN.md + this file govern all work.** If a worker instruction conflicts with PLAN.md, STOP and reconcile via a doc diff.
 
@@ -14,9 +18,9 @@ PLAN.md is the product/architecture specification. If AGENTS.md conflicts with P
 
 ## Codex instruction pickup (mandatory)
 Codex must reliably ingest repo instructions. Therefore:
-1) Maintain a **CLAUDE.md** file at repo root that mirrors the critical rules from this AGENTS.md (see “60-second contract summary”, “STOP conditions”, and “Safety invariant”).
-2) If CLAUDE.md is missing or stale vs AGENTS.md, STOP and request a doc-sync change before any code work.
-3) CLAUDE.md must begin with: “Authoritative protocol lives in AGENTS.md; this is a bootstrap mirror for Codex.”
+1) **Always read AGENTS.md + PLAN.md first** before proposing or executing any repo-changing work.
+2) If your context is missing critical constraints (profiles, contracts, safety invariant), **STOP** and request a doc refresh / paste of the relevant section(s).
+3) Use **MCP Agent Mail thread summaries** to regain context across sessions (see “MCP Agent Mail workflow”).
 
 ## 60-second contract summary (do not improvise)
 Core invariants from PLAN.md that MUST be preserved:
@@ -32,28 +36,41 @@ Core invariants from PLAN.md that MUST be preserved:
 1) Am I operating under a Beads ID? If not, create/claim one first.
 2) Did I read PLAN.md sections governing this work?
 3) Is this a contract surface (tiles/severity/policy/sv)? If yes, follow the versioned contract protocol or STOP.
-4) Any new deps / Profile B / destructive ops / Gastown state mutations? If yes, STOP and ask the user.
+4) Any new deps / Profile B / destructive ops / Agent Mail/NTM reconfiguration? If yes, STOP and ask the user.
 
 ## When you MUST stop and ask the user
 - Adding ANY dependency (runtime or dev) or changing bundler/build stack
 - Introducing Profile B infra (Timescale, Redis, dedicated queue/workers, replicas)
 - Changing any versioned contract: sv token claims, allowlist dimensions, tile_schema_version, severity_version, policy_version
 - Destructive actions (see safety invariant), including DB drops/truncates or deleting raw archives/artifacts
-- Gastown workspace mutations without explicit approval:
-  - `gt doctor --fix`
-  - removing/renaming rigs/crews/hooks
-  - any nuke/cleanup style commands that delete worktrees or reset orchestration state
+- Installing/reconfiguring coordination tooling without explicit approval:
+  - starting/stopping/reinstalling the MCP Agent Mail server
+  - installing Agent Mail pre-commit guards / git-hook runners
+  - changing NTM global config defaults that affect other projects
 
-## BEFORE ANYTHING ELSE (Gastown + Beads bootstrap)
+## BEFORE ANYTHING ELSE (NTM + Agent Mail + Beads bootstrap)
 
-### If running inside Gastown (Codex runtimes)
-1) Run `gt prime` to load rig + hook context (startup fallback for non-hook runtimes).
-2) If operating autonomously or expecting queued work, run `gt mail check --inject` to pull mail into context.
-3) If the session appears idle or waiting to be prompted, run `gt nudge deacon session-started`.
+### 0) Workspace correctness (non-negotiable)
+1) Confirm repo root: `git rev-parse --show-toplevel`
+2) Confirm your `pwd` is the repo root (or inside it). If not, **STOP** and relocate.
+3) If NTM spawned you in the wrong base directory, fix NTM `projects_base` (global or `.ntm/config.toml`) before continuing.
 
 ### Then (always)
 - Run: `bd onboard` and follow its instructions.
 - If Beads is not initialized in this repo, a human should run: `bd init` (or `bd init --stealth` for local-only usage).
+
+### MCP Agent Mail server prerequisite (human-run)
+MCP Agent Mail must be running and reachable by Codex via MCP.
+- Start server (fast path): `am`
+- Or run the provided server script: `./scripts/run_server_with_token.sh`
+If the mail tools/resources are unavailable inside Codex, **STOP** and ask the human to start/fix the server.
+
+### MCP Agent Mail bootstrap (agent-run, every session)
+Use this repo’s **absolute path** as the project key (Agent Mail calls it `human_key` / `project_key`).
+1) Start identity + inbox bootstrap (single call):
+   - `macro_start_session(human_key="<ABS_REPO_PATH>", program="codex", model="<codex-model>", task_description="<bd-id>: <short task>")`
+2) If continuing an existing Beads thread:
+   - `macro_prepare_thread(project_key="<ABS_REPO_PATH>", thread_id="<bd-id>", agent_name="<your-agent-name>")`
 
 ## Issue Tracking
 
@@ -68,11 +85,15 @@ Run `bd prime` for workflow context, or install hooks (`bd hooks install`) for a
 
 For full workflow details: `bd prime`
 
-## Gastown dispatch model (Beads-first)
-In Gastown, Beads IDs are the unit of work. When parallelizing:
+## NTM dispatch model (Beads-first, Codex-only)
+In NTM, Beads IDs are the unit of work. When parallelizing:
 - Create/identify the Beads issue ID first.
-- Dispatch work using Gastown (`gt sling <beads-id> <rig>` or via convoys) so each agent gets a single, unambiguous assignment.
-- All agent communication must reference the Beads ID.
+- Spawn/manage agents with NTM using Codex panes only:
+  - `ntm spawn <session> --cod=<N>`
+  - `ntm add <session> --cod=<N>`
+- Dispatch instructions with NTM broadcast:
+  - `ntm send <session> --cod "<bd-id>: <task instructions>"`
+- All cross-agent coordination MUST use **MCP Agent Mail** with `thread_id = <bd-id>`.
 
 ## RULE 1 — ABSOLUTE SAFETY INVARIANT (DO NOT VIOLATE)
 
@@ -111,10 +132,11 @@ If this audit trail is missing, treat the operation as not performed.
 - Prefer small, explicit edits; avoid bulk-modifying scripts or large refactors unless requested.
 - Do not edit generated outputs by hand. Generate artifacts via the documented commands.
 
-## Workspace invariant (Gastown)
-- Only perform work inside the active Gastown hook/worktree for this Beads ID.
-- If you discover you are not in the rig/crew/hook working directory, STOP and relocate before running any commands.
+## Workspace invariant (NTM)
+- Only perform work inside the correct repo working directory (the one that matches `git rev-parse --show-toplevel`).
+- If `pwd` disagrees with the expected repo root, **STOP** and relocate before running any commands.
 - Never fix directory confusion by cloning a second copy of the repo.
+- If NTM is spawning under the wrong base (e.g., `~/Developer`), fix `projects_base` in NTM config (global or `.ntm/config.toml`) before continuing.
 
 ## Generated files (never edit manually)
 
@@ -180,24 +202,36 @@ Rules:
   Architecture/spec questions are governed by PLAN.md.
 - If bv metrics are `approx|skipped`, say so and fall back to beads readiness + human judgment.
 
-## Gastown Mail — coordination + soft file reservations (mandatory in multi-agent work)
+## MCP Agent Mail — coordination + file reservations (mandatory in multi-agent work)
 
 Principles:
-- Use Gastown mailboxes for durable coordination:
-  - read: `gt mail inbox`
-  - send: `gt mail send <addr> -s "..." -m "..."`
-- Key all threads by Beads ID (e.g., `bd-a1b2c3`), and include the Beads ID in the subject line.
-- Before editing shared files, announce a soft reservation via mail (paths + intent + expected diff surface).
+- Use **MCP Agent Mail** for durable coordination:
+  - Thread key: `thread_id = <bd-id>`
+  - Subject prefix: `[<bd-id>] ...`
+  - Check inbox regularly; acknowledge messages that request ACK.
+- Before editing shared files, acquire **file reservation leases** via Agent Mail (`file_reservation_paths`).
+- Use **exclusive=true** for files you expect to modify; keep reservations narrow and time-bounded.
 
 Minimum workflow:
-1) Check inbox: `gt mail inbox`
-2) Announce reservation: `gt mail send <team-or-agent-addr> -s "<beads-id> reserve" -m "Touching: <paths>. Intent: <...>. Risk: <...>."`
-3) Acknowledge conflicts quickly; if conflict is active, STOP or choose different files.
+1) Bootstrap session: `macro_start_session(...)` (identity + inbox)
+2) Reserve paths before editing:
+   - `file_reservation_paths(project_key="<ABS_REPO_PATH>", agent_name="<you>", paths=[...], ttl_seconds=3600, exclusive=true, reason="<bd-id>")`
+3) Announce start (and include reservations):
+   - `send_message(..., thread_id="<bd-id>", subject="[<bd-id>] Starting", body_md="Reserving: ...", ack_required=true)`
+4) During work: reply progress updates in-thread; check inbox periodically (`fetch_inbox(...)`)
+5) When done: release reservations + completion message:
+   - `release_file_reservations(project_key="<ABS_REPO_PATH>", agent_name="<you>")`
+   - `send_message(..., thread_id="<bd-id>", subject="[<bd-id>] Completed", body_md="Summary + paths + commands")`
 
 Reservation rules:
 - Prefer small, explicit path lists over broad globs.
 - If reservation conflicts: coordinate in-thread, wait for expiry, or choose different files.
 - Never bypass reservations for shared areas like `packages/shared/**`, `sql/**`, `apps/web/src/lib/**`.
+
+Optional (human-approved only):
+- Install Agent Mail pre-commit guard to block conflicting commits:
+  - `install_precommit_guard(project_key="<ABS_REPO_PATH>", code_repo_path="<ABS_REPO_PATH>")`
+  - Requires setting `AGENT_NAME` in env for accurate attribution.
 
 ## Agent roles and ownership (recommended for parallel work)
 When multiple agents are active, prefer assigning one primary role per agent per Beads issue.
@@ -427,10 +461,11 @@ Recommended completion template (copy/paste):
 - Commands:
   - <command> (ok/fail)
 
-## Gastown handoff discipline (required)
-After completing any logical chunk of work (or when context feels degraded), request a fresh session cycle via:
-- `gt handoff` (include the Beads ID + current status in the handoff message)
-Rationale: keeps hook state clean and prevents long-session drift from PLAN/contract invariants.
+## Session handoff discipline (required)
+After completing any logical chunk of work (or when context feels degraded):
+1) Post a thread summary to MCP Agent Mail (`thread_id=<bd-id>`) and/or call `summarize_thread(...)`.
+2) Ensure reservations are released.
+3) If the agent must be rotated, use NTM to spawn/add a fresh Codex pane and paste the thread summary + Beads status.
 
 Git rules:
 - Do not push unless the user explicitly asks in this session.
