@@ -4,9 +4,9 @@
 import Map, { NavigationControl } from "react-map-gl/mapbox";
 
 const NYC = {
-    longitude: -73.9857,
-    latitude: 40.7484,
-    zoom: 12.2,
+    longitude: -74.0060,
+    latitude: 40.7128,
+    zoom: 10.5,
     bearing: 0,
     pitch: 0,
 };
@@ -27,7 +27,6 @@ export default function MapView() {
                     background: "#071018",
                 }}
             >
-                Missing NEXT_PUBLIC_MAPBOX_TOKEN in apps/web/.env.local
             </div>
         );
     }

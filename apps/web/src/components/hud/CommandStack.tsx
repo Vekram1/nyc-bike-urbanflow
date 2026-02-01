@@ -11,7 +11,6 @@ export default function CommandStack() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <Row label="Search" hint=" / " />
                     <Row label="Pause" hint="Space" />
-                    <Row label="Random" hint="R" />
                     <Row label="About" hint="?" />
                 </div>
             </HUDCard>
