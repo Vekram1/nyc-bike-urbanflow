@@ -1,25 +1,38 @@
 // apps/web/src/components/hud/StationDrawer.tsx
 "use client";
 
-export default function StationDrawer() {
-    // Later: controlled by selected station state.
-    const isOpen = false;
+import type { StationPick } from "@/components/map/MapView";
 
-    if (!isOpen) return null;
+export default function StationDrawer(props: {
+    station: StationPick | null;
+    onClose: () => void;
+}) {
+    const { station, onClose } = props;
+    const isOpen = !!station;
+
+    if (!isOpen || !station) return null;
+
+    const updated =
+        station.gbfs_last_updated != null
+            ? new Date(station.gbfs_last_updated * 1000).toLocaleString()
+            : "—";
 
     return (
-        <div className="uf-drawer">
+        <div className="uf-drawer" role="dialog" aria-label="Station details">
             <div style={{ padding: 14 }}>
                 <div style={{ fontSize: 12, opacity: 0.8 }}>Station</div>
                 <div style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }}>
-                    W 21 St & 6 Ave
+                    {station.name}
+                </div>
+
+                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+                    Updated: {updated}
                 </div>
 
                 <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                    <Row label="Capacity" value="47" />
-                    <Row label="Bikes" value="12" />
-                    <Row label="Docks" value="35" />
-                    <Row label="Severity" value="0.62 (red)" />
+                    <Row label="Capacity" value={fmtNum(station.capacity)} />
+                    <Row label="Bikes" value={fmtNum(station.bikes)} />
+                    <Row label="Docks" value={fmtNum(station.docks)} />
                 </div>
 
                 <button
@@ -34,7 +47,7 @@ export default function StationDrawer() {
                         padding: "10px 12px",
                         cursor: "pointer",
                     }}
-                    onClick={() => { }}
+                    onClick={onClose}
                 >
                     Close
                 </button>
@@ -50,4 +63,8 @@ function Row({ label, value }: { label: string; value: string }) {
             <span style={{ fontSize: 12, fontWeight: 600 }}>{value}</span>
         </div>
     );
+}
+
+function fmtNum(x: number | null) {
+    return x == null || Number.isNaN(x) ? "—" : String(x);
 }
