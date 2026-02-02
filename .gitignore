@@ -10,6 +10,13 @@ frontend/node_modules/
 # bv (beads viewer) local config and caches
 .bv/
 
+# Beads transient files
+.beads/.bv.lock
+.beads/beads.db-shm
+.beads/beads.db-wal
+.beads/daemon.log
+.beads/daemon.pid
+
 # Local system registry overrides
 config/systems.local.json
 
