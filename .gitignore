@@ -12,6 +12,7 @@ frontend/node_modules/
 
 # Beads transient files
 .beads/.bv.lock
+.beads/beads.db
 .beads/beads.db-shm
 .beads/beads.db-wal
 .beads/daemon.log
