@@ -12,7 +12,8 @@ export type ServingKey = {
   valid_to?: Date | null;
 };
 
-export type ServingViewSpec = {
+// Kept separate from serving-views/ServingViewSpec to avoid barrel export collisions.
+export type SvViewSpec = {
   system_id: string;
   datasets: Record<string, string>;
   severity_version: string;
