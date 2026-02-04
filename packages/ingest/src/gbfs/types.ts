@@ -64,3 +64,9 @@ export type GbfsArchivePaths = {
   data_root: string;
   manifest_path: string;
 };
+
+export type GbfsPollerConfig = {
+  min_ttl_s: number;
+  max_ttl_s: number;
+  jitter_s: number;
+};

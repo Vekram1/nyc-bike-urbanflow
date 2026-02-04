@@ -1,6 +1,7 @@
 export { collectGbfs } from "./gbfs/collector";
 export { discoverGbfsFeeds } from "./gbfs/discovery";
 export { fetchGbfsFeed } from "./gbfs/fetch";
+export { runGbfsPoller } from "./gbfs/poller";
 export { loadSystemRegistry, requireSystemById } from "./gbfs/registry";
 export type {
   GbfsDiscoveryResult,
