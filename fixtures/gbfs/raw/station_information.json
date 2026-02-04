@@ -1,0 +1,17 @@
+{
+  "last_updated": 1700000000,
+  "ttl": 3600,
+  "data": {
+    "stations": [
+      {
+        "station_id": "100",
+        "name": "Main St",
+        "short_name": "Main",
+        "lat": 40.0,
+        "lon": -74.0,
+        "capacity": 20,
+        "region_id": "1"
+      }
+    ]
+  }
+}

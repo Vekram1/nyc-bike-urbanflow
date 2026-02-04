@@ -1,0 +1,23 @@
+{
+  "collected_at": "2023-11-14T22:13:25Z",
+  "content_encoding": null,
+  "content_length": 316,
+  "content_type": "application/json",
+  "duration_ms": 123,
+  "etag": null,
+  "feed_name": "station_status",
+  "gbfs_version": "2.3",
+  "http_status": 200,
+  "last_modified": null,
+  "loader_schema_version": "loader.v1",
+  "manifest_path": "fixtures/gbfs/manifests/station_status.manifest.json",
+  "object_path": "fixtures/gbfs/raw/station_status.json",
+  "ok": true,
+  "parse_schema_id": "gbfs.station_status.v1",
+  "parser_fingerprint": "edae084c9f9e247eb81a64fc34ea50a640287439c99522c5c2295cc5d0bd712a",
+  "publisher_last_updated": "2023-11-14T22:13:20Z",
+  "raw_object_sha256": "75f223e40e3d77319942cd41f1d0ae49a10e198e5a3e5b6cf972c4e581ccb689",
+  "source_url": "https://gbfs.example.com/station_status.json",
+  "system_id": "citibike-nyc",
+  "ttl": 60
+}

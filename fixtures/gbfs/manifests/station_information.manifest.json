@@ -1,0 +1,23 @@
+{
+  "collected_at": "2023-11-14T22:13:25Z",
+  "content_encoding": null,
+  "content_length": 283,
+  "content_type": "application/json",
+  "duration_ms": 123,
+  "etag": null,
+  "feed_name": "station_information",
+  "gbfs_version": "2.3",
+  "http_status": 200,
+  "last_modified": null,
+  "loader_schema_version": "loader.v1",
+  "manifest_path": "fixtures/gbfs/manifests/station_information.manifest.json",
+  "object_path": "fixtures/gbfs/raw/station_information.json",
+  "ok": true,
+  "parse_schema_id": "gbfs.station_information.v1",
+  "parser_fingerprint": "5af8aec0ca4bb62f9b920a0a2876e62d116407da1abb9c8f80cd1c7f34cc8686",
+  "publisher_last_updated": "2023-11-14T22:13:20Z",
+  "raw_object_sha256": "8807cf1b478dc49de4b2a7d8eab978f9a6eb896e03f6d3aab157e28da9df1eae",
+  "source_url": "https://gbfs.example.com/station_information.json",
+  "system_id": "citibike-nyc",
+  "ttl": 3600
+}
