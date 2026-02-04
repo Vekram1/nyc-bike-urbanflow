@@ -27,6 +27,7 @@ type StationStatusRow = {
   observation_ts_raw: string;
   observation_ts: string;
   quality_flags_literal: string;
+  bucket_quality: BucketQuality;
   is_serving_grade: boolean;
 };
 
@@ -54,6 +55,19 @@ type StationPayload = {
   last_updated?: number;
   ttl?: number;
 };
+
+type BucketQuality = "ok" | "degraded" | "blocked";
+
+const BLOCKING_FLAGS = new Set([
+  "NEGATIVE_INVENTORY",
+  "MISSING_COUNTS",
+  "MONOTONICITY_VIOLATION",
+  "MISSING_PUBLISHER_LAST_UPDATED",
+]);
+
+const DEGRADE_FLAGS = new Set([
+  "STALE_FEED",
+]);
 
 function logEvent(
   level: "info" | "warn" | "error",
@@ -152,7 +166,9 @@ function parseStationStatus(
   systemId: string,
   payload: StationPayload,
   publisherLastUpdated: string,
-  collectedAt: string
+  collectedAt: string,
+  feedFlags: string[],
+  feedServingGrade: boolean
 ): StationStatusRow[] {
   const stations = payload.data?.stations;
   if (!Array.isArray(stations)) {
@@ -172,14 +188,17 @@ function parseStationStatus(
       ? observationRaw
       : publisherLastUpdated;
 
-    const flags: string[] = [];
+    const flags: string[] = [...feedFlags];
     if (bikes < 0 || docks < 0) {
       flags.push("NEGATIVE_INVENTORY");
     }
     if (!Number.isFinite(bikes) || !Number.isFinite(docks)) {
       flags.push("MISSING_COUNTS");
     }
-    const isServingGrade = flags.length === 0;
+    const bucketQuality = flags.some((flag) => BLOCKING_FLAGS.has(flag))
+      ? "blocked"
+      : (flags.some((flag) => DEGRADE_FLAGS.has(flag)) ? "degraded" : "ok");
+    const isServingGrade = feedServingGrade && bucketQuality === "ok";
     const flagsLiteral = flags.length > 0 ? `{${flags.join(",")}}` : "{}";
 
     rows.push({
@@ -200,6 +219,7 @@ function parseStationStatus(
       observation_ts_raw: observationRaw,
       observation_ts: observation,
       quality_flags_literal: flagsLiteral,
+      bucket_quality: bucketQuality,
       is_serving_grade: isServingGrade,
     });
   }
@@ -517,6 +537,7 @@ async function insertStationStatusRows(
   const observationRaw = rows.map((row) => row.observation_ts_raw);
   const observation = rows.map((row) => row.observation_ts);
   const qualityFlags = rows.map((row) => row.quality_flags_literal);
+  const bucketQualities = rows.map((row) => row.bucket_quality);
   const servingGrades = rows.map((row) => row.is_serving_grade);
 
   const insertResult = await db.query(
@@ -533,7 +554,8 @@ async function insertStationStatusRows(
         $9::timestamptz[],
         $10::timestamptz[],
         $11::text[],
-        $12::boolean[]
+        $12::text[],
+        $13::boolean[]
       ) AS t(
         station_key,
         station_id,
@@ -546,6 +568,7 @@ async function insertStationStatusRows(
         observation_ts_raw,
         observation_ts,
         quality_flags_literal,
+        bucket_quality,
         is_serving_grade
       )
     )
@@ -563,11 +586,12 @@ async function insertStationStatusRows(
       observation_ts_raw,
       observation_ts,
       quality_flag_codes,
+      bucket_quality,
       is_serving_grade
     )
-    SELECT $13, $14, station_key, station_id, bikes_available, docks_available,
+    SELECT $14, $15, station_key, station_id, bikes_available, docks_available,
            is_installed, is_renting, is_returning, last_reported, observation_ts_raw,
-           observation_ts, quality_flags_literal::text[], is_serving_grade
+           observation_ts, quality_flags_literal::text[], bucket_quality, is_serving_grade
     FROM incoming
     ON CONFLICT (logical_snapshot_id, station_key) DO NOTHING
     RETURNING 1`,
@@ -583,6 +607,7 @@ async function insertStationStatusRows(
       observationRaw,
       observation,
       qualityFlags,
+      bucketQualities,
       servingGrades,
       logicalSnapshotId,
       systemId,
@@ -653,6 +678,12 @@ export async function loadGbfsManifest(
 
   await db.query("BEGIN");
   try {
+    const latestPublisher = await db.query<{ publisher_last_updated: string }>(
+      `SELECT publisher_last_updated\n       FROM logical_snapshots\n       WHERE system_id = $1 AND feed_name = $2\n       ORDER BY publisher_last_updated DESC\n       LIMIT 1`,
+      [manifest.system_id, manifest.feed_name]
+    );
+    const latestPublisherLastUpdated = latestPublisher.rows[0]?.publisher_last_updated ?? null;
+
     await insertRawManifest(db, manifest, publisherLastUpdated);
 
     const logicalSnapshot = await insertLogicalSnapshot(db, manifest, publisherLastUpdated);
@@ -687,6 +718,25 @@ export async function loadGbfsManifest(
     let scdOpened = 0;
     let scdClosed = 0;
     let lifecycleUpserts = 0;
+    const feedFlags: string[] = [];
+    let feedServingGrade = true;
+
+    if (latestPublisherLastUpdated && publisherLastUpdated < latestPublisherLastUpdated) {
+      feedFlags.push("MONOTONICITY_VIOLATION");
+      feedServingGrade = false;
+      logEvent("warn", "gbfs_monotonicity_violation", {
+        system_id: manifest.system_id,
+        feed_name: manifest.feed_name,
+        publisher_last_updated: publisherLastUpdated,
+        latest_publisher_last_updated: latestPublisherLastUpdated,
+        manifest_path: manifest.manifest_path,
+      });
+    }
+
+    if (!manifest.publisher_last_updated) {
+      feedFlags.push("MISSING_PUBLISHER_LAST_UPDATED");
+      feedServingGrade = false;
+    }
 
     if (manifest.feed_name === "station_information") {
       const infoRows = parseStationInformation(manifest.system_id, parsed);
@@ -707,8 +757,23 @@ export async function loadGbfsManifest(
         manifest.system_id,
         parsed,
         publisherLastUpdated,
-        manifest.collected_at
+        manifest.collected_at,
+        feedFlags,
+        feedServingGrade
       );
+      const bucketQualityCounts = statusRows.reduce<Record<string, number>>((acc, row) => {
+        acc[row.bucket_quality] = (acc[row.bucket_quality] ?? 0) + 1;
+        return acc;
+      }, {});
+      if (bucketQualityCounts.blocked || bucketQualityCounts.degraded) {
+        logEvent("warn", "gbfs_station_status_quality_downgrade", {
+          system_id: manifest.system_id,
+          feed_name: manifest.feed_name,
+          publisher_last_updated: publisherLastUpdated,
+          bucket_quality_counts: bucketQualityCounts,
+          feed_flags: feedFlags,
+        });
+      }
       stationRowsSkipped = Math.max(0, (parsed.data?.stations?.length ?? 0) - statusRows.length);
       const statusResult = await insertStationStatusRows(
         db,
