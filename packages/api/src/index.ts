@@ -2,6 +2,7 @@ export * from "./sv/types";
 export * from "./sv/encoding";
 export * from "./sv/service";
 export * from "./sv/store";
+export * from "./sv/http";
 export * from "./db/types";
 export * from "./allowlist/types";
 export * from "./allowlist/store";
