@@ -7,6 +7,7 @@ import type { GbfsArchivePaths } from "./types";
 type ArchiveWriteResult = {
   sha256: string;
   object_path: string;
+  deduped: boolean;
   bytes: number;
 };
 
@@ -26,14 +27,16 @@ async function ensureDir(dirPath: string): Promise<void> {
   await fs.mkdir(dirPath, { recursive: true });
 }
 
-async function writeFileIfMissing(filePath: string, payload: Uint8Array): Promise<void> {
+async function writeFileIfMissing(filePath: string, payload: Uint8Array): Promise<boolean> {
   try {
     await fs.writeFile(filePath, payload, { flag: "wx" });
+    return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
       throw error;
     }
   }
+  return false;
 }
 
 export async function writeRawObject(
@@ -45,10 +48,11 @@ export async function writeRawObject(
   const objectRelPath = path.join("objects", chunkedPath(sha256) + extension);
   const objectPath = path.join(dataRoot, objectRelPath);
   await ensureDir(path.dirname(objectPath));
-  await writeFileIfMissing(objectPath, payload);
+  const wrote = await writeFileIfMissing(objectPath, payload);
   return {
     sha256,
     object_path: objectPath,
+    deduped: !wrote,
     bytes: payload.byteLength,
   };
 }

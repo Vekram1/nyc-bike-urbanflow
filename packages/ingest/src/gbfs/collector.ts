@@ -99,6 +99,7 @@ export async function collectGbfs(
 
     let raw_object_sha256: string | null = null;
     let object_path: string | null = null;
+    let raw_object_deduped = false;
     let publisher_last_updated: string | null = null;
     let ttl: number | null = null;
 
@@ -114,6 +115,16 @@ export async function collectGbfs(
       );
       raw_object_sha256 = stored.sha256;
       object_path = stored.object_path;
+      raw_object_deduped = stored.deduped;
+      if (stored.deduped) {
+        logEvent("info", "gbfs_raw_object_deduped", {
+          system_id: options.system_id,
+          feed_name: feed.name,
+          hash_algo: "sha256",
+          sha256: stored.sha256,
+          object_path: stored.object_path,
+        });
+      }
     }
 
     const parse_schema_id = `gbfs.${feed.name}.v1`;
@@ -156,6 +167,7 @@ export async function collectGbfs(
       collected_at: fetchResult.collected_at,
       publisher_last_updated,
       raw_object_sha256,
+      raw_object_deduped,
       manifest_path: path.relative(process.cwd(), archivePaths.manifest_path),
     });
   }
