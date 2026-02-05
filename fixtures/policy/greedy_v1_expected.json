@@ -1,0 +1,47 @@
+{
+  "policy_version": "rebal.greedy.v1",
+  "system_id": "citibike-nyc",
+  "decision_bucket_ts": 1700000000,
+  "effort": {
+    "bike_move_budget_per_step": 3,
+    "max_stations_touched": 4,
+    "max_moves": 5
+  },
+  "moves": [
+    {
+      "from_station_key": "STA-002",
+      "to_station_key": "STA-001",
+      "bikes_moved": 1,
+      "dist_m": 250,
+      "rank": 1,
+      "reason_codes": ["min_distance_then_max_transfer"]
+    }
+  ],
+  "stations_touched": [
+    {
+      "station_key": "STA-001",
+      "capacity": 10,
+      "bikes_before": 1,
+      "bikes_after": 2,
+      "L_s": 2,
+      "U_s": 8,
+      "need_before": 1,
+      "excess_before": 0
+    },
+    {
+      "station_key": "STA-002",
+      "capacity": 10,
+      "bikes_before": 9,
+      "bikes_after": 8,
+      "L_s": 2,
+      "U_s": 8,
+      "need_before": 0,
+      "excess_before": 1
+    }
+  ],
+  "summary": {
+    "bikes_moved_total": 1,
+    "stations_touched": 2,
+    "no_op": false
+  }
+}

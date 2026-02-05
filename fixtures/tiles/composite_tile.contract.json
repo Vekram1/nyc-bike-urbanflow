@@ -1,0 +1,27 @@
+{
+  "tile_schema_version": "tile.v1",
+  "layers": ["inv", "sev", "press", "epi"],
+  "required_properties": {
+    "inv": ["station_key", "bikes_available", "docks_available", "observation_ts_bucket", "bucket_quality"],
+    "sev": ["station_key", "severity", "severity_version", "observation_ts_bucket"],
+    "press": ["station_key", "pressure", "observation_ts_bucket"],
+    "epi": ["station_key", "episode_status", "observation_ts_bucket"]
+  },
+  "optional_properties": {
+    "inv": ["flags"],
+    "sev": ["severity_components_compact"],
+    "press": ["pressure_components_compact"],
+    "epi": ["episode_duration_s"]
+  },
+  "inspect_minimum": {
+    "station_key": "string",
+    "bikes_available": "int",
+    "docks_available": "int",
+    "observation_ts_bucket": "int",
+    "bucket_quality": "enum"
+  },
+  "notes": [
+    "Composite tile properties are the authoritative Tier 0 Inspect inputs.",
+    "Any change to required_properties or layer composition must bump tile_schema_version."
+  ]
+}

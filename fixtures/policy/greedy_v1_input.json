@@ -1,0 +1,69 @@
+{
+  "policy_version": "rebal.greedy.v1",
+  "system_id": "citibike-nyc",
+  "decision_bucket_ts": 1700000000,
+  "bucket_size_s": 300,
+  "spec": {
+    "targets": {
+      "type": "band_fraction_of_capacity",
+      "alpha": 0.2,
+      "beta": 0.8,
+      "min_capacity_for_policy": 5,
+      "inactive_station_behavior": "ignore"
+    },
+    "effort": {
+      "bike_move_budget_per_step": 3,
+      "max_stations_touched": 4,
+      "max_moves": 5
+    },
+    "neighborhood": {
+      "type": "explicit_neighbors",
+      "max_neighbors": 3,
+      "neighbor_radius_m": 1200,
+      "distance_metric": "haversine",
+      "edges": [
+        { "from_station_key": "STA-001", "to_station_key": "STA-002", "dist_m": 250, "rank": 1 },
+        { "from_station_key": "STA-002", "to_station_key": "STA-001", "dist_m": 250, "rank": 1 },
+        { "from_station_key": "STA-002", "to_station_key": "STA-003", "dist_m": 700, "rank": 2 },
+        { "from_station_key": "STA-003", "to_station_key": "STA-002", "dist_m": 700, "rank": 2 }
+      ]
+    },
+    "scoring": {
+      "type": "min_distance_then_max_transfer",
+      "epsilon_m": 1.0
+    },
+    "constraints": {
+      "respect_capacity_bounds": true,
+      "forbid_donating_below_L": true,
+      "forbid_receiving_above_U": true
+    },
+    "missing_data": {
+      "input_bucket_quality_allowed": ["ok", "carried_forward"],
+      "carry_forward_window_s": 600,
+      "on_missing": "skip_station"
+    }
+  },
+  "stations": [
+    {
+      "station_key": "STA-001",
+      "capacity": 10,
+      "bikes": 1,
+      "docks": 9,
+      "bucket_quality": "ok"
+    },
+    {
+      "station_key": "STA-002",
+      "capacity": 10,
+      "bikes": 9,
+      "docks": 1,
+      "bucket_quality": "ok"
+    },
+    {
+      "station_key": "STA-003",
+      "capacity": 12,
+      "bikes": 6,
+      "docks": 6,
+      "bucket_quality": "ok"
+    }
+  ]
+}

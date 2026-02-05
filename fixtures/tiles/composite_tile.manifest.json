@@ -1,0 +1,8 @@
+{
+  "fixtures": [
+    {
+      "filename": "fixtures/tiles/composite_tile.contract.json",
+      "checksum_sha256": "c194fa45dd220b753f6c01c586cfcbd8d1f3b53732f1c0c477c0a468413d6c88"
+    }
+  ]
+}

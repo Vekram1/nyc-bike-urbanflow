@@ -1,0 +1,12 @@
+{
+  "fixtures": [
+    {
+      "filename": "fixtures/policy/greedy_v1_input.json",
+      "checksum_sha256": "29d20b09567c06ef7ced54f5ed5c99a1a93563aad16163be03c2af101676c2b3"
+    },
+    {
+      "filename": "fixtures/policy/greedy_v1_expected.json",
+      "checksum_sha256": "b592abead8f40aa4ebd1abcb01e566ca7af0897b8394dc74baa54a636c02bd01"
+    }
+  ]
+}
