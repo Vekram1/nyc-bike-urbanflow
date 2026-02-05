@@ -1,0 +1,9 @@
+{
+  "as_of": "sha256=bc26e358984aad331377bf68ac8e46af6751ce0fa3d01b854275fc83539e2314",
+  "checksum_sha256": "bc26e358984aad331377bf68ac8e46af6751ce0fa3d01b854275fc83539e2314",
+  "dataset_id": "trips.2023-11-mini",
+  "filename": "fixtures/trips/mini_month.csv",
+  "row_count": 5,
+  "schema_version": "trips.v1",
+  "source": "fixtures"
+}

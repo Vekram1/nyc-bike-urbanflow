@@ -1,0 +1,9 @@
+{
+  "member_type_counts": {
+    "casual": 2,
+    "member": 3
+  },
+  "row_count": 5,
+  "unique_end_stations": 3,
+  "unique_start_stations": 3
+}
