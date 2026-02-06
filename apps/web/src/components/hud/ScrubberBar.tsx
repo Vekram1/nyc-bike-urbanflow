@@ -50,17 +50,30 @@ export default function ScrubberBar({
                 <button
                     type="button"
                     style={btnStyle}
-                    title="Play/Pause"
+                    title={playing ? "Pause playback" : "Start playback"}
+                    aria-label={playing ? "Pause playback" : "Start playback"}
                     onClick={onTogglePlay}
                 >
                     {playing ? "Pause" : "Play"} <Keycap k="Space" />
                 </button>
 
                 <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" style={btnStyle} onClick={onSpeedDown}>
+                    <button
+                        type="button"
+                        style={btnStyle}
+                        onClick={onSpeedDown}
+                        title="Decrease playback speed"
+                        aria-label="Decrease playback speed"
+                    >
                         - <span style={{ opacity: 0.7 }}>speed</span> <Keycap k="-" />
                     </button>
-                    <button type="button" style={btnStyle} onClick={onSpeedUp}>
+                    <button
+                        type="button"
+                        style={btnStyle}
+                        onClick={onSpeedUp}
+                        title="Increase playback speed"
+                        aria-label="Increase playback speed"
+                    >
                         + <span style={{ opacity: 0.7 }}>speed</span> <Keycap k="+" />
                     </button>
                     <div style={{ opacity: 0.7, fontSize: 12, alignSelf: "center" }}>
@@ -72,7 +85,8 @@ export default function ScrubberBar({
                     type="button"
                     onClick={onTrackClick}
                     style={trackButtonStyle}
-                    title="Seek"
+                    title="Seek timeline position"
+                    aria-label="Seek timeline position"
                 >
                     <div
                         style={{
@@ -116,10 +130,22 @@ export default function ScrubberBar({
                 </button>
 
                 <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" style={btnStyle} onClick={onStepBack} title="Step back">
+                    <button
+                        type="button"
+                        style={btnStyle}
+                        onClick={onStepBack}
+                        title="Step back one bucket"
+                        aria-label="Step back one bucket"
+                    >
                         Back <Keycap k="←" />
                     </button>
-                    <button type="button" style={btnStyle} onClick={onStepForward} title="Step forward">
+                    <button
+                        type="button"
+                        style={btnStyle}
+                        onClick={onStepForward}
+                        title="Step forward one bucket"
+                        aria-label="Step forward one bucket"
+                    >
                         Step <Keycap k="→" />
                     </button>
                 </div>

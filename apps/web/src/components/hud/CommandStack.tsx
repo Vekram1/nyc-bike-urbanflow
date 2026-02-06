@@ -23,7 +23,13 @@ export default function CommandStack({
             <HUDCard>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <Row label="Search" hint=" / " />
-                    <button type="button" style={rowBtnStyle} onClick={onTogglePlay}>
+                    <button
+                        type="button"
+                        style={rowBtnStyle}
+                        onClick={onTogglePlay}
+                        aria-label={playing ? "Pause playback" : "Start playback"}
+                        title={playing ? "Pause playback" : "Start playback"}
+                    >
                         <span style={{ fontSize: 12, opacity: 0.92 }}>
                             {playing ? "Pause" : "Play"}
                         </span>
@@ -47,6 +53,7 @@ export default function CommandStack({
                             type="checkbox"
                             checked={layers.severity}
                             onChange={() => onToggleLayer("severity")}
+                            aria-label="Toggle severity layer"
                         />
                         <span>Severity</span>
                     </label>
@@ -55,6 +62,7 @@ export default function CommandStack({
                             type="checkbox"
                             checked={layers.capacity}
                             onChange={() => onToggleLayer("capacity")}
+                            aria-label="Toggle capacity layer"
                         />
                         <span>Capacity</span>
                     </label>
@@ -63,6 +71,7 @@ export default function CommandStack({
                             type="checkbox"
                             checked={layers.labels}
                             onChange={() => onToggleLayer("labels")}
+                            aria-label="Toggle station labels layer"
                         />
                         <span>Stations (labels)</span>
                     </label>
