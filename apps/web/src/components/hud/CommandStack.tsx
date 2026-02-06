@@ -31,6 +31,8 @@ export default function CommandStack({
                             <Keycap k="Space" />
                         </span>
                     </button>
+                    <Row label="Step" hint="← / →" />
+                    <Row label="Speed" hint="- / +" />
                     <Row label="About" hint="?" />
                 </div>
             </HUDCard>

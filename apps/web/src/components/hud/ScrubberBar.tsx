@@ -58,10 +58,10 @@ export default function ScrubberBar({
 
                 <div style={{ display: "flex", gap: 8 }}>
                     <button type="button" style={btnStyle} onClick={onSpeedDown}>
-                        - <span style={{ opacity: 0.7 }}>speed</span>
+                        - <span style={{ opacity: 0.7 }}>speed</span> <Keycap k="-" />
                     </button>
                     <button type="button" style={btnStyle} onClick={onSpeedUp}>
-                        + <span style={{ opacity: 0.7 }}>speed</span>
+                        + <span style={{ opacity: 0.7 }}>speed</span> <Keycap k="+" />
                     </button>
                     <div style={{ opacity: 0.7, fontSize: 12, alignSelf: "center" }}>
                         {speed.toFixed(2)}x
@@ -117,10 +117,10 @@ export default function ScrubberBar({
 
                 <div style={{ display: "flex", gap: 8 }}>
                     <button type="button" style={btnStyle} onClick={onStepBack} title="Step back">
-                        Back <Keycap k="LEFT" />
+                        Back <Keycap k="←" />
                     </button>
                     <button type="button" style={btnStyle} onClick={onStepForward} title="Step forward">
-                        Step <Keycap k="RIGHT" />
+                        Step <Keycap k="→" />
                     </button>
                 </div>
             </div>
@@ -151,4 +151,3 @@ const trackButtonStyle: React.CSSProperties = {
     background: "transparent",
     cursor: "pointer",
 };
-
