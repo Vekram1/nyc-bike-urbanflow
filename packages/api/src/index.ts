@@ -14,6 +14,7 @@ export * from "./serving-views/stable_json";
 export * from "./serving-views/store";
 export * from "./serving-views/service";
 export * from "./serving-views/http";
+export * from "./severity/spec";
 export * from "./jobs/types";
 export * from "./jobs/queue";
 export * from "./http/config";

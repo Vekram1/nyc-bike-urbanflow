@@ -1,0 +1,23 @@
+{
+  "version": "sev.v1",
+  "bucket_seconds": 300,
+  "formula": {
+    "type": "empty_or_full_flag",
+    "empty_weight": 1,
+    "full_weight": 1,
+    "clamp_min": 0,
+    "clamp_max": 1
+  },
+  "missing_data": {
+    "allowed_bucket_quality": [
+      "ok",
+      "degraded"
+    ],
+    "on_missing": "zero"
+  },
+  "components": [
+    "empty_flag",
+    "full_flag",
+    "capacity"
+  ]
+}

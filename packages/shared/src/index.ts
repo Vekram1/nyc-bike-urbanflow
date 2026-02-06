@@ -19,3 +19,6 @@ export type {
 
 export { createTestLogger } from "./test";
 export type { TestLogContext, TestLogEntry, TestLogLevel, TestLogger, TestLoggerOptions } from "./test";
+
+export { validateSeveritySpecV1 } from "./severity";
+export type { SeveritySpecV1, SeveritySpecValidationResult } from "./severity";
