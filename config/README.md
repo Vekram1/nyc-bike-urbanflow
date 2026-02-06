@@ -36,3 +36,4 @@ Other config docs:
 - `config/policy_outputs.md`: policy run/move persistence keys and eval-daily refresh logging.
 - `config/policy_plane.md`: policy HTTP endpoints, async 202 behavior, and policy-moves tile contract.
 - `config/severity.md`: severity spec registry, default `sev.v1` hash semantics, and allowlist registration.
+- `config/reliability_marts.md`: reliability daily rollups, episode extraction tables, and mart-header refreshes.
