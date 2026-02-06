@@ -16,16 +16,23 @@ export default function StationDrawer(props: {
         station.gbfs_last_updated != null
             ? new Date(station.gbfs_last_updated * 1000).toLocaleString()
             : "—";
+    const titleId = `uf-drawer-title-${station.station_id}`;
+    const descId = `uf-drawer-desc-${station.station_id}`;
 
     return (
-        <div className="uf-drawer" role="dialog" aria-label="Station details">
+        <div
+            className="uf-drawer"
+            role="dialog"
+            aria-labelledby={titleId}
+            aria-describedby={descId}
+        >
             <div style={{ padding: 14 }}>
                 <div style={{ fontSize: 12, opacity: 0.8 }}>Station</div>
-                <div style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }}>
+                <div id={titleId} style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }}>
                     {station.name}
                 </div>
 
-                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+                <div id={descId} style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
                     Updated: {updated}
                 </div>
 
@@ -48,6 +55,7 @@ export default function StationDrawer(props: {
                         cursor: "pointer",
                     }}
                     onClick={onClose}
+                    aria-label="Close station details"
                 >
                     Close
                 </button>
