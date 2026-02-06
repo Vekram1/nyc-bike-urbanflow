@@ -27,3 +27,6 @@ Expected JSON shape:
   ]
 }
 ```
+
+Other config docs:
+- `config/station_neighbors.md`: rebuild cadence + determinism for station neighbor index.
