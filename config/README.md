@@ -30,3 +30,4 @@ Expected JSON shape:
 
 Other config docs:
 - `config/station_neighbors.md`: rebuild cadence + determinism for station neighbor index.
+- `config/serving_aggregates.md`: refresh cadence + lineage + quality metrics for serving aggregates.
