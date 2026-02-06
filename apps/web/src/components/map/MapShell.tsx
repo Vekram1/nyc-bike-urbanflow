@@ -39,6 +39,7 @@ export default function MapShell() {
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
+            if (hud.handleHotkey(e)) return;
             if (e.code !== "Escape") return;
             if (!inspectOpen) return;
 
@@ -48,7 +49,7 @@ export default function MapShell() {
 
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [closeInspect, inspectOpen]);
+    }, [closeInspect, hud, inspectOpen]);
 
     return (
         <div className="uf-root">

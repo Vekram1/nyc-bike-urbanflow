@@ -53,6 +53,47 @@ export function useHudControls() {
         }
     };
 
+    const handleHotkey = (event: KeyboardEvent) => {
+        if (event.defaultPrevented) return false;
+        if (event.metaKey || event.ctrlKey || event.altKey) return false;
+
+        const target = event.target;
+        if (target instanceof HTMLElement) {
+            const tag = target.tagName;
+            const editable = target.isContentEditable;
+            if (editable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+                return false;
+            }
+        }
+
+        switch (event.code) {
+            case "Space":
+                event.preventDefault();
+                togglePlay();
+                return true;
+            case "ArrowLeft":
+                event.preventDefault();
+                stepBack();
+                return true;
+            case "ArrowRight":
+                event.preventDefault();
+                stepForward();
+                return true;
+            case "Minus":
+            case "NumpadSubtract":
+                event.preventDefault();
+                speedDown();
+                return true;
+            case "Equal":
+            case "NumpadAdd":
+                event.preventDefault();
+                speedUp();
+                return true;
+            default:
+                return false;
+        }
+    };
+
     return {
         playing,
         speed,
@@ -66,6 +107,6 @@ export function useHudControls() {
         toggleLayer,
         onInspectOpen,
         onInspectClose,
+        handleHotkey,
     };
 }
-
