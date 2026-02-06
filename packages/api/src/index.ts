@@ -16,4 +16,8 @@ export * from "./serving-views/service";
 export * from "./serving-views/http";
 export * from "./jobs/types";
 export * from "./jobs/queue";
+export * from "./http/config";
+export * from "./http/control-plane";
+export * from "./http/search";
 export * from "./http/time";
+export * from "./http/timeline";
