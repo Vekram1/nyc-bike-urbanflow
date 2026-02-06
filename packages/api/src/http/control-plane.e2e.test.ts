@@ -476,4 +476,161 @@ describe("control-plane e2e", () => {
     const body = await res.json();
     expect(body.error.code).toBe("param_not_allowlisted");
   });
+
+  it("covers composite tile headers and overload degrade responses", async () => {
+    const db = new FakeSqlDb();
+    db.seedAllowlist("system_id", "citibike-nyc", null);
+    db.seedAllowlist("tile_schema", "tile.v1", "citibike-nyc");
+    db.seedAllowlist("severity_version", "sev.v1", "citibike-nyc");
+    db.seedAllowlist("layers_set", "inv,sev", "citibike-nyc");
+    db.seedWatermark({
+      system_id: "citibike-nyc",
+      dataset_id: "gbfs.station_status",
+      as_of_ts: "2026-02-06T18:30:00.000Z",
+      max_observed_at: "2026-02-06T18:29:30.000Z",
+      updated_at: "2026-02-06T18:30:05.000Z",
+    });
+    db.seedServingKey({
+      kid: "kid-1",
+      system_id: "citibike-nyc",
+      algo: "HS256",
+      status: "active",
+      valid_from: "2026-02-01T00:00:00.000Z",
+      valid_to: null,
+    });
+
+    const keyMaterial: ServingKeyMaterialProvider = {
+      async getSecret(kid, systemId) {
+        if (kid === "kid-1" && systemId === "citibike-nyc") {
+          return new TextEncoder().encode("test-secret");
+        }
+        return null;
+      },
+    };
+
+    const allowlist = new PgAllowlistStore(db);
+    const tokenStore = new PgServingTokenStore(db, keyMaterial);
+    const tokenService = new ServingTokenService(tokenStore, () => new Date("2026-02-06T18:30:10.000Z"));
+    const viewStore = new PgServingViewStore(db);
+    const viewService = new ServingViewService({
+      views: viewStore,
+      allowlist,
+      tokens: tokenService,
+      tokenStore,
+    });
+
+    let mode: "ok" | "overload" = "ok";
+    const handler = createControlPlaneHandler({
+      time: {
+        servingViews: viewService,
+        viewStore,
+        config: {
+          view_version: "sv.v1",
+          ttl_seconds: 120,
+          tile_schema_version: "tile.v1",
+          severity_version: "sev.v1",
+          severity_spec_sha256: "sev-spec-hash",
+          required_datasets: ["gbfs.station_status"],
+          optional_datasets: [],
+        },
+        clock: () => new Date("2026-02-06T18:30:20.000Z"),
+      },
+      config: {
+        bucket_size_seconds: 300,
+        severity_version: "sev.v1",
+        severity_legend_bins: [{ min: 0, max: 1, label: "all" }],
+        map: {
+          initial_center: { lon: -73.98, lat: 40.75 },
+          initial_zoom: 12,
+          max_bounds: { min_lon: -74.3, min_lat: 40.45, max_lon: -73.65, max_lat: 40.95 },
+          min_zoom: 9,
+          max_zoom: 18,
+        },
+        speed_presets: [1, 10, 60],
+        cache_policy: { live_tile_max_age_s: 10 },
+      },
+      timeline: {
+        tokens: tokenService,
+        timelineStore: {
+          async getRange() {
+            return {
+              min_observation_ts: "2026-02-06T00:00:00Z",
+              max_observation_ts: "2026-02-06T18:00:00Z",
+              live_edge_ts: "2026-02-06T18:00:00Z",
+            };
+          },
+          async getDensity() {
+            return [];
+          },
+        },
+        default_bucket_seconds: 300,
+      },
+      search: {
+        allowlist,
+        searchStore: {
+          async searchStations() {
+            return [];
+          },
+        },
+      },
+      tiles: {
+        tokens: tokenService,
+        allowlist,
+        tileStore: {
+          async fetchCompositeTile() {
+            if (mode === "overload") {
+              return {
+                ok: false as const,
+                status: 429 as const,
+                code: "tile_overloaded",
+                message: "degraded",
+                retry_after_s: 5,
+              };
+            }
+            return {
+              ok: true as const,
+              mvt: new Uint8Array([1, 2, 3]),
+              feature_count: 7,
+              bytes: 3,
+              degrade_level: 1,
+            };
+          },
+        },
+        cache: {
+          max_age_s: 30,
+          s_maxage_s: 120,
+          stale_while_revalidate_s: 15,
+        },
+      },
+    });
+
+    const timeRes = await handler(new Request("https://example.test/api/time?system_id=citibike-nyc"));
+    expect(timeRes.status).toBe(200);
+    const timeBody = await timeRes.json();
+    const sv = timeBody.recommended_live_sv as string;
+
+    const okTile = await handler(
+      new Request(
+        `https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=${encodeURIComponent(sv)}&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000`
+      )
+    );
+    expect(okTile.status).toBe(200);
+    expect(okTile.headers.get("Content-Type")).toBe("application/vnd.mapbox-vector-tile");
+    expect(okTile.headers.get("X-Tile-Feature-Count")).toBe("7");
+    expect(okTile.headers.get("X-Tile-Bytes")).toBe("3");
+    expect(okTile.headers.get("X-Tile-Degrade-Level")).toBe("1");
+    expect(okTile.headers.get("Cache-Control")).toContain("max-age=30");
+
+    mode = "overload";
+    const overloaded = await handler(
+      new Request(
+        `https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=${encodeURIComponent(sv)}&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000`
+      )
+    );
+    expect(overloaded.status).toBe(429);
+    expect(overloaded.headers.get("Retry-After")).toBe("5");
+    expect(overloaded.headers.get("X-Origin-Block-Reason")).toBe("tile_overloaded");
+    const body = await overloaded.json();
+    expect(body.error.code).toBe("tile_overloaded");
+  });
 });
