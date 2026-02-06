@@ -33,3 +33,4 @@ Other config docs:
 - `config/serving_aggregates.md`: refresh cadence + lineage + quality metrics for serving aggregates.
 - `config/tiles.md`: immutable tile cache keys, canonical SQL shape, and tile degrade caps.
 - `config/stations.md`: station detail/series endpoint bounds and logging behavior.
+- `config/policy_outputs.md`: policy run/move persistence keys and eval-daily refresh logging.
