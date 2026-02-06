@@ -13,15 +13,21 @@ type Props = {
 };
 
 export default function StatsCard({ activeStations, empty, full, tileP95, fps, spark }: Props) {
+    const constrained = empty + full;
+    const constrainedPct = activeStations > 0 ? (constrained / activeStations) * 100 : 0;
+
     return (
         <HUDCard>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>Stats</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 12, opacity: 0.8 }}>Network Stats</div>
+                    <div style={badgeStyle}>{constrainedPct.toFixed(1)}% constrained</div>
+                </div>
 
-                <KV k="Active stations" v={activeStations.toLocaleString()} />
-                <KV k="Empty / Full" v={`${empty} / ${full}`} />
-                <KV k="Tile p95 (ms)" v={tileP95 ? Math.round(tileP95).toString() : "—"} />
-                <KV k="FPS" v={fps ? fps.toFixed(0) : "—"} />
+                <KV k="Stations" v={activeStations.toLocaleString()} />
+                <KV k="Constrained (E/F)" v={`${empty} / ${full}`} />
+                <KV k="Tile p95" v={tileP95 ? `${Math.round(tileP95)} ms` : "n/a"} />
+                <KV k="FPS" v={fps ? fps.toFixed(0) : "n/a"} />
 
                 <div style={{ marginTop: 4 }}>
                     <Sparkline values={spark} />
@@ -45,15 +51,11 @@ function Sparkline({ values }: { values: number[] }) {
     const h = 36;
     if (values.length < 2) {
         return (
-            <div
-                style={{
-                    width: w,
-                    height: h,
-                    borderRadius: 8,
-                    background: "rgba(255,255,255,0.06)",
-                    border: "1px solid rgba(255,255,255,0.10)",
-                }}
-            />
+            <div style={sparkBaseStyle}>
+                <div style={{ fontSize: 11, opacity: 0.5, textAlign: "center", lineHeight: `${h}px` }}>
+                    collecting latency samples
+                </div>
+            </div>
         );
     }
 
@@ -73,12 +75,7 @@ function Sparkline({ values }: { values: number[] }) {
         <svg
             width={w}
             height={h}
-            style={{
-                display: "block",
-                borderRadius: 8,
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.10)",
-            }}
+            style={sparkBaseStyle}
         >
             <polyline
                 points={pts}
@@ -89,3 +86,21 @@ function Sparkline({ values }: { values: number[] }) {
         </svg>
     );
 }
+
+const badgeStyle: React.CSSProperties = {
+    fontSize: 11,
+    opacity: 0.85,
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    padding: "2px 8px",
+};
+
+const sparkBaseStyle: React.CSSProperties = {
+    display: "block",
+    width: 220,
+    height: 36,
+    borderRadius: 8,
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.10)",
+};
