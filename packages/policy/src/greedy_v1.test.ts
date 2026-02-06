@@ -2,6 +2,48 @@ import { describe, expect, it } from "bun:test";
 
 import { runGreedyPolicyV1, type GreedyPolicyInput } from "./index";
 
+function baseInput(): GreedyPolicyInput {
+  return {
+    policy_version: "rebal.greedy.v1",
+    system_id: "sys",
+    decision_bucket_ts: 1,
+    bucket_size_s: 300,
+    spec: {
+      targets: {
+        type: "band_fraction_of_capacity",
+        alpha: 0.2,
+        beta: 0.8,
+        min_capacity_for_policy: 1,
+        inactive_station_behavior: "ignore",
+      },
+      effort: {
+        bike_move_budget_per_step: 4,
+        max_stations_touched: 4,
+        max_moves: 3,
+      },
+      neighborhood: {
+        type: "explicit_neighbors",
+        max_neighbors: 5,
+        neighbor_radius_m: 1200,
+        distance_metric: "haversine",
+        edges: [],
+      },
+      scoring: { type: "min_distance_then_max_transfer", epsilon_m: 1 },
+      constraints: {
+        respect_capacity_bounds: true,
+        forbid_donating_below_L: true,
+        forbid_receiving_above_U: true,
+      },
+      missing_data: {
+        input_bucket_quality_allowed: ["ok"],
+        carry_forward_window_s: 600,
+        on_missing: "skip_station",
+      },
+    },
+    stations: [],
+  };
+}
+
 describe("runGreedyPolicyV1", () => {
   it("matches greedy_v1 fixture output semantics", async () => {
     const input = (await Bun.file("fixtures/policy/greedy_v1_input.json").json()) as GreedyPolicyInput;
@@ -126,5 +168,73 @@ describe("runGreedyPolicyV1", () => {
     const out = runGreedyPolicyV1(input, { logger: { info() {} } });
     expect(out.summary.stations_touched).toBe(2);
     expect(out.moves.length).toBe(1);
+  });
+
+  it("emits deterministic decision logs including spec hash", () => {
+    const input = baseInput();
+    input.spec.neighborhood.edges = [{ from_station_key: "D", to_station_key: "R", dist_m: 100, rank: 1 }];
+    input.stations = [
+      { station_key: "D", capacity: 10, bikes: 10, docks: 0, bucket_quality: "ok" },
+      { station_key: "R", capacity: 10, bikes: 0, docks: 10, bucket_quality: "ok" },
+    ];
+
+    const events: Array<{ event: string; details: Record<string, unknown> }> = [];
+    const out1 = runGreedyPolicyV1(input, {
+      logger: {
+        info(event, details) {
+          events.push({ event, details });
+        },
+      },
+    });
+    const out2 = runGreedyPolicyV1(input, { logger: { info() {} } });
+
+    expect(out1.policy_spec_sha256).toBe(out2.policy_spec_sha256);
+    const decision = events.find((e) => e.event === "policy_decision_bucket");
+    expect(decision).toBeTruthy();
+    expect(decision?.details.policy_spec_sha256).toBe(out1.policy_spec_sha256);
+    expect(decision?.details.moves_count).toBe(out1.moves.length);
+    expect(decision?.details.bikes_moved_total).toBe(out1.summary.bikes_moved_total);
+  });
+
+  it("logs no-candidate-within-station-budget when max_stations_touched blocks all moves", () => {
+    const input = baseInput();
+    input.spec.effort.max_stations_touched = 1;
+    input.spec.neighborhood.edges = [{ from_station_key: "D", to_station_key: "R", dist_m: 100, rank: 1 }];
+    input.stations = [
+      { station_key: "D", capacity: 10, bikes: 10, docks: 0, bucket_quality: "ok" },
+      { station_key: "R", capacity: 10, bikes: 0, docks: 10, bucket_quality: "ok" },
+    ];
+
+    const events: string[] = [];
+    const out = runGreedyPolicyV1(input, {
+      logger: {
+        info(event) {
+          events.push(event);
+        },
+      },
+    });
+
+    expect(out.summary.no_op).toBe(true);
+    expect(events.includes("policy_no_candidate_within_station_budget")).toBe(true);
+  });
+
+  it("returns no-op on empty/zero-capacity eligible set", () => {
+    const input = baseInput();
+    input.stations = [
+      { station_key: "Z1", capacity: 0, bikes: 0, docks: 0, bucket_quality: "ok" },
+      { station_key: "Z2", capacity: 0, bikes: 0, docks: 0, bucket_quality: "ok" },
+    ];
+    input.spec.neighborhood.edges = [{ from_station_key: "Z1", to_station_key: "Z2", dist_m: 50, rank: 1 }];
+
+    const out = runGreedyPolicyV1(input, { logger: { info() {} } });
+    expect(out.moves.length).toBe(0);
+    expect(out.summary.no_op).toBe(true);
+    expect(out.summary.stations_touched).toBe(0);
+  });
+
+  it("throws for unsupported policy version", () => {
+    const input = baseInput();
+    input.policy_version = "rebal.greedy.v2";
+    expect(() => runGreedyPolicyV1(input, { logger: { info() {} } })).toThrow("unsupported_policy_version");
   });
 });
