@@ -32,30 +32,22 @@ type Props = {
     freeze?: boolean; // when true, stop refreshing GBFS + keep view deterministic
 };
 
+type SourceWithSetData = {
+    setData: (data: unknown) => void;
+};
+
+function toNum(v: unknown): number | null {
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
 export default function MapView(props: Props) {
     const { onStationPick, selectedStationId, freeze } = props;
 
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const mapRef = useRef<MapRef | null>(null);
     const lastSelectedRef = useRef<string | null>(null);
-
-    if (!token) {
-        return (
-            <div
-                style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "grid",
-                    placeItems: "center",
-                    color: "rgba(230,237,243,0.9)",
-                    fontSize: 14,
-                    background: "#071018",
-                }}
-            >
-                Missing NEXT_PUBLIC_MAPBOX_TOKEN
-            </div>
-        );
-    }
 
     const ensureStationsLayer = useCallback(() => {
         const map = mapRef.current?.getMap();
@@ -66,7 +58,7 @@ export default function MapView(props: Props) {
                 type: "geojson",
                 data: { type: "FeatureCollection", features: [] },
                 promoteId: "station_id",
-            } as any);
+            });
         }
 
         if (!map.getLayer(LAYER_ID)) {
@@ -120,14 +112,14 @@ export default function MapView(props: Props) {
         const map = mapRef.current?.getMap();
         if (!map) return;
 
-        const src = map.getSource(SOURCE_ID) as any;
-        if (!src?.setData) return;
+        const src = map.getSource(SOURCE_ID);
+        if (!src || !("setData" in src)) return;
 
         const res = await fetch("/api/gbfs/stations", { cache: "no-store" });
         const json = await res.json();
 
         if (json?.type === "FeatureCollection") {
-            src.setData(json);
+            (src as SourceWithSetData).setData(json);
         } else {
             console.warn("Unexpected GBFS response:", json);
         }
@@ -167,6 +159,24 @@ export default function MapView(props: Props) {
         lastSelectedRef.current = next;
     }, [selectedStationId]);
 
+    if (!token) {
+        return (
+            <div
+                style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "grid",
+                    placeItems: "center",
+                    color: "rgba(230,237,243,0.9)",
+                    fontSize: 14,
+                    background: "#071018",
+                }}
+            >
+                Missing NEXT_PUBLIC_MAPBOX_TOKEN
+            </div>
+        );
+    }
+
     return (
         <Map
             ref={mapRef}
@@ -185,7 +195,7 @@ export default function MapView(props: Props) {
                 const f = e.features?.[0];
                 if (!f || !onStationPick) return;
 
-                const p: any = f.properties ?? {};
+                const p = (f.properties ?? {}) as Record<string, unknown>;
                 const station_id = String(p.station_id ?? f.id ?? "");
                 if (!station_id) return;
 
@@ -193,11 +203,11 @@ export default function MapView(props: Props) {
                 onStationPick({
                     station_id,
                     name: p.name ? String(p.name) : station_id,
-                    capacity: p.capacity != null ? Number(p.capacity) : null,
-                    bikes: p.bikes != null ? Number(p.bikes) : null,
-                    docks: p.docks != null ? Number(p.docks) : null,
-                    gbfs_last_updated: p.gbfs_last_updated != null ? Number(p.gbfs_last_updated) : null,
-                    gbfs_ttl: p.gbfs_ttl != null ? Number(p.gbfs_ttl) : null,
+                    capacity: toNum(p.capacity),
+                    bikes: toNum(p.bikes),
+                    docks: toNum(p.docks),
+                    gbfs_last_updated: toNum(p.gbfs_last_updated),
+                    gbfs_ttl: toNum(p.gbfs_ttl),
                 });
             }}
         >

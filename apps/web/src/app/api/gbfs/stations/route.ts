@@ -99,9 +99,10 @@ export async function GET() {
                 },
             }
         );
-    } catch (e: any) {
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "unknown error";
         return NextResponse.json(
-            { ok: false, error: e?.message ?? "unknown error" },
+            { ok: false, error: message },
             { status: 500 }
         );
     }

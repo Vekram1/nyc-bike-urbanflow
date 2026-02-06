@@ -5,13 +5,19 @@ import { useEffect, useRef, useState } from "react";
 
 export function useFps() {
     const [fps, setFps] = useState<number | null>(null);
-    const last = useRef<number>(performance.now());
+    const last = useRef<number | null>(null);
     const frames = useRef<number>(0);
 
     useEffect(() => {
         let raf = 0;
 
         const loop = (t: number) => {
+            if (last.current == null) {
+                last.current = t;
+                raf = requestAnimationFrame(loop);
+                return;
+            }
+
             frames.current += 1;
             const dt = t - last.current;
 
