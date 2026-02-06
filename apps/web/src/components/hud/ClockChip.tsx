@@ -27,6 +27,11 @@ type Props = {
     inspectLocked: boolean;
 };
 
+function compactSv(sv: string): string {
+    if (sv.length <= 20) return sv;
+    return `${sv.slice(0, 10)}...${sv.slice(-7)}`;
+}
+
 export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
     const mounted = useHasMounted();
 
@@ -54,11 +59,19 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
                 />
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <div style={{ fontSize: 12 }}>
-                        <span style={{ opacity: 0.85 }}>
+                    <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                        <span
+                            style={{
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                border: "1px solid rgba(255,255,255,0.18)",
+                                background: "rgba(255,255,255,0.07)",
+                                opacity: 0.92,
+                            }}
+                        >
                             {mode === "live" ? "Live" : "Replay"}
                         </span>
-                        <span style={{ opacity: 0.55, marginLeft: 8 }}>{sv}</span>
+                        <span style={{ opacity: 0.55 }}>{compactSv(sv)}</span>
                     </div>
                     {inspectLocked ? (
                         <div
@@ -73,7 +86,7 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
                                 color: "rgba(200,230,255,0.95)",
                             }}
                         >
-                            Paused (Inspect)
+                            Inspect Lock
                         </div>
                     ) : null}
 
