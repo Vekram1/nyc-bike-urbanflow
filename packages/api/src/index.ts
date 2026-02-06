@@ -21,3 +21,5 @@ export * from "./http/control-plane";
 export * from "./http/search";
 export * from "./http/time";
 export * from "./http/timeline";
+export * from "./http/tiles";
+export * from "./tiles/composite";

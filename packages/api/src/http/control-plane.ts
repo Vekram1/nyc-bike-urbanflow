@@ -1,6 +1,7 @@
 import { createConfigRouteHandler, type ConfigRouteConfig } from "./config";
 import { createSearchRouteHandler, type SearchRouteDeps } from "./search";
 import { createTimeRouteHandler, type TimeRouteDeps } from "./time";
+import { createCompositeTilesRouteHandler, type CompositeTilesRouteDeps } from "./tiles";
 import { createTimelineRouteHandler, type TimelineRouteDeps } from "./timeline";
 
 export type ControlPlaneDeps = {
@@ -8,6 +9,7 @@ export type ControlPlaneDeps = {
   config: ConfigRouteConfig;
   timeline: TimelineRouteDeps;
   search: SearchRouteDeps;
+  tiles?: CompositeTilesRouteDeps;
 };
 
 function json(body: unknown, status: number): Response {
@@ -25,9 +27,17 @@ export function createControlPlaneHandler(deps: ControlPlaneDeps): (request: Req
   const handleConfig = createConfigRouteHandler(deps.config);
   const handleTimeline = createTimelineRouteHandler(deps.timeline);
   const handleSearch = createSearchRouteHandler(deps.search);
+  const handleTiles = deps.tiles ? createCompositeTilesRouteHandler(deps.tiles) : null;
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/api/tiles/")) {
+      if (!handleTiles) {
+        return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+      }
+      return handleTiles(request);
+    }
+
     switch (url.pathname) {
       case "/api/time":
         return handleTime(request);

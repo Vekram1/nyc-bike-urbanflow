@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { PgAllowlistStore } from "../allowlist/store";
 import type { SqlExecutor, SqlQueryResult } from "../db/types";
+import { createCompositeTilesRouteHandler } from "../http/tiles";
 import { validateSvQuery } from "../sv/http";
 import { ServingTokenService } from "../sv/service";
 import { PgServingTokenStore, type ServingKeyMaterialProvider } from "../sv/store";
@@ -321,5 +322,100 @@ describe("lfj end-to-end flow", () => {
     const auditEvents = db.getAuditEvents();
     expect(auditEvents.some((event) => event.event_type === "mint")).toBe(true);
     expect(auditEvents.some((event) => event.event_type === "validate_ok")).toBe(true);
+  });
+
+  it("uses minted sv to authorize composite tile route", async () => {
+    const db = new FakeSqlDb();
+    db.seedAllowlist("system_id", "citibike-nyc", null);
+    db.seedAllowlist("tile_schema", "tile.v1", "citibike-nyc");
+    db.seedAllowlist("severity_version", "sev.v1", "citibike-nyc");
+    db.seedAllowlist("layers_set", "inv,sev", "citibike-nyc");
+    db.seedWatermark({
+      system_id: "citibike-nyc",
+      dataset_id: "gbfs.station_status",
+      as_of_ts: "2026-02-06T18:30:00.000Z",
+      max_observed_at: "2026-02-06T18:29:30.000Z",
+      updated_at: "2026-02-06T18:30:05.000Z",
+    });
+    db.seedServingKey({
+      kid: "kid-1",
+      system_id: "citibike-nyc",
+      algo: "HS256",
+      status: "active",
+      valid_from: "2026-02-01T00:00:00.000Z",
+      valid_to: null,
+    });
+
+    const keyMaterial: ServingKeyMaterialProvider = {
+      async getSecret(kid, systemId) {
+        if (kid === "kid-1" && systemId === "citibike-nyc") {
+          return new TextEncoder().encode("test-secret");
+        }
+        return null;
+      },
+    };
+
+    const allowlist = new PgAllowlistStore(db);
+    const tokenStore = new PgServingTokenStore(db, keyMaterial);
+    const tokenService = new ServingTokenService(tokenStore, () => new Date("2026-02-06T18:30:10.000Z"));
+    const viewStore = new PgServingViewStore(db);
+    const viewService = new ServingViewService({
+      views: viewStore,
+      allowlist,
+      tokens: tokenService,
+      tokenStore,
+    });
+
+    const timeResponse = await buildTimeEndpointResponse({
+      servingViews: viewService,
+      viewStore,
+      system_id: "citibike-nyc",
+      view_version: "sv.v1",
+      ttl_seconds: 120,
+      tile_schema_version: "tile.v1",
+      severity_version: "sev.v1",
+      severity_spec_sha256: "sev-spec-hash",
+      required_datasets: ["gbfs.station_status"],
+      optional_datasets: [],
+      clock: () => new Date("2026-02-06T18:30:20.000Z"),
+    });
+    expect(timeResponse.ok).toBe(true);
+    if (!timeResponse.ok) {
+      return;
+    }
+
+    let seenArgs: Record<string, unknown> | null = null;
+    const tilesHandler = createCompositeTilesRouteHandler({
+      tokens: tokenService,
+      allowlist,
+      tileStore: {
+        async fetchCompositeTile(args) {
+          seenArgs = args;
+          return {
+            ok: true,
+            mvt: new Uint8Array([1, 2, 3]),
+            feature_count: 1,
+            bytes: 3,
+          };
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await tilesHandler(
+      new Request(
+        `https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=${encodeURIComponent(timeResponse.body.recommended_live_sv)}&tile_schema=tile.v1&severity_version=sev.v1&layers=sev,inv&T_bucket=1738872000`
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/vnd.mapbox-vector-tile");
+    expect(seenArgs).toBeTruthy();
+    expect(seenArgs?.system_id).toBe("citibike-nyc");
+    expect(seenArgs?.view_id).toBe(timeResponse.body.view_id);
+    expect(seenArgs?.layers_set).toBe("inv,sev");
   });
 });
