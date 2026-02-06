@@ -32,3 +32,4 @@ Other config docs:
 - `config/station_neighbors.md`: rebuild cadence + determinism for station neighbor index.
 - `config/serving_aggregates.md`: refresh cadence + lineage + quality metrics for serving aggregates.
 - `config/tiles.md`: immutable tile cache keys, canonical SQL shape, and tile degrade caps.
+- `config/stations.md`: station detail/series endpoint bounds and logging behavior.

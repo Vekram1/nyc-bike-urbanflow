@@ -177,4 +177,47 @@ describe("createControlPlaneHandler", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/vnd.mapbox-vector-tile");
   });
+
+  it("dispatches /api/stations/{station_key} when station deps are configured", async () => {
+    const handler = createControlPlaneHandler({
+      ...deps,
+      stations: {
+        tokens: {
+          async validate() {
+            return {
+              ok: true as const,
+              payload: {
+                system_id: "citibike-nyc",
+                view_id: 10,
+                view_spec_sha256: "abc",
+              },
+            };
+          },
+        } as unknown as import("../sv/service").ServingTokenService,
+        stationsStore: {
+          async getStationDetail() {
+            return {
+              station_key: "STA-001",
+              name: "W 52 St",
+              bikes_available: 12,
+              docks_available: 18,
+            };
+          },
+          async getStationSeries() {
+            return [];
+          },
+        },
+        default_bucket_seconds: 300,
+        max_series_window_s: 86400,
+        max_series_points: 288,
+      },
+    });
+
+    const res = await handler(
+      new Request("https://example.test/api/stations/STA-001?sv=abc")
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.station_key).toBe("STA-001");
+  });
 });

@@ -1,5 +1,6 @@
 import { createConfigRouteHandler, type ConfigRouteConfig } from "./config";
 import { createSearchRouteHandler, type SearchRouteDeps } from "./search";
+import { createStationsRouteHandler, type StationsRouteDeps } from "./stations";
 import { createTimeRouteHandler, type TimeRouteDeps } from "./time";
 import { createCompositeTilesRouteHandler, type CompositeTilesRouteDeps } from "./tiles";
 import { createTimelineRouteHandler, type TimelineRouteDeps } from "./timeline";
@@ -9,6 +10,7 @@ export type ControlPlaneDeps = {
   config: ConfigRouteConfig;
   timeline: TimelineRouteDeps;
   search: SearchRouteDeps;
+  stations?: StationsRouteDeps;
   tiles?: CompositeTilesRouteDeps;
 };
 
@@ -27,10 +29,17 @@ export function createControlPlaneHandler(deps: ControlPlaneDeps): (request: Req
   const handleConfig = createConfigRouteHandler(deps.config);
   const handleTimeline = createTimelineRouteHandler(deps.timeline);
   const handleSearch = createSearchRouteHandler(deps.search);
+  const handleStations = deps.stations ? createStationsRouteHandler(deps.stations) : null;
   const handleTiles = deps.tiles ? createCompositeTilesRouteHandler(deps.tiles) : null;
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/api/stations/")) {
+      if (!handleStations) {
+        return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+      }
+      return handleStations(request);
+    }
     if (url.pathname.startsWith("/api/tiles/")) {
       if (!handleTiles) {
         return json({ error: { code: "not_found", message: "Route not found" } }, 404);
