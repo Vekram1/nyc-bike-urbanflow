@@ -8,24 +8,35 @@ type Props = {
     playing: boolean;
     speed: number;
     progress: number;
+    progressLabel: string;
     onTogglePlay: () => void;
     onSpeedDown: () => void;
     onSpeedUp: () => void;
     onStepBack: () => void;
     onStepForward: () => void;
+    onSeek: (next: number) => void;
 };
 
 export default function ScrubberBar({
     playing,
     speed,
     progress,
+    progressLabel,
     onTogglePlay,
     onSpeedDown,
     onSpeedUp,
     onStepBack,
     onStepForward,
+    onSeek,
 }: Props) {
     const clampedProgress = Math.min(1, Math.max(0, progress));
+    const onTrackClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const x = e.clientX - rect.left;
+        onSeek(x / rect.width);
+    };
+
     return (
         <HUDCard>
             <div
@@ -47,7 +58,7 @@ export default function ScrubberBar({
 
                 <div style={{ display: "flex", gap: 8 }}>
                     <button type="button" style={btnStyle} onClick={onSpeedDown}>
-                        − <span style={{ opacity: 0.7 }}>speed</span>
+                        - <span style={{ opacity: 0.7 }}>speed</span>
                     </button>
                     <button type="button" style={btnStyle} onClick={onSpeedUp}>
                         + <span style={{ opacity: 0.7 }}>speed</span>
@@ -57,8 +68,12 @@ export default function ScrubberBar({
                     </div>
                 </div>
 
-                {/* Range + markers placeholder */}
-                <div style={{ position: "relative", height: 22 }}>
+                <button
+                    type="button"
+                    onClick={onTrackClick}
+                    style={trackButtonStyle}
+                    title="Seek"
+                >
                     <div
                         style={{
                             position: "absolute",
@@ -67,7 +82,6 @@ export default function ScrubberBar({
                             background: "rgba(255,255,255,0.10)",
                         }}
                     />
-                    {/* “playhead” */}
                     <div
                         style={{
                             position: "absolute",
@@ -79,19 +93,39 @@ export default function ScrubberBar({
                             background: "rgba(230,237,243,0.9)",
                         }}
                     />
-                    {/* gap markers (stub) */}
-                    <div style={{ position: "absolute", left: "22%", top: 7, height: 8, width: 2, background: "rgba(255,80,80,0.7)" }} />
-                    <div style={{ position: "absolute", left: "40%", top: 7, height: 8, width: 2, background: "rgba(255,80,80,0.7)" }} />
-                </div>
+                    <div
+                        style={{
+                            position: "absolute",
+                            left: "22%",
+                            top: 7,
+                            height: 8,
+                            width: 2,
+                            background: "rgba(255,80,80,0.7)",
+                        }}
+                    />
+                    <div
+                        style={{
+                            position: "absolute",
+                            left: "40%",
+                            top: 7,
+                            height: 8,
+                            width: 2,
+                            background: "rgba(255,80,80,0.7)",
+                        }}
+                    />
+                </button>
 
                 <div style={{ display: "flex", gap: 8 }}>
                     <button type="button" style={btnStyle} onClick={onStepBack} title="Step back">
-                        Back <Keycap k="←" />
+                        Back <Keycap k="LEFT" />
                     </button>
                     <button type="button" style={btnStyle} onClick={onStepForward} title="Step forward">
-                        Step <Keycap k="→" />
+                        Step <Keycap k="RIGHT" />
                     </button>
                 </div>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                {progressLabel}
             </div>
         </HUDCard>
     );
@@ -106,3 +140,15 @@ const btnStyle: React.CSSProperties = {
     cursor: "pointer",
     fontSize: 12,
 };
+
+const trackButtonStyle: React.CSSProperties = {
+    position: "relative",
+    height: 22,
+    width: "100%",
+    border: "none",
+    margin: 0,
+    padding: 0,
+    background: "transparent",
+    cursor: "pointer",
+};
+

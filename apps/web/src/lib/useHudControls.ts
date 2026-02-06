@@ -31,6 +31,11 @@ export function useHudControls() {
         return () => window.clearInterval(timer);
     }, [playing, speed]);
 
+    const seekTo = (next: number) => {
+        const clamped = Math.min(1, Math.max(0, next));
+        setProgress(clamped);
+    };
+
     const togglePlay = () => setPlaying((v) => !v);
     const speedDown = () => setSpeedIdx((i) => Math.max(0, i - 1));
     const speedUp = () => setSpeedIdx((i) => Math.min(SPEED_STEPS.length - 1, i + 1));
@@ -99,6 +104,7 @@ export function useHudControls() {
         speed,
         progress,
         layers,
+        seekTo,
         togglePlay,
         speedDown,
         speedUp,

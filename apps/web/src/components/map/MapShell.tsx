@@ -24,6 +24,7 @@ export default function MapShell() {
         inspectLocked: inspectOpen,
         playing: hud.playing,
     });
+    const progressLabel = `Progress ${Math.round(hud.progress * 100)}%`;
 
     const openInspect = useCallback((station: StationPick) => {
         if (!selected) {
@@ -78,11 +79,13 @@ export default function MapShell() {
                         playing={hud.playing}
                         speed={hud.speed}
                         progress={hud.progress}
+                        progressLabel={progressLabel}
                         onTogglePlay={hud.togglePlay}
                         onSpeedDown={hud.speedDown}
                         onSpeedUp={hud.speedUp}
                         onStepBack={hud.stepBack}
                         onStepForward={hud.stepForward}
+                        onSeek={hud.seekTo}
                     />
                 </div>
 
