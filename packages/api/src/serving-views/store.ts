@@ -7,6 +7,7 @@ type DatasetWatermarkRow = {
   as_of_ts: string | null;
   as_of_text: string | null;
   max_observed_at: string | null;
+  updated_at: string;
 };
 
 type ServingViewRow = {
@@ -26,7 +27,7 @@ export class PgServingViewStore {
 
   async getWatermark(system_id: string, dataset_id: DatasetId): Promise<DatasetWatermark | null> {
     const rows = await this.db.query<DatasetWatermarkRow>(
-      `SELECT system_id, dataset_id, as_of_ts, as_of_text, max_observed_at
+      `SELECT system_id, dataset_id, as_of_ts, as_of_text, max_observed_at, updated_at
        FROM dataset_watermarks
        WHERE system_id = $1 AND dataset_id = $2
        LIMIT 1`,
@@ -42,7 +43,30 @@ export class PgServingViewStore {
       as_of_ts: row.as_of_ts ? new Date(row.as_of_ts) : null,
       as_of_text: row.as_of_text,
       max_observed_at: row.max_observed_at ? new Date(row.max_observed_at) : null,
+      updated_at: new Date(row.updated_at),
     };
+  }
+
+  async listWatermarks(system_id: string, dataset_ids: DatasetId[]): Promise<DatasetWatermark[]> {
+    if (dataset_ids.length === 0) {
+      return [];
+    }
+    const rows = await this.db.query<DatasetWatermarkRow>(
+      `SELECT system_id, dataset_id, as_of_ts, as_of_text, max_observed_at, updated_at
+       FROM dataset_watermarks
+       WHERE system_id = $1
+         AND dataset_id = ANY($2::text[])
+       ORDER BY dataset_id ASC`,
+      [system_id, dataset_ids]
+    );
+    return rows.rows.map((row) => ({
+      system_id: row.system_id,
+      dataset_id: row.dataset_id,
+      as_of_ts: row.as_of_ts ? new Date(row.as_of_ts) : null,
+      as_of_text: row.as_of_text,
+      max_observed_at: row.max_observed_at ? new Date(row.max_observed_at) : null,
+      updated_at: new Date(row.updated_at),
+    }));
   }
 
   async upsertServingView(params: {
@@ -78,4 +102,3 @@ export class PgServingViewStore {
     );
   }
 }
-

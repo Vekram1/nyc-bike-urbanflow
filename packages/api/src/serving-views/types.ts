@@ -6,6 +6,7 @@ export type DatasetWatermark = {
   as_of_ts?: Date | null;
   as_of_text?: string | null;
   max_observed_at?: Date | null;
+  updated_at?: Date | null;
 };
 
 export type ServingViewVersion = string;
