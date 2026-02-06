@@ -50,6 +50,8 @@ export function useHudControls() {
                 : DEFAULT_LAYERS.labels,
     }));
     const wasPlayingBeforeInspectRef = useRef(false);
+    const wasPlayingBeforeHiddenRef = useRef(false);
+    const autoPausedByHiddenRef = useRef(false);
 
     const speed = SPEED_STEPS[speedIdx] ?? 1;
 
@@ -70,6 +72,30 @@ export function useHudControls() {
 
         return () => window.clearInterval(timer);
     }, [playing, speed]);
+
+    useEffect(() => {
+        const onVisibilityChange = () => {
+            if (document.hidden) {
+                if (playing) {
+                    wasPlayingBeforeHiddenRef.current = true;
+                    autoPausedByHiddenRef.current = true;
+                    setPlaying(false);
+                } else {
+                    wasPlayingBeforeHiddenRef.current = false;
+                }
+                return;
+            }
+
+            if (autoPausedByHiddenRef.current && wasPlayingBeforeHiddenRef.current) {
+                setPlaying(true);
+            }
+            autoPausedByHiddenRef.current = false;
+            wasPlayingBeforeHiddenRef.current = false;
+        };
+
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    }, [playing]);
 
     const seekTo = (next: number) => {
         const clamped = Math.min(1, Math.max(0, next));
