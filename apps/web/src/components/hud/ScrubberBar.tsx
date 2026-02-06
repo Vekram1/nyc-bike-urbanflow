@@ -4,7 +4,28 @@
 import HUDCard from "./HUDCard";
 import Keycap from "./Keycap";
 
-export default function ScrubberBar() {
+type Props = {
+    playing: boolean;
+    speed: number;
+    progress: number;
+    onTogglePlay: () => void;
+    onSpeedDown: () => void;
+    onSpeedUp: () => void;
+    onStepBack: () => void;
+    onStepForward: () => void;
+};
+
+export default function ScrubberBar({
+    playing,
+    speed,
+    progress,
+    onTogglePlay,
+    onSpeedDown,
+    onSpeedUp,
+    onStepBack,
+    onStepForward,
+}: Props) {
+    const clampedProgress = Math.min(1, Math.max(0, progress));
     return (
         <HUDCard>
             <div
@@ -19,20 +40,20 @@ export default function ScrubberBar() {
                     type="button"
                     style={btnStyle}
                     title="Play/Pause"
-                    onClick={() => { }}
+                    onClick={onTogglePlay}
                 >
-                    ▶︎ / ❚❚ <Keycap k="Space" />
+                    {playing ? "Pause" : "Play"} <Keycap k="Space" />
                 </button>
 
                 <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" style={btnStyle} onClick={() => { }}>
+                    <button type="button" style={btnStyle} onClick={onSpeedDown}>
                         − <span style={{ opacity: 0.7 }}>speed</span>
                     </button>
-                    <button type="button" style={btnStyle} onClick={() => { }}>
+                    <button type="button" style={btnStyle} onClick={onSpeedUp}>
                         + <span style={{ opacity: 0.7 }}>speed</span>
                     </button>
                     <div style={{ opacity: 0.7, fontSize: 12, alignSelf: "center" }}>
-                        1.0×
+                        {speed.toFixed(2)}x
                     </div>
                 </div>
 
@@ -52,7 +73,7 @@ export default function ScrubberBar() {
                             position: "absolute",
                             top: 2,
                             bottom: 2,
-                            left: "62%",
+                            left: `${(clampedProgress * 100).toFixed(2)}%`,
                             width: 2,
                             borderRadius: 2,
                             background: "rgba(230,237,243,0.9)",
@@ -63,9 +84,14 @@ export default function ScrubberBar() {
                     <div style={{ position: "absolute", left: "40%", top: 7, height: 8, width: 2, background: "rgba(255,80,80,0.7)" }} />
                 </div>
 
-                <button type="button" style={btnStyle} onClick={() => { }} title="Step">
-                    Step <Keycap k="←/→" />
-                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" style={btnStyle} onClick={onStepBack} title="Step back">
+                        Back <Keycap k="←" />
+                    </button>
+                    <button type="button" style={btnStyle} onClick={onStepForward} title="Step forward">
+                        Step <Keycap k="→" />
+                    </button>
+                </div>
             </div>
         </HUDCard>
     );

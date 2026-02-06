@@ -20,15 +20,18 @@ function formatTime(d: Date) {
     });
 }
 
-export default function ClockChip() {
+type Props = {
+    mode: "live" | "replay";
+    sv: string;
+    delayed: boolean;
+    inspectLocked: boolean;
+};
+
+export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
     const mounted = useHasMounted();
 
     // Don’t render real time/date until after mount (prevents hydration mismatch)
     const now = useNowClock(250);
-
-    const mode: "live" | "replay" = "live";
-    const sv = "sv:dev-0";
-    const delayed = false;
 
     const dateText = mounted ? formatDate(now) : "—";
     const timeText = mounted ? formatTime(now) : "—";
@@ -57,6 +60,22 @@ export default function ClockChip() {
                         </span>
                         <span style={{ opacity: 0.55, marginLeft: 8 }}>{sv}</span>
                     </div>
+                    {inspectLocked ? (
+                        <div
+                            style={{
+                                display: "inline-flex",
+                                alignSelf: "flex-start",
+                                fontSize: 12,
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                border: "1px solid rgba(120,200,255,0.35)",
+                                background: "rgba(90,160,220,0.12)",
+                                color: "rgba(200,230,255,0.95)",
+                            }}
+                        >
+                            Paused (Inspect)
+                        </div>
+                    ) : null}
 
                     {delayed ? (
                         <div

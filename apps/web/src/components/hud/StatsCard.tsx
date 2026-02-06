@@ -2,27 +2,17 @@
 "use client";
 
 import HUDCard from "./HUDCard";
-import { useFps } from "@/lib/useFps";
-import { useRollingP95 } from "@/lib/useRollingP95";
 
-export default function StatsCard() {
-    const fps = useFps();
-    const { p95, pushSample, spark } = useRollingP95({ windowMs: 15_000 });
+type Props = {
+    activeStations: number;
+    empty: number;
+    full: number;
+    tileP95: number | null;
+    fps: number | null;
+    spark: number[];
+};
 
-    // TEMP: simulate tile timings until you wire real fetch timings.
-    // Replace by calling pushSample(ms) whenever a tile request completes.
-    // This keeps the UI + plumbing stable.
-    if (typeof window !== "undefined") {
-        // Lightweight jitter injection (dev only)
-        // eslint-disable-next-line @typescript-eslint/no-misused-promises
-        setTimeout(() => pushSample(60 + Math.random() * 180), 400);
-    }
-
-    // Stubs until you connect real station state
-    const activeStations = 1834;
-    const empty = 71;
-    const full = 42;
-
+export default function StatsCard({ activeStations, empty, full, tileP95, fps, spark }: Props) {
     return (
         <HUDCard>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -30,7 +20,7 @@ export default function StatsCard() {
 
                 <KV k="Active stations" v={activeStations.toLocaleString()} />
                 <KV k="Empty / Full" v={`${empty} / ${full}`} />
-                <KV k="Tile p95 (ms)" v={p95 ? Math.round(p95).toString() : "—"} />
+                <KV k="Tile p95 (ms)" v={tileP95 ? Math.round(tileP95).toString() : "—"} />
                 <KV k="FPS" v={fps ? fps.toFixed(0) : "—"} />
 
                 <div style={{ marginTop: 4 }}>
