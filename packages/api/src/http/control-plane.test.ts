@@ -220,4 +220,108 @@ describe("createControlPlaneHandler", () => {
     const body = await res.json();
     expect(body.station_key).toBe("STA-001");
   });
+
+  it("dispatches /api/policy/run when policy deps are configured", async () => {
+    const handler = createControlPlaneHandler({
+      ...deps,
+      policy: {
+        tokens: {
+          async validate() {
+            return {
+              ok: true as const,
+              payload: {
+                system_id: "citibike-nyc",
+                view_id: 10,
+                view_spec_sha256: "abc",
+              },
+            };
+          },
+        } as unknown as import("../sv/service").ServingTokenService,
+        allowlist: {
+          async isAllowed() {
+            return true;
+          },
+        },
+        policyStore: {
+          async getRunSummary() {
+            return null;
+          },
+          async listMoves() {
+            return [];
+          },
+        },
+        queue: {
+          async enqueue() {
+            return { ok: true as const, job_id: 1 };
+          },
+        },
+        config: {
+          default_policy_version: "rebal.greedy.v1",
+          available_policy_versions: ["rebal.greedy.v1"],
+          default_horizon_steps: 0,
+          retry_after_ms: 2000,
+          max_moves: 50,
+          budget_presets: [],
+        },
+        logger: { info() {}, warn() {} },
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body.status).toBe("pending");
+  });
+
+  it("dispatches /api/tiles/policy_moves when policy tile deps are configured", async () => {
+    const handler = createControlPlaneHandler({
+      ...deps,
+      policyTiles: {
+        tokens: {
+          async validate() {
+            return {
+              ok: true as const,
+              payload: {
+                system_id: "citibike-nyc",
+                view_id: 10,
+                view_spec_sha256: "abc",
+              },
+            };
+          },
+        } as unknown as import("../sv/service").ServingTokenService,
+        allowlist: {
+          async isAllowed() {
+            return true;
+          },
+        },
+        tileStore: {
+          async fetchPolicyMovesTile() {
+            return {
+              ok: true as const,
+              mvt: new Uint8Array([1, 2, 3]),
+              feature_count: 1,
+              bytes: 3,
+            };
+          },
+        },
+        cache: {
+          max_age_s: 30,
+          s_maxage_s: 120,
+          stale_while_revalidate_s: 15,
+        },
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/policy_moves/12/1200/1530.mvt?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/vnd.mapbox-vector-tile");
+  });
 });

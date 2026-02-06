@@ -34,3 +34,4 @@ Other config docs:
 - `config/tiles.md`: immutable tile cache keys, canonical SQL shape, and tile degrade caps.
 - `config/stations.md`: station detail/series endpoint bounds and logging behavior.
 - `config/policy_outputs.md`: policy run/move persistence keys and eval-daily refresh logging.
+- `config/policy_plane.md`: policy HTTP endpoints, async 202 behavior, and policy-moves tile contract.
