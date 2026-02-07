@@ -28,6 +28,13 @@ Recommended execution order per system:
 These fields are the aggregate-side lineage inputs for serving views. Public requests
 remain `sv`-bound and never accept raw `as_of`.
 
+Pressure source selection (tiles):
+- Composite tiles resolve pressure source from `sv`-bound serving view metadata.
+- If `trips_baseline_id` is present in the serving view spec, press layer uses
+  baseline inflow/outflow aggregates (`station_inflows_monthly` / `station_outflows_monthly`).
+- If not present, press layer falls back to `station_pressure_now_5m` live proxy.
+- No public query params control this switch; keyspace remains bounded by `sv`.
+
 ## Bucket quality policy
 - Bucket quality is propagated as `ok` | `degraded` | `blocked`.
 - `severity_5m` and `pressure_now_5m` aggregate bucket quality conservatively:

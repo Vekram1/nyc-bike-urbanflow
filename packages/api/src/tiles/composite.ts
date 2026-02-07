@@ -10,6 +10,9 @@ export function buildCompositeTileSql(params: {
   system_id: string;
   t_bucket_epoch_s: number;
   severity_version: string;
+  pressure_source: "live_proxy" | "trips_baseline";
+  trips_baseline_id?: string;
+  trips_baseline_sha256?: string;
   include_inv: boolean;
   include_sev: boolean;
   include_press: boolean;
@@ -73,11 +76,34 @@ sev_rows AS (
 press_rows AS (
   SELECT
     bs.station_key,
-    COALESCE(pr.pressure_score, 0.0) AS pressure,
+    CASE
+      WHEN $16::boolean
+        THEN COALESCE(
+          ((COALESCE(so.trips_out, 0) - COALESCE(si.trips_in, 0))::double precision / GREATEST(bs.capacity, 1)),
+          0.0
+        )
+      ELSE COALESCE(pr.pressure_score, 0.0)
+    END AS pressure,
     EXTRACT(EPOCH FROM date_bin('5 minutes', TO_TIMESTAMP($6), TIMESTAMPTZ '1970-01-01 00:00:00+00'))::bigint AS observation_ts_bucket,
-    CASE WHEN $7 THEN jsonb_build_object('proxy', pr.proxy_method) ELSE NULL END AS pressure_components_compact,
+    CASE
+      WHEN $7
+        THEN CASE
+          WHEN $16::boolean
+            THEN jsonb_build_object('source', 'trips_baseline', 'dataset_id', $15::text, 'checksum', $17::text)
+          ELSE jsonb_build_object('source', 'live_proxy', 'proxy', pr.proxy_method)
+        END
+      ELSE NULL
+    END AS pressure_components_compact,
     ST_AsMVTGeom(bs.geom_3857, (SELECT env_3857 FROM bounds), $8, $9, true) AS geom
   FROM base_stations bs
+  LEFT JOIN station_outflows_monthly so
+    ON so.system_id = bs.system_id
+   AND so.station_key = bs.station_key
+   AND so.dataset_id = $15::text
+  LEFT JOIN station_inflows_monthly si
+    ON si.system_id = bs.system_id
+   AND si.station_key = bs.station_key
+   AND si.dataset_id = $15::text
   LEFT JOIN station_pressure_now_5m pr
     ON pr.system_id = bs.system_id
    AND pr.station_key = bs.station_key
@@ -127,6 +153,9 @@ SELECT
       params.include_sev,
       params.include_press,
       params.include_epi,
+      params.trips_baseline_id ?? null,
+      params.pressure_source === "trips_baseline",
+      params.trips_baseline_sha256 ?? null,
     ],
   };
 }
@@ -184,6 +213,9 @@ export function createCompositeTileStore(deps: {
       system_id: args.system_id,
       t_bucket_epoch_s: args.t_bucket_epoch_s,
       severity_version: args.severity_version,
+      pressure_source: args.pressure_source,
+      trips_baseline_id: args.trips_baseline_id,
+      trips_baseline_sha256: args.trips_baseline_sha256,
       include_inv: flags.include_inv,
       include_sev: flags.include_sev,
       include_press: flags.include_press,

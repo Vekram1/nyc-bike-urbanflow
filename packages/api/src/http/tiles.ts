@@ -19,6 +19,9 @@ export type CompositeTileArgs = {
   system_id: string;
   view_id: number;
   view_spec_sha256: string;
+  pressure_source: "live_proxy" | "trips_baseline";
+  trips_baseline_id?: string;
+  trips_baseline_sha256?: string;
   z: number;
   x: number;
   y: number;
@@ -48,6 +51,13 @@ export type CompositeTileResult =
 export type CompositeTilesRouteDeps = {
   tokens: ServingTokenService;
   allowlist: AllowlistStore;
+  servingViews?: {
+    getPressureBinding: (args: {
+      system_id: string;
+      view_id: number;
+      view_spec_sha256: string;
+    }) => Promise<{ trips_baseline_id?: string; trips_baseline_sha256?: string } | null>;
+  };
   tileStore: {
     fetchCompositeTile: (args: CompositeTileArgs) => Promise<CompositeTileResult>;
   };
@@ -110,6 +120,44 @@ function hasUnknownQueryParam(searchParams: URLSearchParams): string | null {
     }
   }
   return null;
+}
+
+async function resolvePressureBinding(
+  deps: CompositeTilesRouteDeps,
+  args: { system_id: string; view_id: number; view_spec_sha256: string }
+): Promise<
+  | {
+      ok: true;
+      pressure_source: "live_proxy" | "trips_baseline";
+      trips_baseline_id?: string;
+      trips_baseline_sha256?: string;
+    }
+  | { ok: false; status: 500; code: string; message: string }
+> {
+  if (!deps.servingViews) {
+    return { ok: true, pressure_source: "live_proxy" };
+  }
+
+  try {
+    const binding = await deps.servingViews.getPressureBinding(args);
+    const baselineId = binding?.trips_baseline_id?.trim();
+    if (!baselineId) {
+      return { ok: true, pressure_source: "live_proxy" };
+    }
+    return {
+      ok: true,
+      pressure_source: "trips_baseline",
+      trips_baseline_id: baselineId,
+      trips_baseline_sha256: binding?.trips_baseline_sha256?.trim() || undefined,
+    };
+  } catch {
+    return {
+      ok: false,
+      status: 500,
+      code: "pressure_binding_unavailable",
+      message: "Failed to resolve pressure baseline binding for sv",
+    };
+  }
 }
 
 export function createCompositeTilesRouteHandler(
@@ -213,10 +261,25 @@ export function createCompositeTilesRouteHandler(
       );
     }
 
+    const pressureBinding = await resolvePressureBinding(deps, {
+      system_id: sv.system_id,
+      view_id: sv.view_id,
+      view_spec_sha256: sv.view_spec_sha256,
+    });
+    if (!pressureBinding.ok) {
+      return json(
+        { error: { code: pressureBinding.code, message: pressureBinding.message } },
+        pressureBinding.status
+      );
+    }
+
     const tile = await deps.tileStore.fetchCompositeTile({
       system_id: sv.system_id,
       view_id: sv.view_id,
       view_spec_sha256: sv.view_spec_sha256,
+      pressure_source: pressureBinding.pressure_source,
+      trips_baseline_id: pressureBinding.trips_baseline_id,
+      trips_baseline_sha256: pressureBinding.trips_baseline_sha256,
       z: tilePath.z,
       x: tilePath.x,
       y: tilePath.y,

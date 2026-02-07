@@ -194,6 +194,7 @@ describe("createCompositeTilesRouteHandler", () => {
     expect(seenArgs?.system_id).toBe("citibike-nyc");
     expect(seenArgs?.view_id).toBe(42);
     expect(seenArgs?.layers_set).toBe("inv,press,sev");
+    expect(seenArgs?.pressure_source).toBe("live_proxy");
   });
 
   it("returns 429 with origin shield headers when tile store is overloaded", async () => {
@@ -270,5 +271,55 @@ describe("createCompositeTilesRouteHandler", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe("system_id_mismatch");
+  });
+
+  it("binds trips baseline pressure source from serving view metadata", async () => {
+    let seenArgs: Record<string, unknown> | null = null;
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      servingViews: {
+        async getPressureBinding() {
+          return {
+            trips_baseline_id: "trips.2026-01",
+            trips_baseline_sha256: "abcd",
+          };
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile(args) {
+          seenArgs = args;
+          return {
+            ok: true as const,
+            mvt: new Uint8Array([7]),
+            feature_count: 1,
+            bytes: 1,
+          };
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=abc&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,press&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(seenArgs?.pressure_source).toBe("trips_baseline");
+    expect(seenArgs?.trips_baseline_id).toBe("trips.2026-01");
+    expect(seenArgs?.trips_baseline_sha256).toBe("abcd");
   });
 });

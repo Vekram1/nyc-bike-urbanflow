@@ -9,6 +9,9 @@ describe("buildCompositeTileSql", () => {
       system_id: "citibike-nyc",
       t_bucket_epoch_s: 1738872000,
       severity_version: "sev.v1",
+      pressure_source: "live_proxy",
+      trips_baseline_id: undefined,
+      trips_baseline_sha256: undefined,
       include_inv: true,
       include_sev: true,
       include_press: true,
@@ -26,6 +29,8 @@ describe("buildCompositeTileSql", () => {
     expect(plan.text).toContain("LEFT JOIN station_status_1m");
     expect(plan.text).toContain("LEFT JOIN station_severity_5m");
     expect(plan.text).toContain("LEFT JOIN station_pressure_now_5m");
+    expect(plan.text).toContain("LEFT JOIN station_outflows_monthly");
+    expect(plan.text).toContain("LEFT JOIN station_inflows_monthly");
     expect(plan.text).toContain("ST_AsMVT(q, 'inv'");
     expect(plan.text).toContain("ST_AsMVT(q, 'sev'");
     expect(plan.text).toContain("ST_AsMVT(q, 'press'");
@@ -45,6 +50,9 @@ describe("buildCompositeTileSql", () => {
       true,
       true,
       false,
+      null,
+      false,
+      null,
     ]);
   });
 });
@@ -90,6 +98,7 @@ describe("createCompositeTileStore", () => {
       system_id: "citibike-nyc",
       view_id: 9,
       view_spec_sha256: "abc",
+      pressure_source: "live_proxy",
       z: 12,
       x: 1200,
       y: 1530,
@@ -121,6 +130,7 @@ describe("createCompositeTileStore", () => {
       system_id: "citibike-nyc",
       view_id: 9,
       view_spec_sha256: "abc",
+      pressure_source: "live_proxy",
       z: 12,
       x: 1200,
       y: 1530,
@@ -154,6 +164,7 @@ describe("createCompositeTileStore", () => {
       system_id: "citibike-nyc",
       view_id: 9,
       view_spec_sha256: "abc",
+      pressure_source: "live_proxy",
       z: 12,
       x: 1200,
       y: 1530,
