@@ -51,10 +51,16 @@ function buildToken(kid: string, payloadB64: string, signatureB64: string): stri
 export class ServingTokenService {
   private readonly store: ServingTokenStore;
   private readonly clock: Clock;
+  private readonly clockSkewSeconds: number;
 
-  constructor(store: ServingTokenStore, clock: Clock = () => new Date()) {
+  constructor(
+    store: ServingTokenStore,
+    clock: Clock = () => new Date(),
+    opts?: { clockSkewSeconds?: number }
+  ) {
     this.store = store;
     this.clock = clock;
+    this.clockSkewSeconds = Math.max(0, Math.floor(opts?.clockSkewSeconds ?? 30));
   }
 
   async mint({
@@ -138,10 +144,10 @@ export class ServingTokenService {
     }
 
     const now = nowSeconds(this.clock);
-    if (now < Math.floor(key.valid_from.getTime() / 1000)) {
+    if (now + this.clockSkewSeconds < Math.floor(key.valid_from.getTime() / 1000)) {
       return await this.failAudit("key_not_yet_valid", { kid });
     }
-    if (key.valid_to && now > Math.floor(key.valid_to.getTime() / 1000)) {
+    if (key.valid_to && now - this.clockSkewSeconds > Math.floor(key.valid_to.getTime() / 1000)) {
       return await this.failAudit("key_expired", { kid });
     }
 
@@ -161,7 +167,7 @@ export class ServingTokenService {
       return await this.failAudit("version_invalid", { kid, v: payload.v });
     }
 
-    if (payload.expires_at_s <= now) {
+    if (payload.expires_at_s + this.clockSkewSeconds <= now) {
       return await this.failAudit("token_expired", { kid, exp: payload.expires_at_s });
     }
 
