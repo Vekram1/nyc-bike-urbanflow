@@ -1,0 +1,508 @@
+import { SQL } from "bun";
+
+import { PgAllowlistStore } from "./allowlist/store";
+import type { SqlExecutor, SqlQueryResult } from "./db/types";
+import { createControlPlaneHandler } from "./http/control-plane";
+import { PgJobQueue } from "./jobs/queue";
+import { PgPolicyReadStore } from "./policy/store";
+import { ServingViewService } from "./serving-views/service";
+import { PgServingViewStore } from "./serving-views/store";
+import { PgStationsStore } from "./stations/store";
+import { ServingTokenService } from "./sv/service";
+import { PgServingTokenStore, type ServingKeyMaterialProvider } from "./sv/store";
+import { createCompositeTileStore } from "./tiles/composite";
+import { createEpisodesTileStore } from "./tiles/episodes";
+import { createPolicyMovesTileStore } from "./tiles/policy_moves";
+
+type EnvConfig = {
+  port: number;
+  host: string;
+  system_id: string;
+  db_url: string;
+  view_version: string;
+  sv_ttl_seconds: number;
+  sv_clock_skew_seconds: number;
+  tile_schema_version: string;
+  severity_version: string;
+  severity_spec_sha256: string;
+  required_datasets: string[];
+  optional_datasets: string[];
+  timeline_bucket_seconds: number;
+  tile_max_features: number;
+  tile_max_bytes: number;
+  tile_live_max_age_s: number;
+  tile_live_s_maxage_s: number;
+  tile_live_swr_s: number;
+  tile_replay_min_ttl_s: number;
+  tile_replay_max_age_s: number;
+  tile_replay_s_maxage_s: number;
+  tile_replay_swr_s: number;
+  policy_retry_after_ms: number;
+  policy_default_version: string;
+  policy_available_versions: string[];
+  policy_default_horizon_steps: number;
+  policy_max_moves: number;
+  key_material_json: string;
+};
+
+function parseIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw || raw.trim().length === 0) {
+    return fallback;
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) {
+    throw new Error(`Invalid integer env ${name}: ${raw}`);
+  }
+  return n;
+}
+
+function parseCsv(raw: string | undefined, fallback: string[]): string[] {
+  if (!raw || raw.trim().length === 0) {
+    return fallback;
+  }
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+function loadConfig(): EnvConfig {
+  const db_url = process.env.DATABASE_URL?.trim() ?? "";
+  if (!db_url) {
+    throw new Error("Missing DATABASE_URL");
+  }
+
+  return {
+    port: parseIntEnv("API_PORT", 3000),
+    host: process.env.API_HOST?.trim() || "0.0.0.0",
+    system_id: process.env.SYSTEM_ID?.trim() || "citibike-nyc",
+    db_url,
+    view_version: process.env.SV_VIEW_VERSION?.trim() || "sv.v1",
+    sv_ttl_seconds: parseIntEnv("SV_TTL_SECONDS", 1200),
+    sv_clock_skew_seconds: parseIntEnv("SV_CLOCK_SKEW_SECONDS", 30),
+    tile_schema_version: process.env.TILE_SCHEMA_VERSION?.trim() || "tile.v1",
+    severity_version: process.env.SEVERITY_VERSION?.trim() || "sev.v1",
+    severity_spec_sha256: process.env.SEVERITY_SPEC_SHA256?.trim() || "sev.v1.default",
+    required_datasets: parseCsv(process.env.REQUIRED_DATASETS, ["gbfs.station_status"]),
+    optional_datasets: parseCsv(process.env.OPTIONAL_DATASETS, ["gbfs.station_information"]),
+    timeline_bucket_seconds: parseIntEnv("TIMELINE_BUCKET_SECONDS", 300),
+    tile_max_features: parseIntEnv("TILE_MAX_FEATURES", 1500),
+    tile_max_bytes: parseIntEnv("TILE_MAX_BYTES", 200000),
+    tile_live_max_age_s: parseIntEnv("TILE_LIVE_MAX_AGE_S", 30),
+    tile_live_s_maxage_s: parseIntEnv("TILE_LIVE_S_MAXAGE_S", 120),
+    tile_live_swr_s: parseIntEnv("TILE_LIVE_SWR_S", 15),
+    tile_replay_min_ttl_s: parseIntEnv("TILE_REPLAY_MIN_TTL_S", 86400),
+    tile_replay_max_age_s: parseIntEnv("TILE_REPLAY_MAX_AGE_S", 600),
+    tile_replay_s_maxage_s: parseIntEnv("TILE_REPLAY_S_MAXAGE_S", 3600),
+    tile_replay_swr_s: parseIntEnv("TILE_REPLAY_SWR_S", 60),
+    policy_retry_after_ms: parseIntEnv("POLICY_RETRY_AFTER_MS", 2000),
+    policy_default_version: process.env.POLICY_DEFAULT_VERSION?.trim() || "rebal.greedy.v1",
+    policy_available_versions: parseCsv(process.env.POLICY_AVAILABLE_VERSIONS, ["rebal.greedy.v1"]),
+    policy_default_horizon_steps: parseIntEnv("POLICY_DEFAULT_HORIZON_STEPS", 0),
+    policy_max_moves: parseIntEnv("POLICY_MAX_MOVES", 80),
+    key_material_json: process.env.SV_KEY_MATERIAL_JSON?.trim() || "{}",
+  };
+}
+
+class BunSqlExecutor implements SqlExecutor {
+  private readonly sql: SQL;
+
+  constructor(db_url: string) {
+    this.sql = new SQL(db_url);
+  }
+
+  async query<Row extends Record<string, unknown>>(
+    text: string,
+    params: Array<unknown> = []
+  ): Promise<SqlQueryResult<Row>> {
+    const out = await this.sql.unsafe(text, params);
+    return { rows: out as Row[] };
+  }
+}
+
+class EnvServingKeyMaterialProvider implements ServingKeyMaterialProvider {
+  private readonly secretsByKid = new Map<string, Uint8Array>();
+
+  constructor(keyMaterialJson: string) {
+    const parsed = JSON.parse(keyMaterialJson) as Record<string, string>;
+    for (const [kid, rawSecret] of Object.entries(parsed)) {
+      if (!kid || !rawSecret) {
+        continue;
+      }
+      // Secret value is expected as plain UTF-8 string.
+      this.secretsByKid.set(kid, new TextEncoder().encode(rawSecret));
+    }
+  }
+
+  async getSecret(kid: string, _systemId: string): Promise<Uint8Array | null> {
+    return this.secretsByKid.get(kid) ?? null;
+  }
+}
+
+function buildTimelineStore(db: SqlExecutor) {
+  return {
+    async getRange(args: { system_id: string; view_id: number }) {
+      const out = await db.query<{
+        min_observation_ts: string | null;
+        max_observation_ts: string | null;
+      }>(
+        `SELECT
+           MIN(bucket_ts)::text AS min_observation_ts,
+           MAX(bucket_ts)::text AS max_observation_ts
+         FROM station_status_1m
+         WHERE system_id = $1`,
+        [args.system_id]
+      );
+      const row = out.rows[0];
+      const minTs = row?.min_observation_ts ?? new Date(0).toISOString();
+      const maxTs = row?.max_observation_ts ?? minTs;
+      return {
+        min_observation_ts: minTs,
+        max_observation_ts: maxTs,
+        live_edge_ts: maxTs,
+        gap_intervals: [],
+      };
+    },
+
+    async getDensity(args: { system_id: string; view_id: number; bucket_seconds: number }) {
+      const out = await db.query<{
+        bucket_ts: string;
+        pct_serving_grade: number | string;
+        empty_rate: number | string;
+        full_rate: number | string;
+        severity_p95: number | string | null;
+      }>(
+        `WITH bucketed AS (
+           SELECT
+             date_bin(($2::text || ' seconds')::interval, s.bucket_ts, TIMESTAMPTZ '1970-01-01 00:00:00+00') AS bucket_ts,
+             s.is_serving_grade,
+             s.bikes_available = 0 AS is_empty,
+             s.docks_available = 0 AS is_full
+           FROM station_status_1m s
+           WHERE s.system_id = $1
+         ),
+         sev AS (
+           SELECT
+             date_bin(($2::text || ' seconds')::interval, ss.bucket_ts, TIMESTAMPTZ '1970-01-01 00:00:00+00') AS bucket_ts,
+             PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ss.severity) AS severity_p95
+           FROM station_severity_5m ss
+           WHERE ss.system_id = $1
+           GROUP BY 1
+         )
+         SELECT
+           b.bucket_ts::text,
+           AVG(CASE WHEN b.is_serving_grade THEN 1.0 ELSE 0.0 END) AS pct_serving_grade,
+           AVG(CASE WHEN b.is_empty THEN 1.0 ELSE 0.0 END) AS empty_rate,
+           AVG(CASE WHEN b.is_full THEN 1.0 ELSE 0.0 END) AS full_rate,
+           s.severity_p95
+         FROM bucketed b
+         LEFT JOIN sev s ON s.bucket_ts = b.bucket_ts
+         GROUP BY b.bucket_ts, s.severity_p95
+         ORDER BY b.bucket_ts ASC`,
+        [args.system_id, args.bucket_seconds]
+      );
+      return out.rows.map((row) => ({
+        bucket_ts: row.bucket_ts,
+        pct_serving_grade: Number(row.pct_serving_grade),
+        empty_rate: Number(row.empty_rate),
+        full_rate: Number(row.full_rate),
+        severity_p95: row.severity_p95 === null ? undefined : Number(row.severity_p95),
+      }));
+    },
+  };
+}
+
+function buildSearchStore(db: SqlExecutor) {
+  return {
+    async searchStations(args: {
+      system_id: string;
+      q: string;
+      bbox?: { min_lon: number; min_lat: number; max_lon: number; max_lat: number };
+      limit: number;
+    }) {
+      const hasBbox = Boolean(args.bbox);
+      const out = await db.query<{
+        station_key: string;
+        name: string;
+        short_name: string | null;
+        lat: number | string;
+        lon: number | string;
+      }>(
+        `SELECT
+           station_key,
+           name,
+           short_name,
+           lat,
+           lon
+         FROM stations_current
+         WHERE system_id = $1
+           AND (
+             name ILIKE ('%' || $2 || '%')
+             OR station_key ILIKE ('%' || $2 || '%')
+             OR COALESCE(short_name, '') ILIKE ('%' || $2 || '%')
+           )
+           AND (
+             $3::boolean = false
+             OR (
+               lon >= $4::double precision
+               AND lat >= $5::double precision
+               AND lon <= $6::double precision
+               AND lat <= $7::double precision
+             )
+           )
+         ORDER BY name ASC
+         LIMIT $8`,
+        [
+          args.system_id,
+          args.q,
+          hasBbox,
+          args.bbox?.min_lon ?? 0,
+          args.bbox?.min_lat ?? 0,
+          args.bbox?.max_lon ?? 0,
+          args.bbox?.max_lat ?? 0,
+          args.limit,
+        ]
+      );
+      return out.rows.map((row) => ({
+        station_key: row.station_key,
+        name: row.name,
+        short_name: row.short_name ?? undefined,
+        lat: Number(row.lat),
+        lon: Number(row.lon),
+      }));
+    },
+  };
+}
+
+function buildServingViewBindings(db: SqlExecutor) {
+  return {
+    async getPressureBinding(args: { system_id: string; view_id: number; view_spec_sha256: string }) {
+      const out = await db.query<{
+        trips_baseline_id: string | null;
+        trips_baseline_sha256: string | null;
+      }>(
+        `SELECT
+           view_spec_json->>'trips_baseline_id' AS trips_baseline_id,
+           view_spec_json->>'trips_baseline_sha256' AS trips_baseline_sha256
+         FROM serving_views
+         WHERE view_id = $1
+           AND system_id = $2
+           AND view_spec_sha256 = $3
+         LIMIT 1`,
+        [args.view_id, args.system_id, args.view_spec_sha256]
+      );
+      const row = out.rows[0];
+      if (!row) {
+        return null;
+      }
+      return {
+        trips_baseline_id: row.trips_baseline_id ?? undefined,
+        trips_baseline_sha256: row.trips_baseline_sha256 ?? undefined,
+      };
+    },
+
+    async getEpisodeBinding(args: { system_id: string; view_id: number; view_spec_sha256: string }) {
+      const out = await db.query<{ severity_version: string | null }>(
+        `SELECT view_spec_json->>'severity_version' AS severity_version
+         FROM serving_views
+         WHERE view_id = $1
+           AND system_id = $2
+           AND view_spec_sha256 = $3
+         LIMIT 1`,
+        [args.view_id, args.system_id, args.view_spec_sha256]
+      );
+      const row = out.rows[0];
+      if (!row) {
+        return null;
+      }
+      return { severity_version: row.severity_version ?? undefined };
+    },
+  };
+}
+
+function parseBudgetPresets(jsonRaw: string | undefined) {
+  if (!jsonRaw || jsonRaw.trim().length === 0) {
+    return [];
+  }
+  return JSON.parse(jsonRaw) as Array<{
+    key: string;
+    max_bikes_per_move: number;
+    max_total_bikes_moved: number;
+    max_stations_touched: number;
+    max_total_distance_m: number;
+  }>;
+}
+
+async function main(): Promise<void> {
+  const cfg = loadConfig();
+  const db = new BunSqlExecutor(cfg.db_url);
+  const allowlist = new PgAllowlistStore(db);
+  const keyMaterial = new EnvServingKeyMaterialProvider(cfg.key_material_json);
+  const tokenStore = new PgServingTokenStore(db, keyMaterial);
+  const tokenService = new ServingTokenService(tokenStore, () => new Date(), {
+    clockSkewSeconds: cfg.sv_clock_skew_seconds,
+  });
+  const viewStore = new PgServingViewStore(db);
+  const viewService = new ServingViewService({
+    views: viewStore,
+    allowlist,
+    tokens: tokenService,
+    tokenStore,
+  });
+
+  const bindings = buildServingViewBindings(db);
+  const timelineStore = buildTimelineStore(db);
+  const searchStore = buildSearchStore(db);
+  const stationsStore = new PgStationsStore(db);
+  const policyStore = new PgPolicyReadStore(db);
+  const queue = new PgJobQueue(db);
+  const tileStore = createCompositeTileStore({
+    db,
+    max_features_per_tile: cfg.tile_max_features,
+    max_bytes_per_tile: cfg.tile_max_bytes,
+  });
+  const policyTileStore = createPolicyMovesTileStore({
+    db,
+    max_moves_per_tile: cfg.policy_max_moves,
+    max_bytes_per_tile: cfg.tile_max_bytes,
+  });
+  const episodesTileStore = createEpisodesTileStore({
+    db,
+    max_features_per_tile: cfg.tile_max_features,
+    max_bytes_per_tile: cfg.tile_max_bytes,
+  });
+
+  const handler = createControlPlaneHandler({
+    time: {
+      servingViews: viewService,
+      viewStore,
+      config: {
+        view_version: cfg.view_version,
+        ttl_seconds: cfg.sv_ttl_seconds,
+        tile_schema_version: cfg.tile_schema_version,
+        severity_version: cfg.severity_version,
+        severity_spec_sha256: cfg.severity_spec_sha256,
+        required_datasets: cfg.required_datasets,
+        optional_datasets: cfg.optional_datasets,
+      },
+    },
+    config: {
+      bucket_size_seconds: cfg.timeline_bucket_seconds,
+      severity_version: cfg.severity_version,
+      severity_legend_bins: [{ min: 0, max: 1, label: "all" }],
+      map: {
+        initial_center: { lon: -73.98, lat: 40.75 },
+        initial_zoom: 12,
+        max_bounds: { min_lon: -74.3, min_lat: 40.45, max_lon: -73.65, max_lat: 40.95 },
+        min_zoom: 9,
+        max_zoom: 18,
+      },
+      speed_presets: [1, 10, 60],
+      cache_policy: { live_tile_max_age_s: cfg.tile_live_max_age_s },
+      allowlist_provider: {
+        system_id: cfg.system_id,
+        list_allowed_values: ({ kind, system_id }) => allowlist.listAllowedValues({ kind, system_id }),
+      },
+    },
+    timeline: {
+      tokens: tokenService,
+      timelineStore,
+      default_bucket_seconds: cfg.timeline_bucket_seconds,
+    },
+    search: {
+      allowlist,
+      searchStore,
+    },
+    stations: {
+      tokens: tokenService,
+      stationsStore,
+      default_bucket_seconds: cfg.timeline_bucket_seconds,
+      max_series_window_s: 7 * 24 * 60 * 60,
+      max_series_points: 1000,
+    },
+    tiles: {
+      tokens: tokenService,
+      allowlist,
+      servingViews: bindings,
+      tileStore,
+      cache: {
+        max_age_s: cfg.tile_live_max_age_s,
+        s_maxage_s: cfg.tile_live_s_maxage_s,
+        stale_while_revalidate_s: cfg.tile_live_swr_s,
+        replay_min_ttl_s: cfg.tile_replay_min_ttl_s,
+        replay_max_age_s: cfg.tile_replay_max_age_s,
+        replay_s_maxage_s: cfg.tile_replay_s_maxage_s,
+        replay_stale_while_revalidate_s: cfg.tile_replay_swr_s,
+      },
+    },
+    episodesTiles: {
+      tokens: tokenService,
+      allowlist,
+      default_severity_version: cfg.severity_version,
+      servingViews: bindings,
+      tileStore: episodesTileStore,
+      cache: {
+        max_age_s: cfg.tile_live_max_age_s,
+        s_maxage_s: cfg.tile_live_s_maxage_s,
+        stale_while_revalidate_s: cfg.tile_live_swr_s,
+      },
+    },
+    policyTiles: {
+      tokens: tokenService,
+      allowlist,
+      tileStore: policyTileStore,
+      cache: {
+        max_age_s: cfg.tile_live_max_age_s,
+        s_maxage_s: cfg.tile_live_s_maxage_s,
+        stale_while_revalidate_s: cfg.tile_live_swr_s,
+      },
+    },
+    policy: {
+      tokens: tokenService,
+      allowlist,
+      policyStore,
+      queue,
+      config: {
+        default_policy_version: cfg.policy_default_version,
+        available_policy_versions: cfg.policy_available_versions,
+        default_horizon_steps: cfg.policy_default_horizon_steps,
+        retry_after_ms: cfg.policy_retry_after_ms,
+        max_moves: cfg.policy_max_moves,
+        budget_presets: parseBudgetPresets(process.env.POLICY_BUDGET_PRESETS_JSON),
+      },
+    },
+  });
+
+  Bun.serve({
+    hostname: cfg.host,
+    port: cfg.port,
+    fetch(request: Request): Promise<Response> {
+      return handler(request);
+    },
+  });
+
+  console.info(
+    JSON.stringify({
+      level: "info",
+      event: "api_server_started",
+      ts: new Date().toISOString(),
+      host: cfg.host,
+      port: cfg.port,
+      system_id: cfg.system_id,
+      view_version: cfg.view_version,
+    })
+  );
+}
+
+main().catch((error) => {
+  console.error(
+    JSON.stringify({
+      level: "error",
+      event: "api_server_bootstrap_failed",
+      ts: new Date().toISOString(),
+      message: error instanceof Error ? error.message : "unknown_error",
+    })
+  );
+  process.exit(1);
+});
