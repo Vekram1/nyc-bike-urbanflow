@@ -11,6 +11,10 @@ type StationDetailRow = {
   bucket_quality: string | null;
   severity: number | null;
   pressure_score: number | null;
+  pressure_delta_bikes_5m: number | null;
+  pressure_delta_docks_5m: number | null;
+  pressure_volatility_60m: number | null;
+  pressure_rebalancing_suspected: boolean | null;
 };
 
 type StationSeriesRow = {
@@ -20,6 +24,10 @@ type StationSeriesRow = {
   bucket_quality: string;
   severity: number | null;
   pressure_score: number | null;
+  pressure_delta_bikes_5m: number | null;
+  pressure_delta_docks_5m: number | null;
+  pressure_volatility_60m: number | null;
+  pressure_rebalancing_suspected: boolean | null;
 };
 
 export class PgStationsStore {
@@ -44,7 +52,11 @@ export class PgStationsStore {
          ss.docks_available,
          ss.bucket_quality,
          sev.severity,
-         pr.pressure_score
+         pr.pressure_score,
+         pr.delta_bikes_5m AS pressure_delta_bikes_5m,
+         pr.delta_docks_5m AS pressure_delta_docks_5m,
+         pr.volatility_60m AS pressure_volatility_60m,
+         pr.rebalancing_suspected AS pressure_rebalancing_suspected
        FROM stations_current sc
        LEFT JOIN station_status_1m ss
          ON ss.system_id = sc.system_id
@@ -77,6 +89,10 @@ export class PgStationsStore {
       bucket_quality: row.bucket_quality,
       severity: row.severity,
       pressure_score: row.pressure_score,
+      pressure_delta_bikes_5m: row.pressure_delta_bikes_5m,
+      pressure_delta_docks_5m: row.pressure_delta_docks_5m,
+      pressure_volatility_60m: row.pressure_volatility_60m,
+      pressure_rebalancing_suspected: row.pressure_rebalancing_suspected,
     };
   }
 
@@ -97,7 +113,11 @@ export class PgStationsStore {
            ss.docks_available,
            ss.bucket_quality,
            sev.severity,
-           pr.pressure_score
+           pr.pressure_score,
+           pr.delta_bikes_5m AS pressure_delta_bikes_5m,
+           pr.delta_docks_5m AS pressure_delta_docks_5m,
+           pr.volatility_60m AS pressure_volatility_60m,
+           pr.rebalancing_suspected AS pressure_rebalancing_suspected
          FROM station_status_1m ss
          LEFT JOIN station_severity_5m sev
            ON sev.system_id = ss.system_id
@@ -118,7 +138,11 @@ export class PgStationsStore {
          AVG(b.docks_available)::int AS docks_available,
          MIN(b.bucket_quality) AS bucket_quality,
          MAX(b.severity) AS severity,
-         MAX(b.pressure_score) AS pressure_score
+         MAX(b.pressure_score) AS pressure_score,
+         MAX(b.pressure_delta_bikes_5m) AS pressure_delta_bikes_5m,
+         MAX(b.pressure_delta_docks_5m) AS pressure_delta_docks_5m,
+         MAX(b.pressure_volatility_60m) AS pressure_volatility_60m,
+         BOOL_OR(COALESCE(b.pressure_rebalancing_suspected, false)) AS pressure_rebalancing_suspected
        FROM bucketed b
        GROUP BY b.bucket_ts
        ORDER BY b.bucket_ts ASC
@@ -139,6 +163,10 @@ export class PgStationsStore {
       bucket_quality: row.bucket_quality,
       severity: row.severity ?? undefined,
       pressure_score: row.pressure_score ?? undefined,
+      pressure_delta_bikes_5m: row.pressure_delta_bikes_5m ?? undefined,
+      pressure_delta_docks_5m: row.pressure_delta_docks_5m ?? undefined,
+      pressure_volatility_60m: row.pressure_volatility_60m ?? undefined,
+      pressure_rebalancing_suspected: row.pressure_rebalancing_suspected ?? undefined,
     }));
   }
 }

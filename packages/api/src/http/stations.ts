@@ -10,6 +10,10 @@ export type StationDetail = {
   bucket_quality?: string | null;
   severity?: number | null;
   pressure_score?: number | null;
+  pressure_delta_bikes_5m?: number | null;
+  pressure_delta_docks_5m?: number | null;
+  pressure_volatility_60m?: number | null;
+  pressure_rebalancing_suspected?: boolean | null;
 };
 
 export type StationSeriesPoint = {
@@ -19,6 +23,10 @@ export type StationSeriesPoint = {
   bucket_quality: string;
   severity?: number;
   pressure_score?: number;
+  pressure_delta_bikes_5m?: number;
+  pressure_delta_docks_5m?: number;
+  pressure_volatility_60m?: number;
+  pressure_rebalancing_suspected?: boolean;
 };
 
 export type StationsRouteDeps = {

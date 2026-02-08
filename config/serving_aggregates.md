@@ -11,11 +11,15 @@ This document defines refresh cadence, lineage, and observability for:
 - `station_status_1m`: every minute, rolling window over recent snapshots.
 - `station_severity_5m`: every 5 minutes after `station_status_1m` refresh.
 - `station_pressure_now_5m`: every 5 minutes after `station_status_1m` refresh.
+  - includes `pressure_score`, `delta_bikes_5m`, `delta_docks_5m`,
+    `volatility_60m`, `rebalancing_suspected`.
 
 Recommended execution order per system:
 1. `refresh_station_status_1m(system_id, from_ts, to_ts)`
 2. `refresh_station_severity_5m(system_id, from_ts, to_ts, severity_version)`
 3. `refresh_station_pressure_now_5m(system_id, from_ts, to_ts, proxy_method)`
+   - computes deterministic 5-minute deltas, trailing 60-minute volatility
+     (12 buckets), and rebalancing heuristic flags.
 
 `scripts/rebuild_serving_aggregates.sql` provides a deterministic rebuild template.
 

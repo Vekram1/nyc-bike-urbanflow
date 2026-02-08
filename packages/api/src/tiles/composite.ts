@@ -90,7 +90,14 @@ press_rows AS (
         THEN CASE
           WHEN $16::boolean
             THEN jsonb_build_object('source', 'trips_baseline', 'dataset_id', $15::text, 'checksum', $17::text)
-          ELSE jsonb_build_object('source', 'live_proxy', 'proxy', pr.proxy_method)
+          ELSE jsonb_build_object(
+            'source', 'live_proxy',
+            'proxy', pr.proxy_method,
+            'delta_bikes_5m', pr.delta_bikes_5m,
+            'delta_docks_5m', pr.delta_docks_5m,
+            'volatility_60m', pr.volatility_60m,
+            'rebalancing_suspected', pr.rebalancing_suspected
+          )
         END
       ELSE NULL
     END AS pressure_components_compact,

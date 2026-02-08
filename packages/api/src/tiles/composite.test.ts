@@ -31,6 +31,9 @@ describe("buildCompositeTileSql", () => {
     expect(plan.text).toContain("LEFT JOIN station_pressure_now_5m");
     expect(plan.text).toContain("LEFT JOIN station_outflows_monthly");
     expect(plan.text).toContain("LEFT JOIN station_inflows_monthly");
+    expect(plan.text).toContain("delta_bikes_5m");
+    expect(plan.text).toContain("volatility_60m");
+    expect(plan.text).toContain("rebalancing_suspected");
     expect(plan.text).toContain("ST_AsMVT(q, 'inv'");
     expect(plan.text).toContain("ST_AsMVT(q, 'sev'");
     expect(plan.text).toContain("ST_AsMVT(q, 'press'");

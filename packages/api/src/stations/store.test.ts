@@ -34,6 +34,10 @@ describe("PgStationsStore", () => {
         bucket_quality: "ok",
         severity: 0.2,
         pressure_score: 0.4,
+        pressure_delta_bikes_5m: 6,
+        pressure_delta_docks_5m: -6,
+        pressure_volatility_60m: 2.5,
+        pressure_rebalancing_suspected: true,
       },
     ];
     const store = new PgStationsStore(db);
@@ -45,6 +49,8 @@ describe("PgStationsStore", () => {
     expect(out?.station_key).toBe("STA-001");
     expect(out?.name).toBe("W 52 St");
     expect(out?.pressure_score).toBe(0.4);
+    expect(out?.pressure_delta_bikes_5m).toBe(6);
+    expect(out?.pressure_rebalancing_suspected).toBe(true);
     expect(db.calls[0]?.params).toEqual(["citibike-nyc", "STA-001"]);
   });
 
@@ -58,6 +64,10 @@ describe("PgStationsStore", () => {
         bucket_quality: "ok",
         severity: 0.1,
         pressure_score: 0.2,
+        pressure_delta_bikes_5m: 3,
+        pressure_delta_docks_5m: -3,
+        pressure_volatility_60m: 1.1,
+        pressure_rebalancing_suspected: false,
       },
       {
         bucket_ts: "2026-02-06T20:05:00Z",
@@ -66,6 +76,10 @@ describe("PgStationsStore", () => {
         bucket_quality: "ok",
         severity: null,
         pressure_score: null,
+        pressure_delta_bikes_5m: null,
+        pressure_delta_docks_5m: null,
+        pressure_volatility_60m: null,
+        pressure_rebalancing_suspected: null,
       },
     ];
     const store = new PgStationsStore(db);
@@ -80,7 +94,9 @@ describe("PgStationsStore", () => {
     });
     expect(out.length).toBe(2);
     expect(out[0]?.bucket_ts).toBe("2026-02-06T20:00:00Z");
+    expect(out[0]?.pressure_delta_bikes_5m).toBe(3);
     expect(out[1]?.severity).toBeUndefined();
+    expect(out[1]?.pressure_volatility_60m).toBeUndefined();
     expect(db.calls[0]?.params).toEqual([
       "citibike-nyc",
       "STA-001",
