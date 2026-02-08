@@ -30,4 +30,20 @@ export class PgAllowlistStore implements AllowlistStore {
     );
     return rows.rows.length > 0;
   }
+
+  async listAllowedValues(args: { kind: AllowlistQuery["kind"]; system_id?: string }): Promise<string[]> {
+    const rows = await this.db.query<{ value: string }>(
+      `SELECT DISTINCT value
+       FROM namespace_allowlist
+       WHERE kind = $1
+         AND disabled_at IS NULL
+         AND (
+           ($2::text IS NULL AND system_id IS NULL)
+           OR ($2::text IS NOT NULL AND (system_id IS NULL OR system_id = $2))
+         )
+       ORDER BY value ASC`,
+      [args.kind, args.system_id ?? null]
+    );
+    return rows.rows.map((row) => row.value);
+  }
 }

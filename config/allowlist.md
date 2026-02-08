@@ -10,6 +10,7 @@ cache pollution.
 ## DB table
 
 Migration: `sql/migrations/0003_namespace_allowlist.sql`
+Seed defaults: `sql/migrations/0017_allowlist_seed_defaults.sql`
 
 Table: `namespace_allowlist`
 - `kind`: one of:
@@ -38,6 +39,21 @@ Rules:
 - For rejected requests, return `Cache-Control: no-store` so intermediaries do not cache.
 - Log `allowlist_reject` with `kind`, `value`, and `system_id`.
 
+## Config export
+
+`/api/config` may export allowlist-derived values so clients only request known
+cache-key dimensions:
+- `system_ids`
+- `tile_schemas`
+- `severity_versions`
+- `policy_versions`
+- `layers_sets`
+- `compare_modes`
+
+Preferred behavior:
+- source values from `namespace_allowlist` (global + system-scoped entries)
+- keep output sorted and deterministic for stable client behavior.
+
 ## Maintenance workflow (manual)
 
 Add a value:
@@ -59,4 +75,3 @@ UPDATE namespace_allowlist
 SET disabled_at = NULL
 WHERE kind='severity_version' AND system_id IS NULL AND value='sev.v1';
 ```
-

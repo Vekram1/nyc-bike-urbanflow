@@ -25,6 +25,13 @@ export type ConfigRouteConfig = {
     layers_sets?: string[];
     compare_modes?: string[];
   };
+  allowlist_provider?: {
+    system_id: string;
+    list_allowed_values: (args: {
+      kind: "system_id" | "tile_schema" | "severity_version" | "policy_version" | "layers_set" | "compare_mode";
+      system_id?: string;
+    }) => Promise<string[]>;
+  };
 };
 
 function json(body: unknown, status: number): Response {
@@ -56,6 +63,29 @@ export function createConfigRouteHandler(config: ConfigRouteConfig): (request: R
       );
     }
 
-    return json(config, 200);
+    const { allowlist_provider: _allowlistProvider, ...baseConfig } = config;
+    let allowlist = baseConfig.allowlist;
+    if (!allowlist && config.allowlist_provider) {
+      const provider = config.allowlist_provider;
+      const [system_ids, tile_schemas, severity_versions, policy_versions, layers_sets, compare_modes] =
+        await Promise.all([
+          provider.list_allowed_values({ kind: "system_id" }),
+          provider.list_allowed_values({ kind: "tile_schema", system_id: provider.system_id }),
+          provider.list_allowed_values({ kind: "severity_version", system_id: provider.system_id }),
+          provider.list_allowed_values({ kind: "policy_version", system_id: provider.system_id }),
+          provider.list_allowed_values({ kind: "layers_set", system_id: provider.system_id }),
+          provider.list_allowed_values({ kind: "compare_mode", system_id: provider.system_id }),
+        ]);
+      allowlist = {
+        system_ids,
+        tile_schemas,
+        severity_versions,
+        policy_versions,
+        layers_sets,
+        compare_modes,
+      };
+    }
+
+    return json({ ...baseConfig, allowlist }, 200);
   };
 }

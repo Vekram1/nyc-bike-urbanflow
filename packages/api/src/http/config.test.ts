@@ -44,4 +44,37 @@ describe("createConfigRouteHandler", () => {
     const res = await handler(new Request("https://example.test/api/config?v=1", { method: "POST" }));
     expect(res.status).toBe(405);
   });
+
+  it("exports allowlist values from provider when static allowlist is omitted", async () => {
+    const handler = createConfigRouteHandler({
+      ...config,
+      allowlist_provider: {
+        system_id: "citibike-nyc",
+        async list_allowed_values({ kind }) {
+          switch (kind) {
+            case "system_id":
+              return ["citibike-nyc"];
+            case "tile_schema":
+              return ["tile.v1"];
+            case "severity_version":
+              return ["sev.v1"];
+            case "policy_version":
+              return ["rebal.greedy.v1"];
+            case "layers_set":
+              return ["inv,sev", "inv,press,sev"];
+            case "compare_mode":
+              return ["off", "delta", "split"];
+          }
+        },
+      },
+      allowlist: undefined,
+    });
+
+    const res = await handler(new Request("https://example.test/api/config?v=1", { method: "GET" }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.allowlist.system_ids).toEqual(["citibike-nyc"]);
+    expect(body.allowlist.tile_schemas).toEqual(["tile.v1"]);
+    expect(body.allowlist.compare_modes).toEqual(["off", "delta", "split"]);
+  });
 });
