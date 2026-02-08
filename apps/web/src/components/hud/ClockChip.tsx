@@ -40,13 +40,27 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
 
     const dateText = mounted ? formatDate(now) : "—";
     const timeText = mounted ? formatTime(now) : "—";
+    const dateIso = mounted ? now.toISOString().slice(0, 10) : undefined;
+    const timeIso = mounted ? now.toISOString() : undefined;
 
     return (
         <HUDCard>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <div style={{ fontSize: 12, opacity: 0.8 }}>{dateText}</div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{timeText}</div>
+                    <time
+                        dateTime={dateIso}
+                        style={{ fontSize: 12, opacity: 0.8 }}
+                        aria-label="Current date"
+                    >
+                        {dateText}
+                    </time>
+                    <time
+                        dateTime={timeIso}
+                        style={{ fontSize: 14, fontWeight: 600 }}
+                        aria-label="Current time"
+                    >
+                        {timeText}
+                    </time>
                 </div>
 
                 <div
@@ -71,7 +85,9 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
                         >
                             {mode === "live" ? "Live" : "Replay"}
                         </span>
-                        <span style={{ opacity: 0.55 }}>{compactSv(sv)}</span>
+                        <span style={{ opacity: 0.55 }} aria-label={`Serving view ${sv}`}>
+                            {compactSv(sv)}
+                        </span>
                     </div>
                     {inspectLocked ? (
                         <div
