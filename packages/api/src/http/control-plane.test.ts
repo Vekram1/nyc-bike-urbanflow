@@ -324,4 +324,53 @@ describe("createControlPlaneHandler", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/vnd.mapbox-vector-tile");
   });
+
+  it("dispatches /api/tiles/episodes when episode tile deps are configured", async () => {
+    const handler = createControlPlaneHandler({
+      ...deps,
+      episodesTiles: {
+        tokens: {
+          async validate() {
+            return {
+              ok: true as const,
+              payload: {
+                system_id: "citibike-nyc",
+                view_id: 10,
+                view_spec_sha256: "abc",
+              },
+            };
+          },
+        } as unknown as import("../sv/service").ServingTokenService,
+        allowlist: {
+          async isAllowed() {
+            return true;
+          },
+        },
+        default_severity_version: "sev.v1",
+        tileStore: {
+          async fetchEpisodesTile() {
+            return {
+              ok: true as const,
+              mvt: new Uint8Array([1, 2]),
+              feature_count: 1,
+              bytes: 2,
+            };
+          },
+        },
+        cache: {
+          max_age_s: 30,
+          s_maxage_s: 120,
+          stale_while_revalidate_s: 15,
+        },
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/episodes/12/1200/1530.mvt?v=1&sv=abc&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/vnd.mapbox-vector-tile");
+  });
 });

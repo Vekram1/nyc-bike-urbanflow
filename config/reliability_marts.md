@@ -40,11 +40,16 @@ episodes) with lineage fields so replay/debug surfaces can explain metrics.
   - daily rolled totals and `episodes_count`
   - intended for cheap header-level observability and API summaries.
 
+- `episode_markers_15m`
+  - key: `(system_id, station_key, severity_version, bucket_ts, episode_type)`
+  - 15-minute bucket expansion of `station_reliability_episodes` for map overlays.
+
 ## Refresh Functions
 
 - `refresh_station_reliability_daily(system_id, from_day, to_day, severity_version)`
 - `refresh_station_reliability_episodes(system_id, from_ts, to_ts, severity_version)`
 - `refresh_reliability_mart_headers(system_id, from_day, to_day, severity_version)`
+- `refresh_episode_markers_15m(system_id, from_ts, to_ts, severity_version)`
 
 ## Rebuild Script
 
@@ -53,3 +58,18 @@ Use:
 
 The script runs daily rollup, episodes extraction, and mart-header refresh for a
 bounded date window.
+
+## Episode Overlay Tiles
+
+- Endpoint: `GET /api/tiles/episodes/{z}/{x}/{y}.mvt?v=1&sv=...&T_bucket=...`
+- Keying rules:
+  - `sv` is required (no raw watermark/as_of query parameters).
+  - Unknown query params return `400`.
+  - Optional `system_id` must match the token system id.
+- Source binding:
+  - Route resolves `severity_version` from serving-view metadata bound to `sv`.
+  - If metadata is unavailable, route falls back to configured default severity version.
+- Marker semantics:
+  - Emits stations with active episodes at `T_bucket`
+    (`episode_start_ts <= T_bucket <= episode_end_ts`).
+  - Deterministic cap/order is enforced: longest duration first, then `station_key`.

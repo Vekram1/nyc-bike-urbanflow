@@ -20,6 +20,13 @@ SELECT refresh_station_reliability_episodes(
   'sev.v1'
 ) AS episodes_rows_upserted;
 
+SELECT refresh_episode_markers_15m(
+  :'system_id',
+  :'from_day'::date::timestamptz,
+  (:'to_day'::date + INTERVAL '1 day')::timestamptz,
+  'sev.v1'
+) AS episode_markers_rows_upserted;
+
 SELECT refresh_reliability_mart_headers(
   :'system_id',
   :'from_day'::date,
