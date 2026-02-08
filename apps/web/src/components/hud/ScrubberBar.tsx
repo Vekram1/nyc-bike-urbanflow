@@ -1,6 +1,8 @@
 // apps/web/src/components/hud/ScrubberBar.tsx
 "use client";
 
+import { useId } from "react";
+
 import HUDCard from "./HUDCard";
 import Keycap from "./Keycap";
 
@@ -29,8 +31,15 @@ export default function ScrubberBar({
     onStepForward,
     onSeek,
 }: Props) {
+    const scrubberLabelId = useId();
+    const scrubberValueId = useId();
+    const scrubberHelpId = useId();
     const clampedProgress = Math.min(1, Math.max(0, progress));
     const progressPercent = Math.round(clampedProgress * 100);
+    const scrubberValueText = `${progressLabel}. Playback ${
+        playing ? "playing" : "paused"
+    }. Speed ${speed.toFixed(2)}x.`;
+
     const onTrackClick = (e: React.MouseEvent<HTMLButtonElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
         if (rect.width <= 0) return;
@@ -89,10 +98,12 @@ export default function ScrubberBar({
                     title="Seek timeline position"
                     aria-label="Seek timeline position"
                     role="progressbar"
+                    aria-labelledby={`${scrubberLabelId} ${scrubberValueId}`}
+                    aria-describedby={scrubberHelpId}
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={progressPercent}
-                    aria-valuetext={progressLabel}
+                    aria-valuetext={scrubberValueText}
                 >
                     <div
                         style={{
@@ -156,8 +167,19 @@ export default function ScrubberBar({
                     </button>
                 </div>
             </div>
-            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+            <div id={scrubberLabelId} style={srOnlyStyle}>
+                Timeline progress
+            </div>
+            <output
+                id={scrubberValueId}
+                aria-live="polite"
+                aria-atomic="true"
+                style={{ marginTop: 8, fontSize: 12, opacity: 0.75, display: "block" }}
+            >
                 {progressLabel}
+            </output>
+            <div id={scrubberHelpId} style={srOnlyStyle}>
+                Click the timeline bar to seek or use step controls for single bucket movement.
             </div>
         </HUDCard>
     );
@@ -182,4 +204,16 @@ const trackButtonStyle: React.CSSProperties = {
     padding: 0,
     background: "transparent",
     cursor: "pointer",
+};
+
+const srOnlyStyle: React.CSSProperties = {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: "hidden",
+    clip: "rect(0 0 0 0)",
+    whiteSpace: "nowrap",
+    border: 0,
 };
