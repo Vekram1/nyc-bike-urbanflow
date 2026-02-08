@@ -66,47 +66,55 @@ export default function MapShell() {
             {/* HUD OVERLAY */}
             <HUDRoot>
                 <div className="uf-top-center">
-                    <ClockChip
-                        mode={mock.clock.mode}
-                        sv={mock.clock.sv}
-                        delayed={mock.clock.delayed}
-                        inspectLocked={mock.clock.inspectLocked}
-                    />
+                    <section role="region" aria-label="Clock and serving status">
+                        <ClockChip
+                            mode={mock.clock.mode}
+                            sv={mock.clock.sv}
+                            delayed={mock.clock.delayed}
+                            inspectLocked={mock.clock.inspectLocked}
+                        />
+                    </section>
                 </div>
 
                 <div className="uf-bottom">
-                    <ScrubberBar
-                        playing={hud.playing}
-                        speed={hud.speed}
-                        progress={hud.progress}
-                        progressLabel={progressLabel}
-                        onTogglePlay={hud.togglePlay}
-                        onSpeedDown={hud.speedDown}
-                        onSpeedUp={hud.speedUp}
-                        onStepBack={hud.stepBack}
-                        onStepForward={hud.stepForward}
-                        onSeek={hud.seekTo}
-                    />
+                    <section role="region" aria-label="Timeline playback controls">
+                        <ScrubberBar
+                            playing={hud.playing}
+                            speed={hud.speed}
+                            progress={hud.progress}
+                            progressLabel={progressLabel}
+                            onTogglePlay={hud.togglePlay}
+                            onSpeedDown={hud.speedDown}
+                            onSpeedUp={hud.speedUp}
+                            onStepBack={hud.stepBack}
+                            onStepForward={hud.stepForward}
+                            onSeek={hud.seekTo}
+                        />
+                    </section>
                 </div>
 
                 <div className="uf-left-stack">
-                    <CommandStack
-                        playing={hud.playing}
-                        layers={hud.layers}
-                        onTogglePlay={hud.togglePlay}
-                        onToggleLayer={hud.toggleLayer}
-                    />
+                    <nav aria-label="Playback and layer controls">
+                        <CommandStack
+                            playing={hud.playing}
+                            layers={hud.layers}
+                            onTogglePlay={hud.togglePlay}
+                            onToggleLayer={hud.toggleLayer}
+                        />
+                    </nav>
                 </div>
 
                 <div className="uf-right-stack">
-                    <StatsCard
-                        activeStations={mock.stats.activeStations}
-                        empty={mock.stats.empty}
-                        full={mock.stats.full}
-                        tileP95={mock.stats.tileP95}
-                        fps={mock.stats.fps}
-                        spark={mock.stats.spark}
-                    />
+                    <aside role="complementary" aria-label="Network stats and performance">
+                        <StatsCard
+                            activeStations={mock.stats.activeStations}
+                            empty={mock.stats.empty}
+                            full={mock.stats.full}
+                            tileP95={mock.stats.tileP95}
+                            fps={mock.stats.fps}
+                            spark={mock.stats.spark}
+                        />
+                    </aside>
                 </div>
 
                 <StationDrawer station={selected} onClose={closeInspect} />
