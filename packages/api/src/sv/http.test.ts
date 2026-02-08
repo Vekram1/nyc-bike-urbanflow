@@ -83,6 +83,8 @@ describe("validateSvQuery", () => {
               system_id: "citibike-nyc",
               view_id: 42,
               view_spec_sha256: "hash",
+              issued_at_s: 1738872000,
+              expires_at_s: 1738872600,
             },
           };
         },
@@ -105,6 +107,8 @@ describe("validateSvQuery", () => {
       expect(result.system_id).toBe("citibike-nyc");
       expect(result.view_id).toBe(42);
       expect(result.view_spec_sha256).toBe("hash");
+      expect(result.issued_at_s).toBe(1738872000);
+      expect(result.expires_at_s).toBe(1738872600);
     }
     expect(events.includes("sv.ok")).toBe(true);
   });

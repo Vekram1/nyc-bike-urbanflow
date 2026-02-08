@@ -8,6 +8,8 @@ const validSv = {
     system_id: "citibike-nyc",
     view_id: 42,
     view_spec_sha256: "view-hash",
+    issued_at_s: 1738872000,
+    expires_at_s: 1738872600,
   },
 };
 
@@ -195,6 +197,58 @@ describe("createCompositeTilesRouteHandler", () => {
     expect(seenArgs?.view_id).toBe(42);
     expect(seenArgs?.layers_set).toBe("inv,press,sev");
     expect(seenArgs?.pressure_source).toBe("live_proxy");
+  });
+
+  it("uses immutable replay cache policy for long-lived sv tokens", async () => {
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return {
+            ok: true as const,
+            payload: {
+              system_id: "citibike-nyc",
+              view_id: 42,
+              view_spec_sha256: "view-hash",
+              issued_at_s: 1738872000,
+              expires_at_s: 1739476800,
+            },
+          };
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile() {
+          return {
+            ok: true as const,
+            mvt: new Uint8Array([1, 2, 3]),
+            feature_count: 3,
+            bytes: 3,
+          };
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+        replay_max_age_s: 600,
+        replay_s_maxage_s: 3600,
+        replay_stale_while_revalidate_s: 60,
+        replay_min_ttl_s: 86400,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=abc&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toContain("immutable");
+    expect(res.headers.get("Cache-Control")).toContain("max-age=600");
   });
 
   it("returns 429 with origin shield headers when tile store is overloaded", async () => {

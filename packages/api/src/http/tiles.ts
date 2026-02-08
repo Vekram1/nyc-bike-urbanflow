@@ -65,6 +65,13 @@ export type CompositeTilesRouteDeps = {
     max_age_s: number;
     s_maxage_s: number;
     stale_while_revalidate_s: number;
+    replay_max_age_s?: number;
+    replay_s_maxage_s?: number;
+    replay_stale_while_revalidate_s?: number;
+    replay_min_ttl_s?: number;
+  };
+  logger?: {
+    info: (event: string, details: Record<string, unknown>) => void;
   };
 };
 
@@ -296,12 +303,38 @@ export function createCompositeTilesRouteHandler(
       return json({ error: { code: tile.code, message: tile.message } }, tile.status, headers);
     }
 
+    const svTtl =
+      typeof sv.expires_at_s === "number" && typeof sv.issued_at_s === "number"
+        ? sv.expires_at_s - sv.issued_at_s
+        : null;
+    const replayMinTtl = deps.cache.replay_min_ttl_s ?? 86_400;
+    const isReplay = svTtl !== null && svTtl >= replayMinTtl;
+    const maxAge = isReplay ? (deps.cache.replay_max_age_s ?? deps.cache.max_age_s) : deps.cache.max_age_s;
+    const sMaxage = isReplay ? (deps.cache.replay_s_maxage_s ?? deps.cache.s_maxage_s) : deps.cache.s_maxage_s;
+    const swr = isReplay
+      ? (deps.cache.replay_stale_while_revalidate_s ?? deps.cache.stale_while_revalidate_s)
+      : deps.cache.stale_while_revalidate_s;
+
+    const cacheControl = isReplay
+      ? `public, max-age=${maxAge}, s-maxage=${sMaxage}, stale-while-revalidate=${swr}, immutable`
+      : `public, max-age=${maxAge}, s-maxage=${sMaxage}, stale-while-revalidate=${swr}`;
+
+    deps.logger?.info("tiles.cache_policy", {
+      path: url.pathname,
+      system_id: sv.system_id,
+      tile_schema: tileSchema,
+      severity_version: severityVersion,
+      layers_set: layersSet,
+      sv_ttl_s: svTtl,
+      cache_mode: isReplay ? "replay" : "live",
+      cache_control: cacheControl,
+    });
+
     return new Response(tile.mvt, {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.mapbox-vector-tile",
-        "Cache-Control":
-          `public, max-age=${deps.cache.max_age_s}, s-maxage=${deps.cache.s_maxage_s}, stale-while-revalidate=${deps.cache.stale_while_revalidate_s}`,
+        "Cache-Control": cacheControl,
         "X-Tile-Feature-Count": String(tile.feature_count),
         "X-Tile-Bytes": String(tile.bytes),
         "X-Tile-Degrade-Level": String(tile.degrade_level ?? 0),

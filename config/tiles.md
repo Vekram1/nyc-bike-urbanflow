@@ -16,6 +16,14 @@ Composite tile URLs are immutable identifiers of response semantics:
 
 Unknown query params return `400` with `Cache-Control: no-store`.
 
+## Cache policy by sv TTL
+
+- Live-oriented `sv` tokens (short TTL) use SWR cache policy.
+- Replay-oriented `sv` tokens (long TTL, default threshold `>= 86400s`) use
+  replay cache policy and include `immutable`.
+- Cache decisions are logged as `tiles.cache_policy` with key dimensions and
+  selected `Cache-Control` header.
+
 ## Canonical SQL + deterministic output
 
 - SQL shape is fixed in `packages/api/src/tiles/composite.ts` via `buildCompositeTileSql`.

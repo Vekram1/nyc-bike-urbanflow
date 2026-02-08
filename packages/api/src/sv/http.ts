@@ -13,6 +13,8 @@ export type SvValidationResult =
       system_id: string;
       view_id: number;
       view_spec_sha256: string;
+      issued_at_s?: number;
+      expires_at_s?: number;
     }
   | {
       ok: false;
@@ -95,5 +97,7 @@ export async function validateSvQuery(
     system_id: result.payload.system_id,
     view_id: result.payload.view_id,
     view_spec_sha256: result.payload.view_spec_sha256,
+    issued_at_s: result.payload.issued_at_s,
+    expires_at_s: result.payload.expires_at_s,
   };
 }
