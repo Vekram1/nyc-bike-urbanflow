@@ -142,6 +142,14 @@ export function useHudControls() {
                 event.preventDefault();
                 togglePlay();
                 return true;
+            case "Home":
+                event.preventDefault();
+                seekTo(0);
+                return true;
+            case "End":
+                event.preventDefault();
+                seekTo(1);
+                return true;
             case "ArrowLeft":
                 event.preventDefault();
                 stepBack();

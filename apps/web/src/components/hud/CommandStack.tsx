@@ -38,6 +38,7 @@ export default function CommandStack({
                         </span>
                     </button>
                     <Row label="Step" hint="← / →" />
+                    <Row label="Jump" hint="Home / End" />
                     <Row label="Speed" hint="- / +" />
                     <Row label="About" hint="?" />
                 </div>
