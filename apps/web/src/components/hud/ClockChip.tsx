@@ -42,9 +42,31 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
     const timeText = mounted ? formatTime(now) : "—";
     const dateIso = mounted ? now.toISOString().slice(0, 10) : undefined;
     const timeIso = mounted ? now.toISOString() : undefined;
+    const statusSummary = [
+        mode === "live" ? "Live mode" : "Replay mode",
+        inspectLocked ? "Inspect lock active" : "Inspect lock inactive",
+        delayed ? "Data delayed" : "Data current",
+    ].join(". ");
 
     return (
         <HUDCard>
+            <span
+                style={{
+                    position: "absolute",
+                    width: 1,
+                    height: 1,
+                    padding: 0,
+                    margin: -1,
+                    overflow: "hidden",
+                    clip: "rect(0 0 0 0)",
+                    whiteSpace: "nowrap",
+                    border: 0,
+                }}
+                aria-live="polite"
+                aria-atomic="true"
+            >
+                {statusSummary}
+            </span>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                     <time
