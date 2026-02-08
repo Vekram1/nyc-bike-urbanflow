@@ -30,6 +30,7 @@ export default function ScrubberBar({
     onSeek,
 }: Props) {
     const clampedProgress = Math.min(1, Math.max(0, progress));
+    const progressPercent = Math.round(clampedProgress * 100);
     const onTrackClick = (e: React.MouseEvent<HTMLButtonElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
         if (rect.width <= 0) return;
@@ -87,6 +88,11 @@ export default function ScrubberBar({
                     style={trackButtonStyle}
                     title="Seek timeline position"
                     aria-label="Seek timeline position"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={progressPercent}
+                    aria-valuetext={progressLabel}
                 >
                     <div
                         style={{
