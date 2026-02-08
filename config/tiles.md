@@ -36,3 +36,15 @@ Dropped optional properties under degrade level 1:
 - `sev.severity_components_compact`
 - `press.pressure_components_compact`
 - `epi.episode_duration_s`
+
+## Observability
+
+Composite tile store emits structured timing/degrade logs:
+- `composite_tile.query`
+  - dimensions: `system_id`, `z/x/y`, `severity_version`, `layers_set`,
+    `include_optional_props`
+  - metrics: `duration_ms`, `feature_count`, `bytes`, `row_found`
+- `composite_tile.degrade`
+  - dimensions: `system_id`, `z/x/y`, `severity_version`, `layers_set`
+  - metrics: `bytes_after_trim`, `max_bytes_per_tile`
+  - action: `reject_overloaded`

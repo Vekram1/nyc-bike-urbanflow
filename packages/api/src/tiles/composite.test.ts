@@ -184,4 +184,39 @@ describe("createCompositeTileStore", () => {
     expect(out.code).toBe("tile_overloaded");
     expect(db.calls).toBe(2);
   });
+
+  it("emits timing/degrade logs for baseline performance tracking", async () => {
+    const db = new FakeDb([
+      { mvt: new Uint8Array(32), feature_count: 8 },
+      { mvt: new Uint8Array(16), feature_count: 8 },
+    ]);
+    const events: Array<{ event: string; details: Record<string, unknown> }> = [];
+    const store = createCompositeTileStore({
+      db,
+      max_features_per_tile: 1500,
+      max_bytes_per_tile: 10,
+      logger: {
+        info(event, details) {
+          events.push({ event, details });
+        },
+      },
+    });
+
+    const out = await store.fetchCompositeTile({
+      system_id: "citibike-nyc",
+      view_id: 9,
+      view_spec_sha256: "abc",
+      pressure_source: "live_proxy",
+      z: 12,
+      x: 1200,
+      y: 1530,
+      t_bucket_epoch_s: 1738872000,
+      tile_schema: "tile.v1",
+      severity_version: "sev.v1",
+      layers_set: "inv,press,sev",
+    });
+    expect(out.ok).toBe(false);
+    expect(events.filter((e) => e.event === "composite_tile.query").length).toBe(2);
+    expect(events.some((e) => e.event === "composite_tile.degrade")).toBe(true);
+  });
 });

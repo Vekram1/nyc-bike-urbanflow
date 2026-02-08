@@ -208,6 +208,9 @@ export function createCompositeTileStore(deps: {
   max_bytes_per_tile: number;
   mvt_extent?: number;
   mvt_buffer?: number;
+  logger?: {
+    info: (event: string, details: Record<string, unknown>) => void;
+  };
 }): {
   fetchCompositeTile: (args: CompositeTileArgs) => Promise<CompositeTileResult>;
 } {
@@ -236,9 +239,21 @@ export function createCompositeTileStore(deps: {
       mvt_buffer: buffer,
     });
 
+    const startedAt = Date.now();
     const result = await deps.db.query<CompositeTileRow>(plan.text, plan.params);
     const row = result.rows[0];
     if (!row) {
+      deps.logger?.info("composite_tile.query", {
+        system_id: args.system_id,
+        z: args.z,
+        x: args.x,
+        y: args.y,
+        severity_version: args.severity_version,
+        layers_set: args.layers_set,
+        include_optional_props: includeOptionalProps,
+        duration_ms: Date.now() - startedAt,
+        row_found: false,
+      });
       return {
         ok: false,
         status: 404,
@@ -248,6 +263,19 @@ export function createCompositeTileStore(deps: {
     }
     const mvt = asBytes(row.mvt);
     const featureCount = Number(row.feature_count);
+    deps.logger?.info("composite_tile.query", {
+      system_id: args.system_id,
+      z: args.z,
+      x: args.x,
+      y: args.y,
+      severity_version: args.severity_version,
+      layers_set: args.layers_set,
+      include_optional_props: includeOptionalProps,
+      duration_ms: Date.now() - startedAt,
+      feature_count: Number.isFinite(featureCount) ? featureCount : 0,
+      bytes: mvt.byteLength,
+      row_found: true,
+    });
     return {
       ok: true,
       mvt,
@@ -271,6 +299,17 @@ export function createCompositeTileStore(deps: {
         return trimmed;
       }
       if (trimmed.bytes > deps.max_bytes_per_tile) {
+        deps.logger?.info("composite_tile.degrade", {
+          system_id: args.system_id,
+          z: args.z,
+          x: args.x,
+          y: args.y,
+          severity_version: args.severity_version,
+          layers_set: args.layers_set,
+          action: "reject_overloaded",
+          bytes_after_trim: trimmed.bytes,
+          max_bytes_per_tile: deps.max_bytes_per_tile,
+        });
         return {
           ok: false,
           status: 429,
