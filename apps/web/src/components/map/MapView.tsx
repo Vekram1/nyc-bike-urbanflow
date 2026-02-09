@@ -39,6 +39,23 @@ type SourceWithSetData = {
     setData: (data: unknown) => void;
 };
 
+type UfE2EState = {
+    mapViewMountCount?: number;
+    mapRefreshAttempts?: number;
+    mapRefreshSuccess?: number;
+    mapRefreshSkippedFrozen?: number;
+    mapRefreshSkippedNoMap?: number;
+    mapRefreshSkippedNoSource?: number;
+    mapRefreshBadPayload?: number;
+    mapRefreshLastFeatureCount?: number;
+};
+
+function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
+    if (typeof window === "undefined") return;
+    const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
+    (window as { __UF_E2E?: UfE2EState }).__UF_E2E = update(current);
+}
+
 function toNum(v: unknown): number | null {
     if (v == null) return null;
     const n = Number(v);
@@ -61,13 +78,17 @@ export default function MapView(props: Props) {
     useEffect(() => {
         activeMapViewCount += 1;
         console.info("[MapView] mount", { activeMapViewCount });
-        if (typeof window !== "undefined") {
-            const current = (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E ?? {};
-            (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E = {
-                ...current,
-                mapViewMountCount: activeMapViewCount,
-            };
-        }
+        updateUfE2E((current) => ({
+            ...current,
+            mapViewMountCount: activeMapViewCount,
+            mapRefreshAttempts: current.mapRefreshAttempts ?? 0,
+            mapRefreshSuccess: current.mapRefreshSuccess ?? 0,
+            mapRefreshSkippedFrozen: current.mapRefreshSkippedFrozen ?? 0,
+            mapRefreshSkippedNoMap: current.mapRefreshSkippedNoMap ?? 0,
+            mapRefreshSkippedNoSource: current.mapRefreshSkippedNoSource ?? 0,
+            mapRefreshBadPayload: current.mapRefreshBadPayload ?? 0,
+            mapRefreshLastFeatureCount: current.mapRefreshLastFeatureCount ?? 0,
+        }));
 
         if (activeMapViewCount > 1) {
             console.error("[MapView] mount_once_invariant_violation", {
@@ -80,13 +101,7 @@ export default function MapView(props: Props) {
         return () => {
             activeMapViewCount = Math.max(0, activeMapViewCount - 1);
             console.info("[MapView] unmount", { activeMapViewCount });
-            if (typeof window !== "undefined") {
-                const current = (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E ?? {};
-                (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E = {
-                    ...current,
-                    mapViewMountCount: activeMapViewCount,
-                };
-            }
+            updateUfE2E((current) => ({ ...current, mapViewMountCount: activeMapViewCount }));
         };
     }, []);
 
@@ -161,13 +176,35 @@ export default function MapView(props: Props) {
     }, []);
 
     const refreshStations = useCallback(async () => {
-        if (freeze) return; // <— Inspect lock: no updates while drawer is open
+        updateUfE2E((current) => ({
+            ...current,
+            mapRefreshAttempts: (current.mapRefreshAttempts ?? 0) + 1,
+        }));
+        if (freeze) {
+            updateUfE2E((current) => ({
+                ...current,
+                mapRefreshSkippedFrozen: (current.mapRefreshSkippedFrozen ?? 0) + 1,
+            }));
+            return; // <— Inspect lock: no updates while drawer is open
+        }
 
         const map = mapRef.current?.getMap();
-        if (!map) return;
+        if (!map) {
+            updateUfE2E((current) => ({
+                ...current,
+                mapRefreshSkippedNoMap: (current.mapRefreshSkippedNoMap ?? 0) + 1,
+            }));
+            return;
+        }
 
         const src = map.getSource(SOURCE_ID);
-        if (!src || !("setData" in src)) return;
+        if (!src || !("setData" in src)) {
+            updateUfE2E((current) => ({
+                ...current,
+                mapRefreshSkippedNoSource: (current.mapRefreshSkippedNoSource ?? 0) + 1,
+            }));
+            return;
+        }
 
         const res = await fetch("/api/gbfs/stations", { cache: "no-store" });
         const json = await res.json();
@@ -175,12 +212,21 @@ export default function MapView(props: Props) {
         if (json?.type === "FeatureCollection") {
             (src as SourceWithSetData).setData(json);
             const featureCount = Array.isArray(json.features) ? json.features.length : 0;
+            updateUfE2E((current) => ({
+                ...current,
+                mapRefreshSuccess: (current.mapRefreshSuccess ?? 0) + 1,
+                mapRefreshLastFeatureCount: featureCount,
+            }));
             console.debug("[MapView] source_updated", {
                 sourceId: SOURCE_ID,
                 featureCount,
                 freeze: !!freeze,
             });
         } else {
+            updateUfE2E((current) => ({
+                ...current,
+                mapRefreshBadPayload: (current.mapRefreshBadPayload ?? 0) + 1,
+            }));
             console.warn("Unexpected GBFS response:", json);
         }
     }, [freeze]);

@@ -91,6 +91,13 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.tileRequestKeyHistory` (bounded last 40 entries)
   - `window.__UF_E2E.invariantViolations` (bounded last 20 entries)
   - `window.__UF_E2E.blockedActions` (per-action counters while inspect lock blocks controls)
+  - `window.__UF_E2E.mapRefreshAttempts`
+  - `window.__UF_E2E.mapRefreshSuccess`
+  - `window.__UF_E2E.mapRefreshSkippedFrozen`
+  - `window.__UF_E2E.mapRefreshSkippedNoMap`
+  - `window.__UF_E2E.mapRefreshSkippedNoSource`
+  - `window.__UF_E2E.mapRefreshBadPayload`
+  - `window.__UF_E2E.mapRefreshLastFeatureCount`
 - Stable selector hooks for browser tests:
   - `data-uf-id="app-root"`
   - `data-uf-id="map-shell"`
