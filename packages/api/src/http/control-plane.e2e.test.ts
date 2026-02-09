@@ -1216,6 +1216,24 @@ describe("control-plane e2e", () => {
     expect(seriesUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const seriesUnknownParamBody = await seriesUnknownParamRes.json();
     expect(seriesUnknownParamBody.error.code).toBe("unknown_param");
+
+    const invalidDetailKeyRes = await handler(
+      new Request(`https://example.test/api/stations/%20bad?sv=${encodeURIComponent(sv)}`)
+    );
+    expect(invalidDetailKeyRes.status).toBe(400);
+    expect(invalidDetailKeyRes.headers.get("Cache-Control")).toBe("no-store");
+    const invalidDetailKeyBody = await invalidDetailKeyRes.json();
+    expect(invalidDetailKeyBody.error.code).toBe("invalid_station_key");
+
+    const invalidSeriesKeyRes = await handler(
+      new Request(
+        `https://example.test/api/stations/%20bad/series?sv=${encodeURIComponent(sv)}&from=1738872000&to=1738875600&bucket=300`
+      )
+    );
+    expect(invalidSeriesKeyRes.status).toBe(400);
+    expect(invalidSeriesKeyRes.headers.get("Cache-Control")).toBe("no-store");
+    const invalidSeriesKeyBody = await invalidSeriesKeyRes.json();
+    expect(invalidSeriesKeyBody.error.code).toBe("invalid_station_key");
   });
 
   it("rejects unknown query params on admin endpoints with 400 + no-store", async () => {
