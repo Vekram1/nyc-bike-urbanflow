@@ -15,6 +15,7 @@ type Tier2State =
 
 type UfE2EState = {
     tier1OpenedCount?: number;
+    tier1LastOpenedAt?: string;
     tier2RequestedCount?: number;
     tier2LoadingCount?: number;
     tier2SuccessCount?: number;
@@ -91,6 +92,7 @@ export default function StationDrawer(props: {
         updateUfE2E((current) => ({
             ...current,
             tier1OpenedCount: (current.tier1OpenedCount ?? 0) + 1,
+            tier1LastOpenedAt: new Date().toISOString(),
             tier2InFlight: false,
         }));
         setTier2LastHttpStatusText("");

@@ -159,6 +159,7 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.mapFeatureStateLastClearAt`
   - `window.__UF_E2E.mapFeatureStateLastErrorAt`
   - `window.__UF_E2E.tier1OpenedCount`
+  - `window.__UF_E2E.tier1LastOpenedAt`
   - `window.__UF_E2E.tier2RequestedCount`
   - `window.__UF_E2E.tier2LoadingCount`
   - `window.__UF_E2E.tier2SuccessCount`
