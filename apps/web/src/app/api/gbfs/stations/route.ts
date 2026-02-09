@@ -71,6 +71,7 @@ export async function GET() {
                 capacity != null && bikes != null && capacity > 0
                     ? Math.min(1, Math.max(0, bikes / capacity))
                     : null;
+            const bikesAvailabilityRatio = occupancyRatio;
             const severityScore =
                 occupancyRatio == null
                     ? null
@@ -95,6 +96,7 @@ export async function GET() {
                     inventory_slots_known: totalKnownSlots,
                     inventory_delta: inventoryDelta,
                     occupancy_ratio: occupancyRatio,
+                    bikes_availability_ratio: bikesAvailabilityRatio,
                     severity_score: severityScore,
 
                     is_renting: st?.is_renting ?? null,

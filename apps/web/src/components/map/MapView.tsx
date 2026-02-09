@@ -185,12 +185,20 @@ export default function MapView(props: Props) {
                     // simple “bad if empty/full else good” — replace with severity later
                     "circle-color": [
                         "case",
-                        ["!", ["has", "severity_score"]], "#7f8c8d",
-                        ["interpolate", ["linear"], ["coalesce", ["get", "severity_score"], 0],
-                            0, "#22c55e",
-                            0.35, "#facc15",
-                            0.65, "#f97316",
-                            1, "#ef4444",
+                        ["!", ["has", "bikes_availability_ratio"]], "#7f8c8d",
+                        [
+                            "step",
+                            ["coalesce", ["get", "bikes_availability_ratio"], -1],
+                            "#ef4444",
+                            0.1, "#f97316",
+                            0.2, "#fb923c",
+                            0.3, "#fdba74",
+                            0.4, "#facc15",
+                            0.5, "#fde047",
+                            0.6, "#d9f99d",
+                            0.7, "#86efac",
+                            0.8, "#4ade80",
+                            0.9, "#22c55e",
                         ],
                     ],
 
