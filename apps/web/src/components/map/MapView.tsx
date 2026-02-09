@@ -64,6 +64,9 @@ type UfE2EState = {
     mapFeatureStateClearCount?: number;
     mapFeatureStateErrorCount?: number;
     mapFeatureStateLastSelectedId?: string;
+    mapFeatureStateLastSetAt?: string;
+    mapFeatureStateLastClearAt?: string;
+    mapFeatureStateLastErrorAt?: string;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -120,6 +123,9 @@ export default function MapView(props: Props) {
             mapFeatureStateClearCount: current.mapFeatureStateClearCount ?? 0,
             mapFeatureStateErrorCount: current.mapFeatureStateErrorCount ?? 0,
             mapFeatureStateLastSelectedId: current.mapFeatureStateLastSelectedId ?? "",
+            mapFeatureStateLastSetAt: current.mapFeatureStateLastSetAt ?? "",
+            mapFeatureStateLastClearAt: current.mapFeatureStateLastClearAt ?? "",
+            mapFeatureStateLastErrorAt: current.mapFeatureStateLastErrorAt ?? "",
         }));
 
         if (activeMapViewCount > 1) {
@@ -315,11 +321,13 @@ export default function MapView(props: Props) {
                 updateUfE2E((current) => ({
                     ...current,
                     mapFeatureStateClearCount: (current.mapFeatureStateClearCount ?? 0) + 1,
+                    mapFeatureStateLastClearAt: new Date().toISOString(),
                 }));
             } catch {
                 updateUfE2E((current) => ({
                     ...current,
                     mapFeatureStateErrorCount: (current.mapFeatureStateErrorCount ?? 0) + 1,
+                    mapFeatureStateLastErrorAt: new Date().toISOString(),
                 }));
             }
         }
@@ -331,11 +339,13 @@ export default function MapView(props: Props) {
                     ...current,
                     mapFeatureStateSetCount: (current.mapFeatureStateSetCount ?? 0) + 1,
                     mapFeatureStateLastSelectedId: next,
+                    mapFeatureStateLastSetAt: new Date().toISOString(),
                 }));
             } catch {
                 updateUfE2E((current) => ({
                     ...current,
                     mapFeatureStateErrorCount: (current.mapFeatureStateErrorCount ?? 0) + 1,
+                    mapFeatureStateLastErrorAt: new Date().toISOString(),
                 }));
             }
         }
