@@ -221,7 +221,12 @@ export default function MapShell() {
                     </aside>
                 </div>
 
-                <StationDrawer station={selected} onClose={closeInspect} />
+                <StationDrawer
+                    station={selected}
+                    sv={mock.clock.sv}
+                    timelineBucket={timelineBucket}
+                    onClose={closeInspect}
+                />
             </HUDRoot>
             {hud.compareMode && hud.splitView ? (
                 <div

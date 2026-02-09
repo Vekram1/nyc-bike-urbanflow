@@ -14,9 +14,11 @@ type Tier2State =
 
 export default function StationDrawer(props: {
     station: StationPick | null;
+    sv: string;
+    timelineBucket: number;
     onClose: () => void;
 }) {
-    const { station, onClose } = props;
+    const { station, sv, timelineBucket, onClose } = props;
     const isOpen = station != null;
     const debounceRef = useRef<number | null>(null);
     const abortRef = useRef<AbortController | null>(null);
@@ -66,7 +68,8 @@ export default function StationDrawer(props: {
             message: `Loading Tier2 details (debounced ${TIER2_DEBOUNCE_MS}ms)...`,
         });
         console.info("[StationDrawer] tier2_requested", {
-            stationId,
+            station_key: stationId,
+            sv,
             debounceMs: TIER2_DEBOUNCE_MS,
         });
 
@@ -75,7 +78,11 @@ export default function StationDrawer(props: {
             abortRef.current = ctrl;
             try {
                 const res = await fetch(
-                    `/api/stations/${encodeURIComponent(stationId)}/drawer`,
+                    `/api/stations/${encodeURIComponent(stationId)}/drawer?sv=${encodeURIComponent(
+                        sv
+                    )}&t_bucket=${encodeURIComponent(
+                        station?.t_bucket ?? String(timelineBucket)
+                    )}`,
                     { cache: "no-store", signal: ctrl.signal }
                 );
                 const text = await res.text();
@@ -87,7 +94,8 @@ export default function StationDrawer(props: {
                 }
 
                 console.info("[StationDrawer] tier2_loaded", {
-                    stationId,
+                    station_key: stationId,
+                    sv,
                     bundleBytes,
                 });
                 setTier2({
@@ -99,7 +107,8 @@ export default function StationDrawer(props: {
             } catch (error) {
                 const message = error instanceof Error ? error.message : "Unknown error";
                 console.warn("[StationDrawer] tier2_failed", {
-                    stationId,
+                    station_key: stationId,
+                    sv,
                     error: message,
                 });
                 setTier2({
@@ -116,6 +125,8 @@ export default function StationDrawer(props: {
         <div
             className="uf-drawer"
             data-uf-id="station-drawer"
+            data-uf-station-key={station.station_id}
+            data-uf-tier2-status={tier2.status}
             role="dialog"
             aria-labelledby={titleId}
             aria-describedby={`${descId} ${tierId}`}

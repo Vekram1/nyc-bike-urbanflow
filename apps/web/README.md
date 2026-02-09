@@ -39,6 +39,7 @@ The map is full-bleed and mounted once per session. All controls render as overl
   - optional `bucket_quality`, `t_bucket` when provided by source props
 - Station drawer Tier2 is explicit user action (`Details` button), not automatic on open.
   - Fetch is debounced by `350ms` to avoid request thrash from rapid clicks.
+  - Request includes cache-binding query params from client state: `sv` and `t_bucket`.
   - Frontend logs bundle size in bytes after successful load (`tier2_loaded`).
   - If the endpoint is unavailable, Tier1 remains usable and Tier2 reports a bounded error message.
 
@@ -91,6 +92,8 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `data-uf-id="hud-timeline"`
   - `data-uf-id="hud-controls"`
   - `data-uf-id="hud-stats"`
-  - `data-uf-id="station-drawer"`
-  - `data-uf-id="drawer-tier2-button"`
-  - `data-uf-id="drawer-close-button"`
+- `data-uf-id="station-drawer"`
+- `data-uf-station-key="<station_key>"`
+- `data-uf-tier2-status="idle|loading|success|error"`
+- `data-uf-id="drawer-tier2-button"`
+- `data-uf-id="drawer-close-button"`
