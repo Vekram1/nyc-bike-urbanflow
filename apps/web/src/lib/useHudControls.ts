@@ -19,6 +19,10 @@ type PersistedHud = {
     compareOffsetBuckets?: number;
 };
 
+type UfE2EState = {
+    blockedActions?: Record<string, number>;
+};
+
 function readPersistedHud(): PersistedHud | null {
     if (typeof window === "undefined") return null;
     try {
@@ -28,6 +32,17 @@ function readPersistedHud(): PersistedHud | null {
     } catch {
         return null;
     }
+}
+
+function markBlockedAction(action: string): void {
+    if (typeof window === "undefined") return;
+    const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
+    const blockedActions = { ...(current.blockedActions ?? {}) };
+    blockedActions[action] = (blockedActions[action] ?? 0) + 1;
+    (window as { __UF_E2E?: UfE2EState }).__UF_E2E = {
+        ...current,
+        blockedActions,
+    };
 }
 
 export function useHudControls() {
@@ -121,6 +136,7 @@ export function useHudControls() {
     const seekTo = (next: number) => {
         if (inspectLocked) {
             console.info("[HudControls] seek_blocked_inspect_lock");
+            markBlockedAction("seek");
             return;
         }
         const clamped = Math.min(1, Math.max(0, next));
@@ -131,6 +147,7 @@ export function useHudControls() {
     const togglePlay = () => {
         if (inspectLocked) {
             console.info("[HudControls] toggle_play_blocked_inspect_lock");
+            markBlockedAction("togglePlay");
             return;
         }
         setPlaying((v) => !v);
@@ -138,6 +155,7 @@ export function useHudControls() {
     const speedDown = () => {
         if (inspectLocked) {
             console.info("[HudControls] speed_down_blocked_inspect_lock");
+            markBlockedAction("speedDown");
             return;
         }
         setSpeedIdx((i) => {
@@ -154,6 +172,7 @@ export function useHudControls() {
     const speedUp = () => {
         if (inspectLocked) {
             console.info("[HudControls] speed_up_blocked_inspect_lock");
+            markBlockedAction("speedUp");
             return;
         }
         setSpeedIdx((i) => {
@@ -170,6 +189,7 @@ export function useHudControls() {
     const stepBack = () => {
         if (inspectLocked) {
             console.info("[HudControls] step_back_blocked_inspect_lock");
+            markBlockedAction("stepBack");
             return;
         }
         setProgress((p) => {
@@ -181,6 +201,7 @@ export function useHudControls() {
     const stepForward = () => {
         if (inspectLocked) {
             console.info("[HudControls] step_forward_blocked_inspect_lock");
+            markBlockedAction("stepForward");
             return;
         }
         setProgress((p) => {
@@ -196,6 +217,7 @@ export function useHudControls() {
     const toggleCompareMode = () => {
         if (inspectLocked) {
             console.info("[HudControls] compare_mode_toggle_blocked_inspect_lock");
+            markBlockedAction("toggleCompareMode");
             return;
         }
         setCompareMode((curr) => {
@@ -211,6 +233,7 @@ export function useHudControls() {
     const toggleSplitView = () => {
         if (inspectLocked) {
             console.info("[HudControls] split_view_toggle_blocked_inspect_lock");
+            markBlockedAction("toggleSplitView");
             return;
         }
         if (!compareMode) {
@@ -227,6 +250,7 @@ export function useHudControls() {
     const compareOffsetDown = () => {
         if (inspectLocked) {
             console.info("[HudControls] compare_offset_down_blocked_inspect_lock");
+            markBlockedAction("compareOffsetDown");
             return;
         }
         setCompareOffsetBuckets((curr) => {
@@ -241,6 +265,7 @@ export function useHudControls() {
     const compareOffsetUp = () => {
         if (inspectLocked) {
             console.info("[HudControls] compare_offset_up_blocked_inspect_lock");
+            markBlockedAction("compareOffsetUp");
             return;
         }
         setCompareOffsetBuckets((curr) => {
