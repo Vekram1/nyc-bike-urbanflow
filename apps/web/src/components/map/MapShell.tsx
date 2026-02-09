@@ -28,6 +28,8 @@ type UfE2EState = {
     hotkeyHandledCount?: number;
     hotkeyIgnoredCount?: number;
     hotkeyLastCode?: string;
+    inspectAnchorTileRequestKey?: string;
+    inspectSessionId?: number;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -41,6 +43,7 @@ export default function MapShell() {
     const lastDrawerStationRef = useRef<string | null>(null);
     const hud = useHudControls();
     const inspectAnchorTileKeyRef = useRef<string | null>(null);
+    const inspectSessionIdRef = useRef(0);
 
     // “Inspect lock” v0: freeze live GBFS updates while drawer open
     const inspectOpen = !!selected;
@@ -140,12 +143,22 @@ export default function MapShell() {
                     tileOnly: true,
                 });
                 inspectAnchorTileKeyRef.current = tileRequestKey;
+                inspectSessionIdRef.current += 1;
+                updateUfE2E((current) => ({
+                    ...current,
+                    inspectAnchorTileRequestKey: tileRequestKey,
+                    inspectSessionId: inspectSessionIdRef.current,
+                }));
             } else if (prev) {
                 console.info("[MapShell] tier1_drawer_closed", {
                     stationId: prev,
                     tileOnly: true,
                 });
                 inspectAnchorTileKeyRef.current = null;
+                updateUfE2E((current) => ({
+                    ...current,
+                    inspectAnchorTileRequestKey: "",
+                }));
             }
             lastDrawerStationRef.current = next;
         }
@@ -201,6 +214,8 @@ export default function MapShell() {
             hotkeyHandledCount: current.hotkeyHandledCount ?? 0,
             hotkeyIgnoredCount: current.hotkeyIgnoredCount ?? 0,
             hotkeyLastCode: current.hotkeyLastCode ?? "",
+            inspectAnchorTileRequestKey: current.inspectAnchorTileRequestKey ?? "",
+            inspectSessionId: current.inspectSessionId ?? 0,
         }));
     }, [compareBucket, inspectOpen, selected?.station_id, tileRequestKey, timelineBucket]);
 

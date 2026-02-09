@@ -96,6 +96,8 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.hotkeyHandledCount`
   - `window.__UF_E2E.hotkeyIgnoredCount`
   - `window.__UF_E2E.hotkeyLastCode`
+  - `window.__UF_E2E.inspectAnchorTileRequestKey`
+  - `window.__UF_E2E.inspectSessionId`
   - `window.__UF_E2E.blockedActions` (per-action counters while inspect lock blocks controls)
   - `window.__UF_E2E.mapRefreshAttempts`
   - `window.__UF_E2E.mapRefreshSuccess`
