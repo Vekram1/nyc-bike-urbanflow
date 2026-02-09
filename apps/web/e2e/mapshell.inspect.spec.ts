@@ -5,6 +5,7 @@ type UfE2EState = {
     mapShellMountCount?: number;
     mapShellUnmountCount?: number;
     mapViewMountCount?: number;
+    timelineBucket?: number;
     tileRequestKey?: string;
     inspectOpen?: boolean;
     inspectCloseCount?: number;
@@ -260,4 +261,58 @@ test("hud and inspect interactions keep MapShell/MapView single-mounted", async 
             mapViewMountCount: 1,
             mapShellUnmountCount: 0,
         });
+});
+
+test("timeline bucket advances while playing and stays stable while paused", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                playing: Boolean(state.playing),
+                timelineBucket: state.timelineBucket ?? -1,
+            };
+        })
+        .toEqual({
+            playing: true,
+            timelineBucket: expect.any(Number),
+        });
+
+    const startBucket = await page.evaluate(() => {
+        const state = (window as { __UF_E2E?: UfE2EState }).__UF_E2E;
+        return state?.timelineBucket ?? -1;
+    });
+
+    await expect
+        .poll(
+            async () => {
+                const state = await readState(page);
+                return state.timelineBucket ?? -1;
+            },
+            { timeout: 2_500 }
+        )
+        .not.toBe(startBucket);
+
+    await page.locator('[data-uf-id="scrubber-play-toggle"]').click();
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return Boolean(state.playing);
+        })
+        .toBe(false);
+
+    const pausedBucket = await page.evaluate(() => {
+        const state = (window as { __UF_E2E?: UfE2EState }).__UF_E2E;
+        return state?.timelineBucket ?? -1;
+    });
+
+    await page.waitForTimeout(700);
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return state.timelineBucket ?? -1;
+        })
+        .toBe(pausedBucket);
 });
