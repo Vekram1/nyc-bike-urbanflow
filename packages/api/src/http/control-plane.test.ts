@@ -165,6 +165,16 @@ describe("createControlPlaneHandler", () => {
       })
     );
     expect(res.status).toBe(200);
+
+    const unknownParamRes = await handler(
+      new Request("https://example.test/api/pipeline_state?v=1&foo=bar", {
+        headers: { "X-Admin-Token": "secret" },
+      })
+    );
+    expect(unknownParamRes.status).toBe(400);
+    expect(unknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const unknownParamBody = await unknownParamRes.json();
+    expect(unknownParamBody.error.code).toBe("unknown_param");
   });
 
   it("dispatches /api/tiles/composite when tile deps are configured", async () => {
