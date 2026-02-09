@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { StationPick } from "@/components/map/MapView";
 
 const TIER2_DEBOUNCE_MS = 350;
+const TIER2_DEFAULT_RANGE = "6h";
 
 type Tier2State =
     | { status: "idle"; message: string }
@@ -28,6 +29,10 @@ export default function StationDrawer(props: {
     });
 
     const stationId = station?.station_id ?? null;
+    const tier2BucketEpochS = deriveTier2BucketEpochS(station);
+    const fallbackBucketEpochS =
+        tier2BucketEpochS ??
+        (timelineBucket > 1_000_000_000 ? timelineBucket : Math.floor(Date.now() / 1000));
 
     const updated =
         station?.gbfs_last_updated != null
@@ -71,18 +76,22 @@ export default function StationDrawer(props: {
             station_key: stationId,
             sv,
             debounceMs: TIER2_DEBOUNCE_MS,
+            tBucketEpochS: fallbackBucketEpochS,
+            range: TIER2_DEFAULT_RANGE,
         });
 
         debounceRef.current = window.setTimeout(async () => {
             const ctrl = new AbortController();
             abortRef.current = ctrl;
             try {
+                const params = new URLSearchParams({
+                    v: "1",
+                    sv,
+                    T_bucket: String(fallbackBucketEpochS),
+                    range: TIER2_DEFAULT_RANGE,
+                });
                 const res = await fetch(
-                    `/api/stations/${encodeURIComponent(stationId)}/drawer?sv=${encodeURIComponent(
-                        sv
-                    )}&t_bucket=${encodeURIComponent(
-                        station?.t_bucket ?? String(timelineBucket)
-                    )}`,
+                    `/api/stations/${encodeURIComponent(stationId)}/drawer?${params.toString()}`,
                     { cache: "no-store", signal: ctrl.signal }
                 );
                 const text = await res.text();
@@ -97,6 +106,7 @@ export default function StationDrawer(props: {
                     station_key: stationId,
                     sv,
                     bundleBytes,
+                    tBucketEpochS: fallbackBucketEpochS,
                 });
                 setTier2({
                     status: "success",
@@ -110,6 +120,7 @@ export default function StationDrawer(props: {
                     station_key: stationId,
                     sv,
                     error: message,
+                    tBucketEpochS: fallbackBucketEpochS,
                 });
                 setTier2({
                     status: "error",
@@ -161,6 +172,7 @@ export default function StationDrawer(props: {
                         disabled={tier2.status === "loading"}
                         aria-label="Load Tier2 details"
                         data-uf-id="drawer-tier2-button"
+                        data-uf-tier2-t-bucket={String(fallbackBucketEpochS)}
                     >
                         {tier2.status === "loading" ? "Loading details..." : "Details (Tier2)"}
                     </button>
@@ -186,6 +198,20 @@ export default function StationDrawer(props: {
             </div>
         </div>
     );
+}
+
+function deriveTier2BucketEpochS(station: StationPick | null): number | null {
+    if (!station) return null;
+    if (station.gbfs_last_updated != null && Number.isFinite(station.gbfs_last_updated)) {
+        return Math.floor(station.gbfs_last_updated);
+    }
+    if (station.t_bucket) {
+        const parsed = Date.parse(station.t_bucket);
+        if (Number.isFinite(parsed)) {
+            return Math.floor(parsed / 1000);
+        }
+    }
+    return null;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

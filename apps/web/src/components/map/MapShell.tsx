@@ -13,10 +13,28 @@ import MapView, { StationPick } from "@/components/map/MapView";
 import { useHudControls } from "@/lib/useHudControls";
 import { useHudMockAdapter } from "@/lib/useHudMockAdapter";
 
+type UfE2EState = {
+    mapShellMounted?: boolean;
+    inspectOpen?: boolean;
+    selectedStationId?: string | null;
+    timelineBucket?: number;
+    compareBucket?: number | null;
+    tileRequestKey?: string;
+    tileRequestKeyHistory?: string[];
+    invariantViolations?: string[];
+};
+
+function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
+    if (typeof window === "undefined") return;
+    const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
+    (window as { __UF_E2E?: UfE2EState }).__UF_E2E = update(current);
+}
+
 export default function MapShell() {
     const [selected, setSelected] = useState<StationPick | null>(null);
     const lastDrawerStationRef = useRef<string | null>(null);
     const hud = useHudControls();
+    const inspectAnchorTileKeyRef = useRef<string | null>(null);
 
     // “Inspect lock” v0: freeze live GBFS updates while drawer open
     const inspectOpen = !!selected;
@@ -90,15 +108,17 @@ export default function MapShell() {
                     stationId: next,
                     tileOnly: true,
                 });
+                inspectAnchorTileKeyRef.current = tileRequestKey;
             } else if (prev) {
                 console.info("[MapShell] tier1_drawer_closed", {
                     stationId: prev,
                     tileOnly: true,
                 });
+                inspectAnchorTileKeyRef.current = null;
             }
             lastDrawerStationRef.current = next;
         }
-    }, [selected?.station_id]);
+    }, [selected?.station_id, tileRequestKey]);
 
     useEffect(() => {
         console.info("[MapShell] playback_changed", {
@@ -135,8 +155,7 @@ export default function MapShell() {
 
     useEffect(() => {
         if (typeof window === "undefined") return;
-        const current = (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E ?? {};
-        (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E = {
+        updateUfE2E((current) => ({
             ...current,
             mapShellMounted: true,
             inspectOpen,
@@ -144,7 +163,27 @@ export default function MapShell() {
             timelineBucket,
             compareBucket,
             tileRequestKey,
-        };
+            tileRequestKeyHistory: [...(current.tileRequestKeyHistory ?? []), tileRequestKey].slice(-40),
+        }));
+    }, [compareBucket, inspectOpen, selected?.station_id, tileRequestKey, timelineBucket]);
+
+    useEffect(() => {
+        if (!inspectOpen) return;
+        const anchor = inspectAnchorTileKeyRef.current;
+        if (!anchor || anchor === tileRequestKey) return;
+
+        console.error("[MapShell] inspect_tile_key_mutated", {
+            anchorTileRequestKey: anchor,
+            currentTileRequestKey: tileRequestKey,
+            selectedStationId: selected?.station_id ?? null,
+        });
+        updateUfE2E((current) => ({
+            ...current,
+            invariantViolations: [
+                ...(current.invariantViolations ?? []),
+                "inspect_tile_key_mutated",
+            ].slice(-20),
+        }));
     }, [compareBucket, inspectOpen, selected?.station_id, tileRequestKey, timelineBucket]);
 
     return (
