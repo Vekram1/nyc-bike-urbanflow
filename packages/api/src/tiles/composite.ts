@@ -18,6 +18,8 @@ export function buildCompositeTileSql(params: {
   include_press: boolean;
   include_epi: boolean;
   include_optional_props: boolean;
+  compare_mode: "off" | "delta" | "split";
+  t2_bucket_epoch_s?: number;
   z: number;
   x: number;
   y: number;
@@ -29,6 +31,13 @@ export function buildCompositeTileSql(params: {
     text: `
 WITH bounds AS (
   SELECT ST_TileEnvelope($1::int, $2::int, $3::int) AS env_3857
+),
+bucket_times AS (
+  SELECT
+    date_bin('1 minute', TO_TIMESTAMP($6), TIMESTAMPTZ '1970-01-01 00:00:00+00') AS t1_1m,
+    date_bin('1 minute', TO_TIMESTAMP(COALESCE($19::bigint, $6)), TIMESTAMPTZ '1970-01-01 00:00:00+00') AS t2_1m,
+    date_bin('5 minutes', TO_TIMESTAMP($6), TIMESTAMPTZ '1970-01-01 00:00:00+00') AS t1_5m,
+    date_bin('5 minutes', TO_TIMESTAMP(COALESCE($19::bigint, $6)), TIMESTAMPTZ '1970-01-01 00:00:00+00') AS t2_5m
 ),
 base_stations AS (
   SELECT
@@ -46,45 +55,97 @@ base_stations AS (
 inv_rows AS (
   SELECT
     bs.station_key,
-    COALESCE(ss.bikes_available, 0) AS bikes_available,
-    COALESCE(ss.docks_available, 0) AS docks_available,
-    EXTRACT(EPOCH FROM date_bin('1 minute', TO_TIMESTAMP($6), TIMESTAMPTZ '1970-01-01 00:00:00+00'))::bigint AS observation_ts_bucket,
-    COALESCE(ss.bucket_quality, 'blocked') AS bucket_quality,
+    CASE
+      WHEN $18::text = 'delta' THEN COALESCE(ss1.bikes_available, 0) - COALESCE(ss2.bikes_available, 0)
+      WHEN $18::text = 'split' THEN COALESCE(ss2.bikes_available, 0)
+      ELSE COALESCE(ss1.bikes_available, 0)
+    END AS bikes_available,
+    CASE
+      WHEN $18::text = 'delta' THEN COALESCE(ss1.docks_available, 0) - COALESCE(ss2.docks_available, 0)
+      WHEN $18::text = 'split' THEN COALESCE(ss2.docks_available, 0)
+      ELSE COALESCE(ss1.docks_available, 0)
+    END AS docks_available,
+    CASE
+      WHEN $18::text = 'split' THEN EXTRACT(EPOCH FROM bt.t2_1m)::bigint
+      ELSE EXTRACT(EPOCH FROM bt.t1_1m)::bigint
+    END AS observation_ts_bucket,
+    CASE
+      WHEN $18::text = 'split' THEN COALESCE(ss2.bucket_quality, 'blocked')
+      ELSE COALESCE(ss1.bucket_quality, 'blocked')
+    END AS bucket_quality,
     CASE WHEN $7 THEN jsonb_build_object('name', bs.name, 'capacity', bs.capacity) ELSE NULL END AS flags,
     ST_AsMVTGeom(bs.geom_3857, (SELECT env_3857 FROM bounds), $8, $9, true) AS geom
   FROM base_stations bs
-  LEFT JOIN station_status_1m ss
-    ON ss.system_id = bs.system_id
-   AND ss.station_key = bs.station_key
-   AND ss.bucket_ts = date_bin('1 minute', TO_TIMESTAMP($6), TIMESTAMPTZ '1970-01-01 00:00:00+00')
+  CROSS JOIN bucket_times bt
+  LEFT JOIN station_status_1m ss1
+    ON ss1.system_id = bs.system_id
+   AND ss1.station_key = bs.station_key
+   AND ss1.bucket_ts = bt.t1_1m
+  LEFT JOIN station_status_1m ss2
+    ON ss2.system_id = bs.system_id
+   AND ss2.station_key = bs.station_key
+   AND ss2.bucket_ts = bt.t2_1m
 ),
 sev_rows AS (
   SELECT
     bs.station_key,
-    COALESCE(sev.severity, 0.0) AS severity,
+    CASE
+      WHEN $18::text = 'delta' THEN COALESCE(sev1.severity, 0.0) - COALESCE(sev2.severity, 0.0)
+      WHEN $18::text = 'split' THEN COALESCE(sev2.severity, 0.0)
+      ELSE COALESCE(sev1.severity, 0.0)
+    END AS severity,
     $10::text AS severity_version,
-    EXTRACT(EPOCH FROM date_bin('5 minutes', TO_TIMESTAMP($6), TIMESTAMPTZ '1970-01-01 00:00:00+00'))::bigint AS observation_ts_bucket,
-    CASE WHEN $7 THEN sev.severity_components_json ELSE NULL END AS severity_components_compact,
+    CASE
+      WHEN $18::text = 'split' THEN EXTRACT(EPOCH FROM bt.t2_5m)::bigint
+      ELSE EXTRACT(EPOCH FROM bt.t1_5m)::bigint
+    END AS observation_ts_bucket,
+    CASE
+      WHEN $7 THEN CASE WHEN $18::text = 'split' THEN sev2.severity_components_json ELSE sev1.severity_components_json END
+      ELSE NULL
+    END AS severity_components_compact,
     ST_AsMVTGeom(bs.geom_3857, (SELECT env_3857 FROM bounds), $8, $9, true) AS geom
   FROM base_stations bs
-  LEFT JOIN station_severity_5m sev
-    ON sev.system_id = bs.system_id
-   AND sev.station_key = bs.station_key
-   AND sev.severity_version = $10
-   AND sev.bucket_ts = date_bin('5 minutes', TO_TIMESTAMP($6), TIMESTAMPTZ '1970-01-01 00:00:00+00')
+  CROSS JOIN bucket_times bt
+  LEFT JOIN station_severity_5m sev1
+    ON sev1.system_id = bs.system_id
+   AND sev1.station_key = bs.station_key
+   AND sev1.severity_version = $10
+   AND sev1.bucket_ts = bt.t1_5m
+  LEFT JOIN station_severity_5m sev2
+    ON sev2.system_id = bs.system_id
+   AND sev2.station_key = bs.station_key
+   AND sev2.severity_version = $10
+   AND sev2.bucket_ts = bt.t2_5m
 ),
 press_rows AS (
   SELECT
     bs.station_key,
     CASE
+      WHEN $18::text = 'delta'
+        THEN CASE
+          WHEN $16::boolean THEN 0.0
+          ELSE COALESCE(pr1.pressure_score, 0.0) - COALESCE(pr2.pressure_score, 0.0)
+        END
+      WHEN $18::text = 'split'
+        THEN CASE
+          WHEN $16::boolean
+            THEN COALESCE(
+              ((COALESCE(so.trips_out, 0) - COALESCE(si.trips_in, 0))::double precision / GREATEST(bs.capacity, 1)),
+              0.0
+            )
+          ELSE COALESCE(pr2.pressure_score, 0.0)
+        END
       WHEN $16::boolean
         THEN COALESCE(
           ((COALESCE(so.trips_out, 0) - COALESCE(si.trips_in, 0))::double precision / GREATEST(bs.capacity, 1)),
           0.0
         )
-      ELSE COALESCE(pr.pressure_score, 0.0)
+      ELSE COALESCE(pr1.pressure_score, 0.0)
     END AS pressure,
-    EXTRACT(EPOCH FROM date_bin('5 minutes', TO_TIMESTAMP($6), TIMESTAMPTZ '1970-01-01 00:00:00+00'))::bigint AS observation_ts_bucket,
+    CASE
+      WHEN $18::text = 'split' THEN EXTRACT(EPOCH FROM bt.t2_5m)::bigint
+      ELSE EXTRACT(EPOCH FROM bt.t1_5m)::bigint
+    END AS observation_ts_bucket,
     CASE
       WHEN $7
         THEN CASE
@@ -92,17 +153,18 @@ press_rows AS (
             THEN jsonb_build_object('source', 'trips_baseline', 'dataset_id', $15::text, 'checksum', $17::text)
           ELSE jsonb_build_object(
             'source', 'live_proxy',
-            'proxy', pr.proxy_method,
-            'delta_bikes_5m', pr.delta_bikes_5m,
-            'delta_docks_5m', pr.delta_docks_5m,
-            'volatility_60m', pr.volatility_60m,
-            'rebalancing_suspected', pr.rebalancing_suspected
+            'proxy', CASE WHEN $18::text = 'split' THEN pr2.proxy_method ELSE pr1.proxy_method END,
+            'delta_bikes_5m', CASE WHEN $18::text = 'split' THEN pr2.delta_bikes_5m ELSE pr1.delta_bikes_5m END,
+            'delta_docks_5m', CASE WHEN $18::text = 'split' THEN pr2.delta_docks_5m ELSE pr1.delta_docks_5m END,
+            'volatility_60m', CASE WHEN $18::text = 'split' THEN pr2.volatility_60m ELSE pr1.volatility_60m END,
+            'rebalancing_suspected', CASE WHEN $18::text = 'split' THEN pr2.rebalancing_suspected ELSE pr1.rebalancing_suspected END
           )
         END
       ELSE NULL
     END AS pressure_components_compact,
     ST_AsMVTGeom(bs.geom_3857, (SELECT env_3857 FROM bounds), $8, $9, true) AS geom
   FROM base_stations bs
+  CROSS JOIN bucket_times bt
   LEFT JOIN station_outflows_monthly so
     ON so.system_id = bs.system_id
    AND so.station_key = bs.station_key
@@ -111,10 +173,14 @@ press_rows AS (
     ON si.system_id = bs.system_id
    AND si.station_key = bs.station_key
    AND si.dataset_id = $15::text
-  LEFT JOIN station_pressure_now_5m pr
-    ON pr.system_id = bs.system_id
-   AND pr.station_key = bs.station_key
-   AND pr.bucket_ts = date_bin('5 minutes', TO_TIMESTAMP($6), TIMESTAMPTZ '1970-01-01 00:00:00+00')
+  LEFT JOIN station_pressure_now_5m pr1
+    ON pr1.system_id = bs.system_id
+   AND pr1.station_key = bs.station_key
+   AND pr1.bucket_ts = bt.t1_5m
+  LEFT JOIN station_pressure_now_5m pr2
+    ON pr2.system_id = bs.system_id
+   AND pr2.station_key = bs.station_key
+   AND pr2.bucket_ts = bt.t2_5m
 ),
 epi_rows AS (
   SELECT
@@ -163,6 +229,8 @@ SELECT
       params.trips_baseline_id ?? null,
       params.pressure_source === "trips_baseline",
       params.trips_baseline_sha256 ?? null,
+      params.compare_mode,
+      params.t2_bucket_epoch_s ?? null,
     ],
   };
 }
@@ -231,6 +299,8 @@ export function createCompositeTileStore(deps: {
       include_press: flags.include_press,
       include_epi: flags.include_epi,
       include_optional_props: includeOptionalProps,
+      compare_mode: args.compare_mode,
+      t2_bucket_epoch_s: args.t2_bucket_epoch_s,
       z: args.z,
       x: args.x,
       y: args.y,
@@ -250,6 +320,9 @@ export function createCompositeTileStore(deps: {
         y: args.y,
         severity_version: args.severity_version,
         layers_set: args.layers_set,
+        compare_mode: args.compare_mode,
+        compare_delta_s:
+          args.t2_bucket_epoch_s === undefined ? null : args.t_bucket_epoch_s - args.t2_bucket_epoch_s,
         include_optional_props: includeOptionalProps,
         duration_ms: Date.now() - startedAt,
         row_found: false,
@@ -270,6 +343,9 @@ export function createCompositeTileStore(deps: {
       y: args.y,
       severity_version: args.severity_version,
       layers_set: args.layers_set,
+      compare_mode: args.compare_mode,
+      compare_delta_s:
+        args.t2_bucket_epoch_s === undefined ? null : args.t_bucket_epoch_s - args.t2_bucket_epoch_s,
       include_optional_props: includeOptionalProps,
       duration_ms: Date.now() - startedAt,
       feature_count: Number.isFinite(featureCount) ? featureCount : 0,
@@ -306,6 +382,9 @@ export function createCompositeTileStore(deps: {
           y: args.y,
           severity_version: args.severity_version,
           layers_set: args.layers_set,
+          compare_mode: args.compare_mode,
+          compare_delta_s:
+            args.t2_bucket_epoch_s === undefined ? null : args.t_bucket_epoch_s - args.t2_bucket_epoch_s,
           action: "reject_overloaded",
           bytes_after_trim: trimmed.bytes,
           max_bytes_per_tile: deps.max_bytes_per_tile,

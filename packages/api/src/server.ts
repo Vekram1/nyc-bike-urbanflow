@@ -38,6 +38,7 @@ type EnvConfig = {
   tile_replay_max_age_s: number;
   tile_replay_s_maxage_s: number;
   tile_replay_swr_s: number;
+  tile_compare_max_window_s: number;
   policy_retry_after_ms: number;
   policy_default_version: string;
   policy_available_versions: string[];
@@ -113,6 +114,7 @@ function loadConfig(): EnvConfig {
     tile_replay_max_age_s: parseIntEnv("TILE_REPLAY_MAX_AGE_S", 600),
     tile_replay_s_maxage_s: parseIntEnv("TILE_REPLAY_S_MAXAGE_S", 3600),
     tile_replay_swr_s: parseIntEnv("TILE_REPLAY_SWR_S", 60),
+    tile_compare_max_window_s: parseIntEnv("TILE_COMPARE_MAX_WINDOW_S", 7 * 24 * 60 * 60),
     policy_retry_after_ms: parseIntEnv("POLICY_RETRY_AFTER_MS", 2000),
     policy_default_version: process.env.POLICY_DEFAULT_VERSION?.trim() || "rebal.greedy.v1",
     policy_available_versions: parseCsv(process.env.POLICY_AVAILABLE_VERSIONS, ["rebal.greedy.v1"]),
@@ -696,6 +698,9 @@ async function main(): Promise<void> {
         replay_max_age_s: cfg.tile_replay_max_age_s,
         replay_s_maxage_s: cfg.tile_replay_s_maxage_s,
         replay_stale_while_revalidate_s: cfg.tile_replay_swr_s,
+      },
+      compare: {
+        max_window_s: cfg.tile_compare_max_window_s,
       },
     },
     episodesTiles: {

@@ -199,6 +199,188 @@ describe("createCompositeTilesRouteHandler", () => {
     expect(seenArgs?.view_id).toBe(42);
     expect(seenArgs?.layers_set).toBe("inv,press,sev");
     expect(seenArgs?.pressure_source).toBe("live_proxy");
+    expect(seenArgs?.compare_mode).toBe("off");
+    expect(seenArgs?.t2_bucket_epoch_s).toBeUndefined();
+  });
+
+  it("returns 400 for invalid compare_mode", async () => {
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile() {
+          throw new Error("not used");
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=abc&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000&compare_mode=weird"
+      )
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("invalid_compare_mode");
+  });
+
+  it("returns 400 when compare_mode is delta without T2_bucket", async () => {
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile() {
+          throw new Error("not used");
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=abc&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000&compare_mode=delta"
+      )
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("missing_t2_bucket");
+  });
+
+  it("returns 400 when compare_mode is off and T2_bucket is provided", async () => {
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile() {
+          throw new Error("not used");
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=abc&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000&T2_bucket=1738871400&compare_mode=off"
+      )
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unexpected_t2_bucket");
+  });
+
+  it("returns 400 when compare window exceeds max_window_s", async () => {
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile() {
+          throw new Error("not used");
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+      compare: {
+        max_window_s: 60,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=abc&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000&T2_bucket=1738871400&compare_mode=delta"
+      )
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("t2_bucket_out_of_range");
+  });
+
+  it("passes compare args to tile store for split mode", async () => {
+    let seenArgs: Record<string, unknown> | null = null;
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile(args) {
+          seenArgs = args;
+          return {
+            ok: true as const,
+            mvt: new Uint8Array([1]),
+            feature_count: 1,
+            bytes: 1,
+          };
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=abc&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000&T2_bucket=1738871700&compare_mode=split"
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(seenArgs?.compare_mode).toBe("split");
+    expect(seenArgs?.t2_bucket_epoch_s).toBe(1738871700);
   });
 
   it("uses immutable replay cache policy for long-lived sv tokens", async () => {

@@ -73,6 +73,7 @@ Optional with defaults:
 - `TILE_REPLAY_MAX_AGE_S` default `600`
 - `TILE_REPLAY_S_MAXAGE_S` default `3600`
 - `TILE_REPLAY_SWR_S` default `60`
+- `TILE_COMPARE_MAX_WINDOW_S` default `604800` (7 days; max absolute `|T_bucket - T2_bucket|` for compare requests)
 - `POLICY_RETRY_AFTER_MS` default `2000`
 - `POLICY_DEFAULT_VERSION` default `rebal.greedy.v1`
 - `POLICY_AVAILABLE_VERSIONS` default `rebal.greedy.v1`
@@ -98,6 +99,19 @@ Health check examples:
 
 ```bash
 curl 'http://127.0.0.1:3000/api/time?system_id=citibike-nyc&tile_schema=tile.v1&severity_version=sev.v1'
+```
+
+Compare-mode composite tile examples:
+
+```bash
+# Baseline (single timestamp)
+curl 'http://127.0.0.1:3000/api/tiles/composite/12/1200/1530.mvt?sv=<sv>&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev,press&T_bucket=1738872000&compare_mode=off'
+
+# Delta (T1 - T2) within bounded compare window
+curl 'http://127.0.0.1:3000/api/tiles/composite/12/1200/1530.mvt?sv=<sv>&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev,press&T_bucket=1738872000&T2_bucket=1738871700&compare_mode=delta'
+
+# Split (secondary snapshot at T2 for dual-map UI)
+curl 'http://127.0.0.1:3000/api/tiles/composite/12/1200/1530.mvt?sv=<sv>&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev,press&T_bucket=1738872000&T2_bucket=1738871700&compare_mode=split'
 ```
 
 Admin ops examples:

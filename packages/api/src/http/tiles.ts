@@ -12,8 +12,13 @@ const ALLOWED_QUERY_KEYS = new Set([
   "severity_version",
   "layers",
   "T_bucket",
+  "T2_bucket",
+  "compare_mode",
   "system_id",
 ]);
+
+const COMPARE_MODES = new Set(["off", "delta", "split"] as const);
+type CompareMode = "off" | "delta" | "split";
 
 export type CompositeTileArgs = {
   system_id: string;
@@ -26,6 +31,8 @@ export type CompositeTileArgs = {
   x: number;
   y: number;
   t_bucket_epoch_s: number;
+  compare_mode: CompareMode;
+  t2_bucket_epoch_s?: number;
   tile_schema: string;
   severity_version: string;
   layers_set: string;
@@ -70,6 +77,9 @@ export type CompositeTilesRouteDeps = {
     replay_stale_while_revalidate_s?: number;
     replay_min_ttl_s?: number;
   };
+  compare?: {
+    max_window_s?: number;
+  };
   replayCache?: {
     get: (key: string) => Promise<{
       mvt: Uint8Array;
@@ -112,6 +122,14 @@ function parsePositiveInt(value: string | null): number | null {
     return null;
   }
   return parsed;
+}
+
+function parseCompareMode(value: string | null): CompareMode | null {
+  const raw = (value ?? "off").trim();
+  if (!COMPARE_MODES.has(raw as CompareMode)) {
+    return null;
+  }
+  return raw as CompareMode;
 }
 
 function requiredQuery(searchParams: URLSearchParams, key: string): string | null {
@@ -191,6 +209,8 @@ function buildReplayCacheKey(args: {
   x: number;
   y: number;
   t_bucket_epoch_s: number;
+  compare_mode: CompareMode;
+  t2_bucket_epoch_s?: number;
   tile_schema: string;
   severity_version: string;
   layers_set: string;
@@ -203,6 +223,8 @@ function buildReplayCacheKey(args: {
     String(args.x),
     String(args.y),
     String(args.t_bucket_epoch_s),
+    args.compare_mode,
+    args.t2_bucket_epoch_s === undefined ? "" : String(args.t2_bucket_epoch_s),
     args.tile_schema,
     args.severity_version,
     args.layers_set,
@@ -285,7 +307,7 @@ export function createCompositeTilesRouteHandler(
     const allowlisted = await enforceAllowlistedQueryParams(
       deps.allowlist,
       url.searchParams,
-      ["tile_schema", "severity_version", "layers"],
+      ["tile_schema", "severity_version", "layers", "compare_mode"],
       {
         system_id: sv.system_id,
         ctx: { path: url.pathname },
@@ -308,6 +330,50 @@ export function createCompositeTilesRouteHandler(
         { error: { code: "invalid_layers", message: "layers is required and must contain at least one layer" } },
         400
       );
+    }
+    const compareMode = parseCompareMode(url.searchParams.get("compare_mode"));
+    if (!compareMode) {
+      return json(
+        { error: { code: "invalid_compare_mode", message: "compare_mode must be one of off|delta|split" } },
+        400
+      );
+    }
+    const t2Bucket = parsePositiveInt(url.searchParams.get("T2_bucket"));
+    if (compareMode !== "off" && t2Bucket === null) {
+      return json(
+        { error: { code: "missing_t2_bucket", message: "T2_bucket is required when compare_mode is delta or split" } },
+        400
+      );
+    }
+    if (compareMode === "off" && t2Bucket !== null) {
+      return json(
+        { error: { code: "unexpected_t2_bucket", message: "T2_bucket is only allowed when compare_mode is delta or split" } },
+        400
+      );
+    }
+    if (t2Bucket !== null) {
+      const maxWindowS = deps.compare?.max_window_s ?? 7 * 24 * 60 * 60;
+      if (Math.abs(t2Bucket - tBucket) > maxWindowS) {
+        return json(
+          {
+            error: {
+              code: "t2_bucket_out_of_range",
+              message: `T2_bucket must be within ${maxWindowS} seconds of T_bucket`,
+            },
+          },
+          400
+        );
+      }
+    }
+    if (compareMode !== "off") {
+      deps.logger?.info("tiles.compare_request", {
+        path: url.pathname,
+        system_id: sv.system_id,
+        compare_mode: compareMode,
+        t_bucket_epoch_s: tBucket,
+        t2_bucket_epoch_s: t2Bucket,
+        compare_delta_s: t2Bucket === null ? null : tBucket - t2Bucket,
+      });
     }
 
     const pressureBinding = await resolvePressureBinding(deps, {
@@ -347,6 +413,8 @@ export function createCompositeTilesRouteHandler(
           x: tilePath.x,
           y: tilePath.y,
           t_bucket_epoch_s: tBucket,
+          compare_mode: compareMode,
+          t2_bucket_epoch_s: t2Bucket ?? undefined,
           tile_schema: tileSchema,
           severity_version: severityVersion,
           layers_set: layersSet,
@@ -397,6 +465,8 @@ export function createCompositeTilesRouteHandler(
       x: tilePath.x,
       y: tilePath.y,
       t_bucket_epoch_s: tBucket,
+      compare_mode: compareMode,
+      t2_bucket_epoch_s: t2Bucket ?? undefined,
       tile_schema: tileSchema,
       severity_version: severityVersion,
       layers_set: layersSet,
@@ -422,6 +492,8 @@ export function createCompositeTilesRouteHandler(
         tile_schema: tileSchema,
         severity_version: severityVersion,
         layers_set: layersSet,
+        compare_mode: compareMode,
+        t2_bucket_epoch_s: t2Bucket ?? null,
         key: replayCacheKey,
         bytes: tile.bytes,
       });
@@ -433,6 +505,8 @@ export function createCompositeTilesRouteHandler(
       tile_schema: tileSchema,
       severity_version: severityVersion,
       layers_set: layersSet,
+      compare_mode: compareMode,
+      t2_bucket_epoch_s: t2Bucket ?? null,
       sv_ttl_s: svTtl,
       cache_mode: isReplay ? "replay" : "live",
       cache_control: cacheControl,
