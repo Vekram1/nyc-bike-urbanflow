@@ -70,6 +70,37 @@ describe("createAdminRouteHandler", () => {
     expect(body.error.code).toBe("forbidden_origin");
   });
 
+  it("handles OPTIONS preflight for allowed origin", async () => {
+    const handler = createAdminRouteHandler(deps);
+    const res = await handler(
+      new Request("https://example.test/api/pipeline_state?v=1", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://ops.example.test",
+        },
+      })
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://ops.example.test");
+    expect(res.headers.get("Access-Control-Allow-Methods")).toContain("OPTIONS");
+    expect(res.headers.get("Access-Control-Allow-Headers")).toContain("X-Admin-Token");
+  });
+
+  it("rejects OPTIONS preflight for forbidden origin", async () => {
+    const handler = createAdminRouteHandler(deps);
+    const res = await handler(
+      new Request("https://example.test/api/pipeline_state?v=1", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://evil.example.test",
+        },
+      })
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error.code).toBe("forbidden_origin");
+  });
+
   it("returns pipeline state with CORS header for allowed origin", async () => {
     const handler = createAdminRouteHandler(deps);
     const res = await handler(
