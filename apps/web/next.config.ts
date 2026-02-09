@@ -1,8 +1,14 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
+const workspaceRoot = path.join(__dirname, "..", "..");
+
 const nextConfig: NextConfig = {
-  /* config options here */
-  reactCompiler: true,
+    reactCompiler: true,
+    turbopack: {
+        root: workspaceRoot,
+    },
+    outputFileTracingRoot: workspaceRoot,
 };
 
 export default nextConfig;
