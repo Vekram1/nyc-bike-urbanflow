@@ -419,6 +419,13 @@ describe("control-plane e2e", () => {
     expect(timelineUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const timelineUnknownParamBody = await timelineUnknownParamRes.json();
     expect(timelineUnknownParamBody.error.code).toBe("unknown_param");
+    const timelineUnsupportedVersionRes = await handler(
+      new Request(`https://example.test/api/timeline?v=2&sv=${encodeURIComponent(sv)}`)
+    );
+    expect(timelineUnsupportedVersionRes.status).toBe(400);
+    expect(timelineUnsupportedVersionRes.headers.get("Cache-Control")).toBe("no-store");
+    const timelineUnsupportedVersionBody = await timelineUnsupportedVersionRes.json();
+    expect(timelineUnsupportedVersionBody.error.code).toBe("unsupported_version");
     const timelineMethodRes = await handler(
       new Request(`https://example.test/api/timeline?v=1&sv=${encodeURIComponent(sv)}`, {
         method: "POST",
@@ -442,6 +449,13 @@ describe("control-plane e2e", () => {
     expect(densityUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const densityUnknownParamBody = await densityUnknownParamRes.json();
     expect(densityUnknownParamBody.error.code).toBe("unknown_param");
+    const densityUnsupportedVersionRes = await handler(
+      new Request(`https://example.test/api/timeline/density?v=2&bucket=300&sv=${encodeURIComponent(sv)}`)
+    );
+    expect(densityUnsupportedVersionRes.status).toBe(400);
+    expect(densityUnsupportedVersionRes.headers.get("Cache-Control")).toBe("no-store");
+    const densityUnsupportedVersionBody = await densityUnsupportedVersionRes.json();
+    expect(densityUnsupportedVersionBody.error.code).toBe("unsupported_version");
     const densityMethodRes = await handler(
       new Request(`https://example.test/api/timeline/density?v=1&bucket=300&sv=${encodeURIComponent(sv)}`, {
         method: "POST",
