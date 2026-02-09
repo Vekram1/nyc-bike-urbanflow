@@ -1170,6 +1170,18 @@ describe("control-plane e2e", () => {
     expect(seriesBody.station_key).toBe("STA-001");
     expect(seriesBody.points.length).toBe(1);
     expect(seriesBody.points[0]?.bucket_quality).toBe("ok");
+
+    const seriesAliasRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(sv)}&start=1738872000&end=1738875600&bucket=300`
+      )
+    );
+    expect(seriesAliasRes.status).toBe(200);
+    expect(seriesAliasRes.headers.get("Cache-Control")).toBe("no-store");
+    const seriesAliasBody = await seriesAliasRes.json();
+    expect(seriesAliasBody.station_key).toBe("STA-001");
+    expect(seriesAliasBody.from_epoch_s).toBe(1738872000);
+    expect(seriesAliasBody.to_epoch_s).toBe(1738875600);
     const detailOk = stationInfoEvents.find((evt) => evt.event === "stations.detail.ok");
     const seriesOk = stationInfoEvents.find((evt) => evt.event === "stations.series.ok");
     expect(detailOk).toBeTruthy();
