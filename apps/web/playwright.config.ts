@@ -22,14 +22,14 @@ export default defineConfig({
         },
     ],
     webServer: {
-        command: `bun run dev -- --hostname 127.0.0.1 --port ${PORT}`,
+        command: `bun run start -- --hostname 127.0.0.1 --port ${PORT}`,
         url: BASE_URL,
         reuseExistingServer: !process.env.CI,
         cwd: __dirname,
         stdout: "pipe",
         stderr: "pipe",
         env: {
-            NODE_ENV: "test",
+            NODE_ENV: "production",
         },
     },
 });

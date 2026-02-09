@@ -160,3 +160,59 @@ test("escape closes inspect drawer and resumes playback when previously playing"
             escapeCloseCount: beforeEscapeReasonCount + 1,
         });
 });
+
+test("closing inspect keeps playback paused when it was paused before open", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return Boolean(state.playing);
+        })
+        .toBe(true);
+
+    await page.locator('[data-uf-id="scrubber-play-toggle"]').click();
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return Boolean(state.playing);
+        })
+        .toBe(false);
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-paused");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                inspectOpen: Boolean(state.inspectOpen),
+                playing: Boolean(state.playing),
+            };
+        })
+        .toEqual({
+            inspectOpen: true,
+            playing: false,
+        });
+
+    await page.locator('[data-uf-id="drawer-close-button"]').click();
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toHaveCount(0);
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                inspectOpen: Boolean(state.inspectOpen),
+                playing: Boolean(state.playing),
+                inspectLastCloseReason: state.inspectLastCloseReason ?? "",
+            };
+        })
+        .toEqual({
+            inspectOpen: false,
+            playing: false,
+            inspectLastCloseReason: "drawer_close_button",
+        });
+});
