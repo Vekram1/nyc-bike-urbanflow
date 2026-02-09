@@ -160,6 +160,30 @@ Frontend UX simplification and timeline safety (required):
   - Entering past replay should transition to paused replay unless user explicitly presses Play.
   - Playback may resume automatically only on explicit `Go Live` (or equivalent live-jump action).
 
+Frontend-backend control-plane handshake (required):
+- Control-plane time source (canonical):
+  - `GET /api/time?system_id=<system_id>`
+  - required fields consumed by web HUD: `server_now`, `recommended_live_sv`
+  - optional but supported: `network.degrade_level`, `network.client_should_throttle`
+- Timeline source (canonical):
+  - `GET /api/timeline?v=1&sv=<token>`
+  - required fields consumed by scrubber/state machine: `available_range`, `bucket_size_seconds`, `live_edge_ts`, `gap_intervals`
+  - `GET /api/timeline/density?v=1&sv=<token>&bucket=<60..3600>` for density overlays only
+- Search source (canonical):
+  - `GET /api/search?system_id=<system_id>&q=<query>[&bbox=minLon,minLat,maxLon,maxLat][&limit=1..50]`
+  - response shape is backend canonical: `{ results: [{ station_key, name, short_name?, lat, lon }] }`
+  - frontend may map to camelCase internally, but mapping must occur in one adapter boundary only
+- Unknown query params policy:
+  - unknown params must return `400 unknown_param` with `Cache-Control: no-store` (not cacheable)
+- Frontend timeline state machine rules:
+  - live mode polls `/api/time` on cadence (~15 to 30 seconds) and clamps display time to `T <= server_now`
+  - any manual scrub/step into past transitions to replay-paused; playback does not resume until explicit Play
+  - `Go Live` jumps to current server time and updates `sv` to `recommended_live_sv`
+  - while Inspect drawer is open, tile `T_bucket` remains locked even if `/api/time` polling continues
+- Contract gap handling:
+  - if frontend needs fields not present in canonical endpoints, open/update a dedicated bead before adding fallback behavior
+  - document each mismatch with exact endpoint, missing field, and temporary mitigation
+
 Severity definition (must be explicit, stable):
 - Severity(T) is a weighted score in [0,1] derived from:
   - State (now): empty/full at T (hard penalty, dominates)

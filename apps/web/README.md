@@ -19,6 +19,36 @@ Before running e2e for the first time on a machine:
 bunx playwright install chromium
 ```
 
+## Control Plane Handshake (jny)
+
+Canonical frontend contract (backend-driven):
+
+- `GET /api/time?system_id=<id>`
+  - required fields: `server_now`, `recommended_live_sv`
+  - optional fields: `network.degrade_level`, `network.client_should_throttle`
+- `GET /api/timeline?v=1&sv=<token>`
+  - required fields: `available_range`, `bucket_size_seconds`, `live_edge_ts`, `gap_intervals`
+- `GET /api/timeline/density?v=1&sv=<token>&bucket=<60..3600>`
+  - optional density overlay data for scrubber
+- `GET /api/search?system_id=<id>&q=<2..80>[&bbox=...][&limit=1..50]`
+  - canonical response shape: `{ results: [{ station_key, name, short_name?, lat, lon }] }`
+
+Required behavior:
+
+- Unknown query params must return `400 unknown_param` and `Cache-Control: no-store`.
+- Live mode polls `/api/time` and clamps UI time to `T <= server_now`.
+- Manual scrub/step into past enters replay-paused until explicit Play.
+- `Go Live` is the only automatic resume path back to live time.
+
+Gap report (as of 2026-02-09):
+
+- Adapter mismatch remains in `apps/web/src/app/api/search/route.ts`:
+  - backend returns `station_key`
+  - local route remaps to `stationKey`
+  - this is acceptable only if the UI adapter boundary is explicit and singular
+- `apps/web/src/app/api/time/route.ts` and `apps/web/src/app/api/timeline/route.ts` proxy to backend and preserve `no-store`, which matches control-plane requirements
+- `apps/web/src/app/api/timeline/density/route.ts` is not yet present, so density overlays should remain optional/fallback-safe until added
+
 ## HUD Layout Intent
 
 The map is full-bleed and mounted once per session. All controls render as overlay HUD cards above the map.

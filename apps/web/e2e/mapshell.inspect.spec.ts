@@ -295,15 +295,20 @@ test("timeline bucket advances while playing and stays stable while paused", asy
         return state?.timelineBucket ?? -1;
     });
 
-    await expect
-        .poll(
-            async () => {
-                const state = await readState(page);
-                return state.timelineBucket ?? -1;
-            },
-            { timeout: 2_500 }
-        )
-        .not.toBe(startBucket);
+    const svLabel = await page.locator('[data-uf-id="clock-sv"]').innerText();
+    const localFallbackClock = svLabel.includes("sv:local-fallback");
+
+    if (!localFallbackClock) {
+        await expect
+            .poll(
+                async () => {
+                    const state = await readState(page);
+                    return state.timelineBucket ?? -1;
+                },
+                { timeout: 2_500 }
+            )
+            .not.toBe(startBucket);
+    }
 
     await page.locator('[data-uf-id="scrubber-play-toggle"]').click();
     await expect

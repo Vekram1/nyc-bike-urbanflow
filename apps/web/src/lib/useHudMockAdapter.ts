@@ -9,10 +9,14 @@ export function useHudMockAdapter({
     layers,
     inspectLocked,
     mode,
+    sv,
+    delayed,
 }: {
     layers: LayerToggles;
     inspectLocked: boolean;
     mode: "live" | "replay";
+    sv: string;
+    delayed: boolean;
 }) {
     const fps = useFps();
     const { p95, spark, pushSample } = useRollingP95({ windowMs: 15_000 });
@@ -27,8 +31,8 @@ export function useHudMockAdapter({
     return {
         clock: {
             mode,
-            sv: "sv:mock-frontend",
-            delayed: false,
+            sv,
+            delayed,
             inspectLocked,
         },
         stats: {

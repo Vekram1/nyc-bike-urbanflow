@@ -1,21 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { DEFAULT_SYSTEM_ID, fetchTime, fetchTimeline } from "@/lib/controlPlane";
 import type { LayerToggles } from "@/lib/hudTypes";
 
 const SPEED_STEPS = [0.25, 1, 4, 16];
-const LIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const LIVE_FALLBACK_WINDOW_MS = 24 * 60 * 60 * 1000;
 const REPLAY_STEP_MS = 5 * 60 * 1000;
 const STORAGE_KEY = "urbanflow.hud.controls.v1";
+const TIME_POLL_MS = 5000;
+const TIMELINE_POLL_MS = 30000;
 const DEFAULT_LAYERS: LayerToggles = {
     severity: true,
     capacity: true,
     labels: false,
 };
-
-function dayStartMs(tsMs: number): number {
-    return Math.floor(tsMs / LIVE_WINDOW_MS) * LIVE_WINDOW_MS;
-}
 
 type PersistedHud = {
     speedIdx?: number;
@@ -122,17 +121,32 @@ function markStepAction(action: "stepBack" | "stepForward"): void {
     };
 }
 
+function parseIsoMs(value: string | undefined): number | null {
+    if (!value) return null;
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
+}
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+}
+
 export function useHudControls() {
     const persisted = readPersistedHud();
+    const [initialNowMs] = useState(() => Date.now());
+
     const [playing, setPlaying] = useState(true);
     const [speedIdx, setSpeedIdx] = useState(() => {
         if (typeof persisted?.speedIdx !== "number") return 1;
         return Math.max(0, Math.min(SPEED_STEPS.length - 1, persisted.speedIdx));
     });
     const [mode, setMode] = useState<"live" | "replay">("live");
-    const [windowAnchorMs, setWindowAnchorMs] = useState(Date.UTC(2026, 0, 1, 0, 0, 0));
-    const [playbackTsMs, setPlaybackTsMs] = useState(Date.UTC(2026, 0, 1, 12, 0, 0));
-    const [serverNowMs, setServerNowMs] = useState(Date.UTC(2026, 0, 1, 12, 0, 0));
+    const [rangeMinMs, setRangeMinMs] = useState(initialNowMs - LIVE_FALLBACK_WINDOW_MS);
+    const [rangeMaxMs, setRangeMaxMs] = useState(initialNowMs);
+    const [playbackTsMs, setPlaybackTsMs] = useState(initialNowMs);
+    const [serverNowMs, setServerNowMs] = useState(initialNowMs);
+    const [sv, setSv] = useState("sv:local-fallback");
+    const [delayed, setDelayed] = useState(false);
     const [layers, setLayers] = useState<LayerToggles>(() => ({
         severity:
             typeof persisted?.layers?.severity === "boolean"
@@ -147,6 +161,7 @@ export function useHudControls() {
                 ? persisted.layers.labels
                 : DEFAULT_LAYERS.labels,
     }));
+
     const wasPlayingBeforeInspectRef = useRef(false);
     const wasPlayingBeforeHiddenRef = useRef(false);
     const autoPausedByHiddenRef = useRef(false);
@@ -164,24 +179,8 @@ export function useHudControls() {
     });
 
     const speed = SPEED_STEPS[speedIdx] ?? 1;
-    const progress = Math.min(
-        1,
-        Math.max(0, (playbackTsMs - windowAnchorMs) / LIVE_WINDOW_MS)
-    );
-
-    useEffect(() => {
-        const nowMs = Date.now();
-        setWindowAnchorMs(dayStartMs(nowMs));
-        setPlaybackTsMs(nowMs);
-        setServerNowMs(nowMs);
-    }, []);
-
-    useEffect(() => {
-        const timer = window.setInterval(() => {
-            setServerNowMs(Date.now());
-        }, 1000);
-        return () => window.clearInterval(timer);
-    }, []);
+    const progressRange = Math.max(1, rangeMaxMs - rangeMinMs);
+    const progress = Math.min(1, Math.max(0, (playbackTsMs - rangeMinMs) / progressRange));
 
     useEffect(() => {
         const payload: PersistedHud = {
@@ -195,19 +194,86 @@ export function useHudControls() {
     }, [compareMode, compareOffsetBuckets, layers, speedIdx, splitView]);
 
     useEffect(() => {
+        let cancelled = false;
+
+        const pollTime = async () => {
+            try {
+                const out = await fetchTime({ systemId: DEFAULT_SYSTEM_ID });
+                if (cancelled) return;
+
+                const nowFromServer = parseIsoMs(out.server_now);
+                if (nowFromServer != null) {
+                    setServerNowMs(nowFromServer);
+                    setRangeMaxMs((curr) => Math.max(curr, nowFromServer));
+                }
+                if (out.recommended_live_sv?.length > 0) {
+                    setSv(out.recommended_live_sv);
+                }
+                setDelayed(
+                    Boolean(out.network?.client_should_throttle) ||
+                        (out.network?.degrade_level ?? 0) >= 1
+                );
+            } catch {
+                if (cancelled) return;
+                setServerNowMs(Date.now());
+            }
+        };
+
+        pollTime();
+        const timer = window.setInterval(pollTime, TIME_POLL_MS);
+        return () => {
+            cancelled = true;
+            window.clearInterval(timer);
+        };
+    }, []);
+
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            setServerNowMs((current) => current + 1000);
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, []);
+
+    useEffect(() => {
+        if (!sv || sv.startsWith("sv:local-")) return;
+        let cancelled = false;
+
+        const pollTimeline = async () => {
+            try {
+                const out = await fetchTimeline({ sv });
+                if (cancelled) return;
+                const minMs = parseIsoMs(out.available_range[0]);
+                const maxMs = parseIsoMs(out.available_range[1]);
+                const liveEdgeMs = parseIsoMs(out.live_edge_ts);
+                if (minMs == null || maxMs == null) return;
+                const boundedMax = liveEdgeMs == null ? maxMs : Math.min(maxMs, liveEdgeMs);
+                setRangeMinMs(minMs);
+                setRangeMaxMs((current) => Math.max(current, Math.max(minMs, boundedMax)));
+                setPlaybackTsMs((current) => clamp(current, minMs, Math.max(minMs, boundedMax)));
+            } catch {
+                // Keep fallback range on timeline failures.
+            }
+        };
+
+        pollTimeline();
+        const timer = window.setInterval(pollTimeline, TIMELINE_POLL_MS);
+        return () => {
+            cancelled = true;
+            window.clearInterval(timer);
+        };
+    }, [sv]);
+
+    useEffect(() => {
         if (!playing) return;
 
         const timer = window.setInterval(() => {
             if (mode === "live") {
-                const nowMs = Date.now();
-                const nextAnchor = dayStartMs(nowMs);
-                setWindowAnchorMs(nextAnchor);
-                setPlaybackTsMs(nowMs);
-                setServerNowMs(nowMs);
+                setServerNowMs((current) => current + 250);
+                setPlaybackTsMs((current) => current + 250);
                 return;
             }
 
-            const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
+            const replayMax = Math.max(rangeMinMs, Math.min(rangeMaxMs, serverNowMs));
             setPlaybackTsMs((curr) => {
                 const stepMs = Math.max(1, Math.round((REPLAY_STEP_MS / 4) * speed));
                 const next = Math.min(replayMax, curr + stepMs);
@@ -220,7 +286,7 @@ export function useHudControls() {
         }, 250);
 
         return () => window.clearInterval(timer);
-    }, [mode, playing, serverNowMs, speed, windowAnchorMs]);
+    }, [mode, playing, rangeMaxMs, rangeMinMs, serverNowMs, speed]);
 
     useEffect(() => {
         const onVisibilityChange = () => {
@@ -256,9 +322,10 @@ export function useHudControls() {
         console.info("[HudControls] seek", { next: clamped });
         markHudAction("seek");
         enterReplayPaused();
-        const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
-        const requested = windowAnchorMs + Math.round(clamped * LIVE_WINDOW_MS);
-        setPlaybackTsMs(Math.min(replayMax, requested));
+        const replayMin = rangeMinMs;
+        const replayMax = Math.max(rangeMinMs, Math.min(rangeMaxMs, serverNowMs));
+        const requested = replayMin + Math.round(clamped * Math.max(1, replayMax - replayMin));
+        setPlaybackTsMs(clamp(requested, replayMin, replayMax));
     };
 
     const togglePlay = () => {
@@ -270,6 +337,7 @@ export function useHudControls() {
         markHudAction("togglePlay");
         setPlaying((v) => !v);
     };
+
     const speedDown = () => {
         if (inspectLocked) {
             console.info("[HudControls] speed_down_blocked_inspect_lock");
@@ -288,6 +356,7 @@ export function useHudControls() {
             return next;
         });
     };
+
     const speedUp = () => {
         if (inspectLocked) {
             console.info("[HudControls] speed_up_blocked_inspect_lock");
@@ -310,7 +379,6 @@ export function useHudControls() {
     const enterReplayPaused = () => {
         setMode("replay");
         setPlaying(false);
-        // Reset to 1x on manual time navigation to avoid unexpected fast replay.
         setSpeedIdx(1);
     };
 
@@ -322,8 +390,8 @@ export function useHudControls() {
         }
         enterReplayPaused();
         setPlaybackTsMs((curr) => {
-            const replayMin = windowAnchorMs;
-            const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
+            const replayMin = rangeMinMs;
+            const replayMax = Math.max(rangeMinMs, Math.min(rangeMaxMs, serverNowMs));
             const bounded = Math.min(replayMax, curr);
             const next = Math.max(replayMin, bounded - REPLAY_STEP_MS);
             console.info("[HudControls] step_back", { from: curr, to: next });
@@ -332,6 +400,7 @@ export function useHudControls() {
             return next;
         });
     };
+
     const stepForward = () => {
         if (inspectLocked) {
             console.info("[HudControls] step_forward_blocked_inspect_lock");
@@ -340,7 +409,7 @@ export function useHudControls() {
         }
         enterReplayPaused();
         setPlaybackTsMs((curr) => {
-            const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
+            const replayMax = Math.max(rangeMinMs, Math.min(rangeMaxMs, serverNowMs));
             const next = Math.min(replayMax, curr + REPLAY_STEP_MS);
             console.info("[HudControls] step_forward", { from: curr, to: next });
             markHudAction("stepForward");
@@ -348,20 +417,21 @@ export function useHudControls() {
             return next;
         });
     };
+
     const goLive = () => {
         if (inspectLocked) {
             console.info("[HudControls] go_live_blocked_inspect_lock");
             markBlockedAction("goLive", "inspect_lock");
             return;
         }
-        const nowMs = Date.now();
+        const replayMin = rangeMinMs;
+        const replayMax = Math.max(rangeMinMs, Math.min(rangeMaxMs, serverNowMs));
         setMode("live");
-        setWindowAnchorMs(dayStartMs(nowMs));
-        setPlaybackTsMs(nowMs);
-        setServerNowMs(nowMs);
+        setPlaybackTsMs(clamp(serverNowMs, replayMin, replayMax));
         setPlaying(true);
         markHudAction("goLive");
     };
+
     const toggleLayer = (key: keyof LayerToggles) => {
         markHudAction(`toggleLayer:${key}`);
         setLayers((curr) => ({ ...curr, [key]: !curr[key] }));
@@ -527,6 +597,8 @@ export function useHudControls() {
         compareMode,
         splitView,
         compareOffsetBuckets,
+        sv,
+        delayed,
         seekTo,
         togglePlay,
         speedDown,

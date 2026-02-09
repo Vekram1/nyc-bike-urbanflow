@@ -103,6 +103,8 @@ export default function MapShell() {
         layers: hud.layers,
         inspectLocked: inspectOpen,
         mode: hud.mode,
+        sv: hud.sv,
+        delayed: hud.delayed,
     });
     const tileRequestKey = JSON.stringify({
         layers: hud.layers,

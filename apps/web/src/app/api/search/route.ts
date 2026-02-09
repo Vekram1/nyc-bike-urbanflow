@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const STATION_INFO_URL =
-    "https://gbfs.citibikenyc.com/gbfs/en/station_information.json";
+const BACKEND_ORIGIN = process.env.URBANFLOW_API_ORIGIN?.trim() || "http://127.0.0.1:3000";
+const DEFAULT_SYSTEM_ID = process.env.SYSTEM_ID?.trim() || "citibike-nyc";
 
-const ALLOWED_KEYS = new Set(["q", "limit"]);
+const ALLOWED_KEYS = new Set(["q", "limit", "bbox", "system_id"]);
 const DEFAULT_LIMIT = 8;
 const MAX_LIMIT = 20;
 
-type StationInformation = {
-    stations: Array<{
-        station_id: string;
+type BackendSearchResponse = {
+    results?: Array<{
+        station_key: string;
         name: string;
     }>;
-};
-
-type GbfsWrapper<T> = {
-    data: T;
+    error?: {
+        message?: string;
+    };
 };
 
 function json(status: number, body: unknown): NextResponse {
@@ -70,36 +69,43 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         });
     }
 
+    const upstreamParams = new URLSearchParams({
+        q,
+        limit: String(limit),
+        system_id: params.get("system_id")?.trim() || DEFAULT_SYSTEM_ID,
+    });
+
+    const bbox = params.get("bbox")?.trim();
+    if (bbox) {
+        upstreamParams.set("bbox", bbox);
+    }
+
+    const upstreamUrl = `${BACKEND_ORIGIN}/api/search?${upstreamParams.toString()}`;
+
     try {
-        const res = await fetch(STATION_INFO_URL, { cache: "no-store" });
+        const res = await fetch(upstreamUrl, { cache: "no-store" });
+        const body = (await res.json()) as BackendSearchResponse;
+
         if (!res.ok) {
-            return json(502, {
+            return json(res.status, {
                 error: {
-                    code: "upstream_unavailable",
-                    message: "station_information fetch failed",
+                    code: "upstream_error",
+                    message: body.error?.message ?? "Search unavailable",
                 },
             });
         }
 
-        const payload = (await res.json()) as GbfsWrapper<StationInformation>;
-        const query = q.toLowerCase();
-
-        const results = payload.data.stations
-            .filter((station) => {
-                const name = station.name.toLowerCase();
-                const id = station.station_id.toLowerCase();
-                return name.includes(query) || id.includes(query);
-            })
-            .slice(0, limit)
-            .map((station) => ({
-                stationKey: station.station_id,
-                name: station.name,
-            }));
+        const results = Array.isArray(body.results)
+            ? body.results.map((station) => ({
+                  stationKey: station.station_key,
+                  name: station.name,
+              }))
+            : [];
 
         return json(200, { results });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
-        return json(500, {
+        return json(502, {
             error: {
                 code: "search_failed",
                 message,
