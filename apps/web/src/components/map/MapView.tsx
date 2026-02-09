@@ -15,6 +15,7 @@ const NYC = {
 
 const SOURCE_ID = "gbfs-stations";
 const LAYER_ID = "gbfs-stations-circles";
+let activeMapViewCount = 0;
 
 export type StationPick = {
     station_id: string;
@@ -49,9 +50,29 @@ export default function MapView(props: Props) {
     const mapRef = useRef<MapRef | null>(null);
     const lastSelectedRef = useRef<string | null>(null);
 
+    useEffect(() => {
+        activeMapViewCount += 1;
+        console.info("[MapView] mount", { activeMapViewCount });
+
+        if (activeMapViewCount > 1) {
+            console.error("[MapView] mount_once_invariant_violation", {
+                activeMapViewCount,
+                sourceId: SOURCE_ID,
+                layerId: LAYER_ID,
+            });
+        }
+
+        return () => {
+            activeMapViewCount = Math.max(0, activeMapViewCount - 1);
+            console.info("[MapView] unmount", { activeMapViewCount });
+        };
+    }, []);
+
     const ensureStationsLayer = useCallback(() => {
         const map = mapRef.current?.getMap();
         if (!map) return;
+        let sourceAdded = false;
+        let layerAdded = false;
 
         if (!map.getSource(SOURCE_ID)) {
             map.addSource(SOURCE_ID, {
@@ -59,6 +80,7 @@ export default function MapView(props: Props) {
                 data: { type: "FeatureCollection", features: [] },
                 promoteId: "station_id",
             });
+            sourceAdded = true;
         }
 
         if (!map.getLayer(LAYER_ID)) {
@@ -103,6 +125,16 @@ export default function MapView(props: Props) {
                     ],
                 },
             });
+            layerAdded = true;
+        }
+
+        if (sourceAdded || layerAdded) {
+            console.info("[MapView] source_layer_ready", {
+                sourceId: SOURCE_ID,
+                layerId: LAYER_ID,
+                sourceAdded,
+                layerAdded,
+            });
         }
     }, []);
 
@@ -120,6 +152,12 @@ export default function MapView(props: Props) {
 
         if (json?.type === "FeatureCollection") {
             (src as SourceWithSetData).setData(json);
+            const featureCount = Array.isArray(json.features) ? json.features.length : 0;
+            console.debug("[MapView] source_updated", {
+                sourceId: SOURCE_ID,
+                featureCount,
+                freeze: !!freeze,
+            });
         } else {
             console.warn("Unexpected GBFS response:", json);
         }
@@ -130,7 +168,9 @@ export default function MapView(props: Props) {
         if (freeze) return;
 
         const id = window.setInterval(() => {
-            refreshStations().catch((e) => console.error(e));
+            refreshStations().catch((e) =>
+                console.error("[MapView] refresh_failed", { error: e })
+            );
         }, 15000);
 
         return () => window.clearInterval(id);
@@ -188,8 +228,14 @@ export default function MapView(props: Props) {
             attributionControl={true}
             interactiveLayerIds={[LAYER_ID]}
             onLoad={() => {
+                console.info("[MapView] map_loaded", {
+                    sourceId: SOURCE_ID,
+                    layerId: LAYER_ID,
+                });
                 ensureStationsLayer();
-                refreshStations().catch((e) => console.error(e));
+                refreshStations().catch((e) =>
+                    console.error("[MapView] initial_refresh_failed", { error: e })
+                );
             }}
             onClick={(e) => {
                 const f = e.features?.[0];
