@@ -71,6 +71,29 @@ describe("validateSvQuery", () => {
     expect(events.includes("sv.invalid")).toBe(true);
   });
 
+  it("maps non-revoked invalid reasons to 401 with origin-shield headers", async () => {
+    const reasons = ["token_invalid", "token_expired", "signature_invalid"] as const;
+
+    for (const reason of reasons) {
+      const result = await validateSvQuery(
+        {
+          async validate() {
+            return { ok: false as const, reason };
+          },
+        } as unknown as import("./service").ServingTokenService,
+        new URLSearchParams("sv=abc")
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(401);
+        expect(result.code).toBe(reason);
+        expect(result.headers["Cache-Control"]).toBe("no-store");
+        expect(result.headers["X-Origin-Block-Reason"]).toBe(reason);
+      }
+    }
+  });
+
   it("returns normalized sv payload and logs sv.ok", async () => {
     const events: string[] = [];
     const result = await validateSvQuery(
