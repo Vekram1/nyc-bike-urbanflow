@@ -191,4 +191,43 @@ describe("createTimelineRouteHandler", () => {
     const densityBody = await densityRes.json();
     expect(densityBody.error.code).toBe("unsupported_version");
   });
+
+  it("returns 405 for non-GET timeline endpoints", async () => {
+    const handler = createTimelineRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      timelineStore: {
+        async getRange() {
+          return {
+            min_observation_ts: "2026-02-06T00:00:00Z",
+            max_observation_ts: "2026-02-06T18:00:00Z",
+            live_edge_ts: "2026-02-06T18:00:00Z",
+          };
+        },
+        async getDensity() {
+          return [];
+        },
+      },
+      default_bucket_seconds: 300,
+    });
+
+    const timelineRes = await handler(
+      new Request("https://example.test/api/timeline?v=1&sv=abc", { method: "POST" })
+    );
+    expect(timelineRes.status).toBe(405);
+    expect(timelineRes.headers.get("Cache-Control")).toBe("no-store");
+    const timelineBody = await timelineRes.json();
+    expect(timelineBody.error.code).toBe("method_not_allowed");
+
+    const densityRes = await handler(
+      new Request("https://example.test/api/timeline/density?v=1&sv=abc&bucket=300", { method: "POST" })
+    );
+    expect(densityRes.status).toBe(405);
+    expect(densityRes.headers.get("Cache-Control")).toBe("no-store");
+    const densityBody = await densityRes.json();
+    expect(densityBody.error.code).toBe("method_not_allowed");
+  });
 });
