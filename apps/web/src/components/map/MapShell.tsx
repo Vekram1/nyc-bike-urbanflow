@@ -25,6 +25,9 @@ type UfE2EState = {
     inspectOpenCount?: number;
     inspectCloseCount?: number;
     inspectCloseReasons?: Record<string, number>;
+    hotkeyHandledCount?: number;
+    hotkeyIgnoredCount?: number;
+    hotkeyLastCode?: string;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -94,7 +97,19 @@ export default function MapShell() {
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
-            if (hud.handleHotkey(e)) return;
+            if (hud.handleHotkey(e)) {
+                updateUfE2E((current) => ({
+                    ...current,
+                    hotkeyHandledCount: (current.hotkeyHandledCount ?? 0) + 1,
+                    hotkeyLastCode: e.code,
+                }));
+                return;
+            }
+            updateUfE2E((current) => ({
+                ...current,
+                hotkeyIgnoredCount: (current.hotkeyIgnoredCount ?? 0) + 1,
+                hotkeyLastCode: e.code,
+            }));
             if (e.code !== "Escape") return;
             if (!inspectOpen) return;
 
@@ -183,6 +198,9 @@ export default function MapShell() {
             inspectOpenCount: current.inspectOpenCount ?? 0,
             inspectCloseCount: current.inspectCloseCount ?? 0,
             inspectCloseReasons: current.inspectCloseReasons ?? {},
+            hotkeyHandledCount: current.hotkeyHandledCount ?? 0,
+            hotkeyIgnoredCount: current.hotkeyIgnoredCount ?? 0,
+            hotkeyLastCode: current.hotkeyLastCode ?? "",
         }));
     }, [compareBucket, inspectOpen, selected?.station_id, tileRequestKey, timelineBucket]);
 
