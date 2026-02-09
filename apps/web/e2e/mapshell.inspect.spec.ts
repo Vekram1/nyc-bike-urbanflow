@@ -565,3 +565,44 @@ test("compare offset clamps to bounds and blocks under inspect lock", async ({ p
             lastBlockedReason: "inspect_lock",
         });
 });
+
+test("drawer close button records drawer_close_button reason telemetry", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+
+    const before = await readState(page);
+    const beforeCloseCount = before.inspectCloseCount ?? 0;
+    const beforeReasonCount = before.inspectCloseReasons?.drawer_close_button ?? 0;
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-close-reason");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+
+    await page.locator('[data-uf-id="drawer-close-button"]').click();
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toHaveCount(0);
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                inspectLastCloseReason: state.inspectLastCloseReason ?? "",
+                inspectCloseCount: state.inspectCloseCount ?? 0,
+                drawerReasonCount: state.inspectCloseReasons?.drawer_close_button ?? 0,
+            };
+        })
+        .toEqual({
+            inspectLastCloseReason: "drawer_close_button",
+            inspectCloseCount: beforeCloseCount + 1,
+            drawerReasonCount: beforeReasonCount + 1,
+        });
+});
