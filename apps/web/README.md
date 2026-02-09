@@ -29,6 +29,26 @@ The map is full-bleed and mounted once per session. All controls render as overl
 - Opening station inspect pauses playback and freezes map data updates (`freeze=true` on `MapView`).
 - Closing inspect resumes playback only if it was playing before inspect opened.
 - Keyboard shortcuts route through `useHudControls.handleHotkey` (`Space`, arrows, `Home`, `End`, `-`, `+`).
+- While inspect is open (`inspectLocked=true`), timeline mutations are blocked:
+  - play/pause toggle
+  - speed changes
+  - seek and bucket step actions
+  This prevents deterministic-view drift while station details are open.
+
+## TimeController State Rules
+
+- State model:
+  - `playing`: playback clock running
+  - `inspectLocked`: station drawer lock active
+  - `progress`: scrubber position (`0..1`) used for timeline bucket selection
+- Guards:
+  - `inspectLocked` supersedes mutation actions and blocks timeline updates from UI/hotkeys.
+  - tab visibility auto-pause/resume is preserved (`visibilitychange`).
+- Step granularity:
+  - bucket stepping changes `progress` by `0.01` per action.
+- Debounce/anti-thrash behavior:
+  - no delayed resume timer is used; inspect open/close transitions are edge-triggered and deterministic.
+  - repeated blocked actions during inspect are ignored and logged, not queued.
 
 ## Logging (Debug)
 

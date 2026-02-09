@@ -52,6 +52,7 @@ export function useHudControls() {
     const wasPlayingBeforeInspectRef = useRef(false);
     const wasPlayingBeforeHiddenRef = useRef(false);
     const autoPausedByHiddenRef = useRef(false);
+    const [inspectLocked, setInspectLocked] = useState(false);
 
     const speed = SPEED_STEPS[speedIdx] ?? 1;
 
@@ -98,27 +99,96 @@ export function useHudControls() {
     }, [playing]);
 
     const seekTo = (next: number) => {
+        if (inspectLocked) {
+            console.info("[HudControls] seek_blocked_inspect_lock");
+            return;
+        }
         const clamped = Math.min(1, Math.max(0, next));
+        console.info("[HudControls] seek", { next: clamped });
         setProgress(clamped);
     };
 
-    const togglePlay = () => setPlaying((v) => !v);
-    const speedDown = () => setSpeedIdx((i) => Math.max(0, i - 1));
-    const speedUp = () => setSpeedIdx((i) => Math.min(SPEED_STEPS.length - 1, i + 1));
-    const stepBack = () => setProgress((p) => Math.max(0, p - 0.01));
-    const stepForward = () => setProgress((p) => Math.min(1, p + 0.01));
+    const togglePlay = () => {
+        if (inspectLocked) {
+            console.info("[HudControls] toggle_play_blocked_inspect_lock");
+            return;
+        }
+        setPlaying((v) => !v);
+    };
+    const speedDown = () => {
+        if (inspectLocked) {
+            console.info("[HudControls] speed_down_blocked_inspect_lock");
+            return;
+        }
+        setSpeedIdx((i) => {
+            const next = Math.max(0, i - 1);
+            if (next !== i) {
+                console.info("[HudControls] speed_changed", {
+                    from: SPEED_STEPS[i],
+                    to: SPEED_STEPS[next],
+                });
+            }
+            return next;
+        });
+    };
+    const speedUp = () => {
+        if (inspectLocked) {
+            console.info("[HudControls] speed_up_blocked_inspect_lock");
+            return;
+        }
+        setSpeedIdx((i) => {
+            const next = Math.min(SPEED_STEPS.length - 1, i + 1);
+            if (next !== i) {
+                console.info("[HudControls] speed_changed", {
+                    from: SPEED_STEPS[i],
+                    to: SPEED_STEPS[next],
+                });
+            }
+            return next;
+        });
+    };
+    const stepBack = () => {
+        if (inspectLocked) {
+            console.info("[HudControls] step_back_blocked_inspect_lock");
+            return;
+        }
+        setProgress((p) => {
+            const next = Math.max(0, p - 0.01);
+            console.info("[HudControls] step_back", { from: p, to: next });
+            return next;
+        });
+    };
+    const stepForward = () => {
+        if (inspectLocked) {
+            console.info("[HudControls] step_forward_blocked_inspect_lock");
+            return;
+        }
+        setProgress((p) => {
+            const next = Math.min(1, p + 0.01);
+            console.info("[HudControls] step_forward", { from: p, to: next });
+            return next;
+        });
+    };
     const toggleLayer = (key: keyof LayerToggles) => {
         setLayers((curr) => ({ ...curr, [key]: !curr[key] }));
     };
 
     const onInspectOpen = () => {
+        setInspectLocked(true);
         wasPlayingBeforeInspectRef.current = playing;
         if (playing) {
             setPlaying(false);
         }
+        console.info("[HudControls] inspect_open", {
+            wasPlayingBeforeInspect: wasPlayingBeforeInspectRef.current,
+        });
     };
 
     const onInspectClose = () => {
+        setInspectLocked(false);
+        console.info("[HudControls] inspect_close", {
+            resumePlayback: wasPlayingBeforeInspectRef.current,
+        });
         if (wasPlayingBeforeInspectRef.current) {
             setPlaying(true);
         }
@@ -178,6 +248,7 @@ export function useHudControls() {
         speed,
         progress,
         layers,
+        inspectLocked,
         seekTo,
         togglePlay,
         speedDown,

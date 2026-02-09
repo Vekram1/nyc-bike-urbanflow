@@ -108,6 +108,7 @@ export default function MapShell() {
                     <section role="region" aria-label="Timeline playback controls">
                         <ScrubberBar
                             playing={hud.playing}
+                            inspectLocked={hud.inspectLocked}
                             speed={hud.speed}
                             progress={hud.progress}
                             progressLabel={progressLabel}
@@ -125,6 +126,7 @@ export default function MapShell() {
                     <nav aria-label="Playback and layer controls">
                         <CommandStack
                             playing={hud.playing}
+                            inspectLocked={hud.inspectLocked}
                             layers={hud.layers}
                             onTogglePlay={hud.togglePlay}
                             onToggleLayer={hud.toggleLayer}

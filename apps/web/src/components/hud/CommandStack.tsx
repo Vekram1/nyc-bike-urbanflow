@@ -7,6 +7,7 @@ import type { LayerToggles } from "@/lib/hudTypes";
 
 type Props = {
     playing: boolean;
+    inspectLocked: boolean;
     layers: LayerToggles;
     onTogglePlay: () => void;
     onToggleLayer: (key: keyof LayerToggles) => void;
@@ -14,6 +15,7 @@ type Props = {
 
 export default function CommandStack({
     playing,
+    inspectLocked,
     layers,
     onTogglePlay,
     onToggleLayer,
@@ -29,6 +31,7 @@ export default function CommandStack({
                         onClick={onTogglePlay}
                         aria-label={playing ? "Pause playback" : "Start playback"}
                         title={playing ? "Pause playback" : "Start playback"}
+                        disabled={inspectLocked}
                     >
                         <span style={{ fontSize: 12, opacity: 0.92 }}>
                             {playing ? "Pause" : "Play"}

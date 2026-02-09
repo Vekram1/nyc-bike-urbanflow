@@ -8,6 +8,7 @@ import Keycap from "./Keycap";
 
 type Props = {
     playing: boolean;
+    inspectLocked: boolean;
     speed: number;
     progress: number;
     progressLabel: string;
@@ -21,6 +22,7 @@ type Props = {
 
 export default function ScrubberBar({
     playing,
+    inspectLocked,
     speed,
     progress,
     progressLabel,
@@ -38,7 +40,7 @@ export default function ScrubberBar({
     const progressPercent = Math.round(clampedProgress * 100);
     const scrubberValueText = `${progressLabel}. Playback ${
         playing ? "playing" : "paused"
-    }. Speed ${speed.toFixed(2)}x.`;
+    }. Speed ${speed.toFixed(2)}x.${inspectLocked ? " Inspect lock is active." : ""}`;
 
     const onTrackClick = (e: React.MouseEvent<HTMLButtonElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -63,6 +65,7 @@ export default function ScrubberBar({
                     title={playing ? "Pause playback" : "Start playback"}
                     aria-label={playing ? "Pause playback" : "Start playback"}
                     onClick={onTogglePlay}
+                    disabled={inspectLocked}
                 >
                     {playing ? "Pause" : "Play"} <Keycap k="Space" />
                 </button>
@@ -74,6 +77,7 @@ export default function ScrubberBar({
                         onClick={onSpeedDown}
                         title="Decrease playback speed"
                         aria-label="Decrease playback speed"
+                        disabled={inspectLocked}
                     >
                         - <span style={{ opacity: 0.7 }}>speed</span> <Keycap k="-" />
                     </button>
@@ -83,6 +87,7 @@ export default function ScrubberBar({
                         onClick={onSpeedUp}
                         title="Increase playback speed"
                         aria-label="Increase playback speed"
+                        disabled={inspectLocked}
                     >
                         + <span style={{ opacity: 0.7 }}>speed</span> <Keycap k="+" />
                     </button>
@@ -104,6 +109,7 @@ export default function ScrubberBar({
                     aria-valuemax={100}
                     aria-valuenow={progressPercent}
                     aria-valuetext={scrubberValueText}
+                    disabled={inspectLocked}
                 >
                     <div
                         style={{
@@ -153,6 +159,7 @@ export default function ScrubberBar({
                         onClick={onStepBack}
                         title="Step back one bucket"
                         aria-label="Step back one bucket"
+                        disabled={inspectLocked}
                     >
                         Back <Keycap k="←" />
                     </button>
@@ -162,6 +169,7 @@ export default function ScrubberBar({
                         onClick={onStepForward}
                         title="Step forward one bucket"
                         aria-label="Step forward one bucket"
+                        disabled={inspectLocked}
                     >
                         Step <Keycap k="→" />
                     </button>
