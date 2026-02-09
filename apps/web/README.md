@@ -131,6 +131,8 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.splitViewLastChangedAt`
   - `window.__UF_E2E.compareOffsetLastValue`
   - `window.__UF_E2E.compareOffsetLastChangedAt`
+  - `window.__UF_E2E.stepBackLastAt`
+  - `window.__UF_E2E.stepForwardLastAt`
   - `window.__UF_E2E.playbackSpeed`
   - `window.__UF_E2E.playing`
   - `window.__UF_E2E.hudActionCounts`

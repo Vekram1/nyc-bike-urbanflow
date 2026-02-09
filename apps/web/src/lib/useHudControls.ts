@@ -30,6 +30,8 @@ type UfE2EState = {
     splitViewLastChangedAt?: string;
     compareOffsetLastValue?: number;
     compareOffsetLastChangedAt?: string;
+    stepBackLastAt?: string;
+    stepForwardLastAt?: string;
     hudLastBlockedAction?: string;
     hudLastBlockedReason?: string;
     hudLastBlockedAt?: string;
@@ -100,6 +102,17 @@ function markSplitViewChanged(value: boolean): void {
         ...current,
         splitViewLastValue: value,
         splitViewLastChangedAt: new Date().toISOString(),
+    };
+}
+
+function markStepAction(action: "stepBack" | "stepForward"): void {
+    if (typeof window === "undefined") return;
+    const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
+    const now = new Date().toISOString();
+    (window as { __UF_E2E?: UfE2EState }).__UF_E2E = {
+        ...current,
+        stepBackLastAt: action === "stepBack" ? now : (current.stepBackLastAt ?? ""),
+        stepForwardLastAt: action === "stepForward" ? now : (current.stepForwardLastAt ?? ""),
     };
 }
 
@@ -258,6 +271,7 @@ export function useHudControls() {
             const next = Math.max(0, p - 0.01);
             console.info("[HudControls] step_back", { from: p, to: next });
             markHudAction("stepBack");
+            markStepAction("stepBack");
             return next;
         });
     };
@@ -271,6 +285,7 @@ export function useHudControls() {
             const next = Math.min(1, p + 0.01);
             console.info("[HudControls] step_forward", { from: p, to: next });
             markHudAction("stepForward");
+            markStepAction("stepForward");
             return next;
         });
     };
