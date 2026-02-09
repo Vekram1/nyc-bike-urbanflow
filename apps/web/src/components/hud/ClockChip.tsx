@@ -67,7 +67,13 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
             >
                 {statusSummary}
             </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+                style={{ display: "flex", alignItems: "center", gap: 10 }}
+                data-uf-id="clock-state"
+                data-uf-mode={mode}
+                data-uf-inspect-locked={inspectLocked ? "true" : "false"}
+                data-uf-delayed={delayed ? "true" : "false"}
+            >
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                     <time
                         dateTime={dateIso}

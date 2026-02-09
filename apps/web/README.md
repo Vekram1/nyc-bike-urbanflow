@@ -168,6 +168,7 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `data-uf-id="hud-clock"`
 - `data-uf-id="clock-date"`
 - `data-uf-id="clock-time"`
+- `data-uf-id="clock-state"` with `data-uf-mode`, `data-uf-inspect-locked`, `data-uf-delayed`
 - `data-uf-id="clock-mode-badge"` with `data-uf-mode="live|replay"`
 - `data-uf-id="clock-sv"`
 - `data-uf-id="clock-inspect-lock"`
