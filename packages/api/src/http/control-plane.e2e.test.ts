@@ -667,4 +667,431 @@ describe("control-plane e2e", () => {
     expect(configWhileOverloaded.status).toBe(200);
     expect(configWhileOverloaded.headers.get("Cache-Control")).toBe("no-store");
   });
+
+  it("serves station drawer bundle with sv-bound bounded params", async () => {
+    const db = new FakeSqlDb();
+    db.seedAllowlist("system_id", "citibike-nyc", null);
+    db.seedAllowlist("tile_schema", "tile.v1", "citibike-nyc");
+    db.seedAllowlist("severity_version", "sev.v1", "citibike-nyc");
+    db.seedWatermark({
+      system_id: "citibike-nyc",
+      dataset_id: "gbfs.station_status",
+      as_of_ts: "2026-02-06T18:30:00.000Z",
+      max_observed_at: "2026-02-06T18:29:30.000Z",
+      updated_at: "2026-02-06T18:30:05.000Z",
+    });
+    db.seedServingKey({
+      kid: "kid-1",
+      system_id: "citibike-nyc",
+      algo: "HS256",
+      status: "active",
+      valid_from: "2026-02-01T00:00:00.000Z",
+      valid_to: null,
+    });
+
+    const keyMaterial: ServingKeyMaterialProvider = {
+      async getSecret(kid, systemId) {
+        if (kid === "kid-1" && systemId === "citibike-nyc") {
+          return new TextEncoder().encode("test-secret");
+        }
+        return null;
+      },
+    };
+
+    const allowlist = new PgAllowlistStore(db);
+    const tokenStore = new PgServingTokenStore(db, keyMaterial);
+    const tokenService = new ServingTokenService(tokenStore, () => new Date("2026-02-06T18:30:10.000Z"));
+    const viewStore = new PgServingViewStore(db);
+    const viewService = new ServingViewService({
+      views: viewStore,
+      allowlist,
+      tokens: tokenService,
+      tokenStore,
+    });
+
+    const drawerInfoEvents: Array<{ event: string; details: Record<string, unknown> }> = [];
+    const handler = createControlPlaneHandler({
+      time: {
+        servingViews: viewService,
+        viewStore,
+        network: {
+          async getSummary() {
+            return {
+              active_station_count: 100,
+              empty_station_count: 12,
+              full_station_count: 8,
+              pct_serving_grade: 0.92,
+              worst_5_station_keys_by_severity: ["s1", "s2", "s3", "s4", "s5"],
+              observed_bucket_ts: "2026-02-06T18:30:00.000Z",
+            };
+          },
+        },
+        config: {
+          view_version: "sv.v1",
+          ttl_seconds: 120,
+          tile_schema_version: "tile.v1",
+          severity_version: "sev.v1",
+          severity_spec_sha256: "sev-spec-hash",
+          required_datasets: ["gbfs.station_status"],
+          optional_datasets: [],
+        },
+        clock: () => new Date("2026-02-06T18:30:20.000Z"),
+      },
+      config: {
+        bucket_size_seconds: 300,
+        severity_version: "sev.v1",
+        severity_legend_bins: [{ min: 0, max: 1, label: "all" }],
+        map: {
+          initial_center: { lon: -73.98, lat: 40.75 },
+          initial_zoom: 12,
+          max_bounds: { min_lon: -74.3, min_lat: 40.45, max_lon: -73.65, max_lat: 40.95 },
+          min_zoom: 9,
+          max_zoom: 18,
+        },
+        speed_presets: [1, 10, 60],
+        cache_policy: { live_tile_max_age_s: 10 },
+      },
+      timeline: {
+        tokens: tokenService,
+        timelineStore: {
+          async getRange() {
+            return {
+              min_observation_ts: "2026-02-06T00:00:00Z",
+              max_observation_ts: "2026-02-06T18:00:00Z",
+              live_edge_ts: "2026-02-06T18:00:00Z",
+            };
+          },
+          async getDensity() {
+            return [];
+          },
+        },
+        default_bucket_seconds: 300,
+      },
+      search: {
+        allowlist,
+        searchStore: {
+          async searchStations() {
+            return [];
+          },
+        },
+      },
+      stationDrawer: {
+        tokens: tokenService,
+        allowlist,
+        stationsStore: {
+          async getStationDrawer() {
+            return {
+              station_key: "STA-001",
+              sv: null,
+              t_bucket_epoch_s: 1738872000,
+              range_s: 21600,
+              bucket_seconds: 300,
+              severity_version: "sev.v1",
+              tile_schema: "tile.v1",
+              metadata: {
+                name: "W 52 St",
+                capacity: 40,
+              },
+              point_in_time: {
+                bucket_ts: "2026-02-06T20:00:00Z",
+                bikes_available: 12,
+                docks_available: 28,
+                bucket_quality: "ok",
+                severity: 0.2,
+                pressure_score: 0.4,
+              },
+              series: {
+                points: [
+                  {
+                    bucket_ts: "2026-02-06T19:55:00Z",
+                    bikes_available: 10,
+                    docks_available: 30,
+                    bucket_quality: "ok",
+                    severity: 0.1,
+                    pressure_score: 0.2,
+                  },
+                ],
+                truncated: true,
+              },
+              episodes: {
+                items: [
+                  {
+                    bucket_ts: "2026-02-06T19:45:00Z",
+                    episode_type: "empty",
+                    duration_minutes: 15,
+                    bucket_quality: "ok",
+                    episode_start_ts: "2026-02-06T19:30:00Z",
+                    episode_end_ts: "2026-02-06T19:45:00Z",
+                  },
+                ],
+                truncated: true,
+              },
+            };
+          },
+        },
+        defaults: {
+          severity_version: "sev.v1",
+          tile_schema: "tile.v1",
+          range_s: 21600,
+          bucket_seconds: 300,
+        },
+        limits: {
+          max_range_s: 172800,
+          max_series_points: 360,
+          max_episodes: 50,
+        },
+        cache: {
+          max_age_s: 30,
+          s_maxage_s: 120,
+          stale_while_revalidate_s: 15,
+        },
+        logger: {
+          info(event, details) {
+            drawerInfoEvents.push({ event, details });
+          },
+          warn() {},
+        },
+      },
+    });
+
+    const timeRes = await handler(new Request("https://example.test/api/time?system_id=citibike-nyc"));
+    expect(timeRes.status).toBe(200);
+    const timeBody = await timeRes.json();
+    const sv = timeBody.recommended_live_sv as string;
+
+    const drawerRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(sv)}&T_bucket=1738872000&range=6h&severity_version=sev.v1&tile_schema=tile.v1`
+      )
+    );
+    expect(drawerRes.status).toBe(200);
+    expect(drawerRes.headers.get("Cache-Control")).toContain("max-age=30");
+    const drawerBody = await drawerRes.json();
+    expect(drawerBody.station_key).toBe("STA-001");
+    expect(drawerBody.sv).toBe(sv);
+    expect(drawerBody.range_s).toBe(21600);
+    expect(drawerBody.point_in_time.bucket_quality).toBe("ok");
+    expect(drawerBody.series.points.length).toBe(1);
+    expect(drawerBody.series.points[0]?.bucket_quality).toBe("ok");
+    expect(drawerBody.series.truncated).toBe(true);
+    expect(drawerBody.episodes.items.length).toBe(1);
+    expect(drawerBody.episodes.items[0]?.bucket_quality).toBe("ok");
+    expect(drawerBody.episodes.truncated).toBe(true);
+    expect(drawerInfoEvents.some((evt) => evt.event === "stations.drawer.ok")).toBe(true);
+    const drawerOk = drawerInfoEvents.find((evt) => evt.event === "stations.drawer.ok");
+    expect(drawerOk?.details.station_key).toBe("STA-001");
+    expect(drawerOk?.details.sv).toBe(sv);
+    expect(Number(drawerOk?.details.payload_bytes)).toBeGreaterThan(0);
+
+    const tooWideRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(sv)}&T_bucket=1738872000&range=72h&severity_version=sev.v1&tile_schema=tile.v1`
+      )
+    );
+    expect(tooWideRes.status).toBe(400);
+    const tooWideBody = await tooWideRes.json();
+    expect(tooWideBody.error.code).toBe("invalid_range");
+    expect(tooWideRes.headers.get("Cache-Control")).toBe("no-store");
+
+    const unknownParamRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(sv)}&T_bucket=1738872000&range=6h&severity_version=sev.v1&tile_schema=tile.v1&extra=x`
+      )
+    );
+    expect(unknownParamRes.status).toBe(400);
+    const unknownParamBody = await unknownParamRes.json();
+    expect(unknownParamBody.error.code).toBe("unknown_param");
+    expect(unknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+
+    const invalidBucketRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(sv)}&T_bucket=not-an-int&range=6h&severity_version=sev.v1&tile_schema=tile.v1`
+      )
+    );
+    expect(invalidBucketRes.status).toBe(400);
+    const invalidBucketBody = await invalidBucketRes.json();
+    expect(invalidBucketBody.error.code).toBe("invalid_t_bucket");
+    expect(invalidBucketRes.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("serves station detail and series endpoints with sv-bound params", async () => {
+    const db = new FakeSqlDb();
+    db.seedAllowlist("system_id", "citibike-nyc", null);
+    db.seedAllowlist("tile_schema", "tile.v1", "citibike-nyc");
+    db.seedAllowlist("severity_version", "sev.v1", "citibike-nyc");
+    db.seedWatermark({
+      system_id: "citibike-nyc",
+      dataset_id: "gbfs.station_status",
+      as_of_ts: "2026-02-06T18:30:00.000Z",
+      max_observed_at: "2026-02-06T18:29:30.000Z",
+      updated_at: "2026-02-06T18:30:05.000Z",
+    });
+    db.seedServingKey({
+      kid: "kid-1",
+      system_id: "citibike-nyc",
+      algo: "HS256",
+      status: "active",
+      valid_from: "2026-02-01T00:00:00.000Z",
+      valid_to: null,
+    });
+
+    const keyMaterial: ServingKeyMaterialProvider = {
+      async getSecret(kid, systemId) {
+        if (kid === "kid-1" && systemId === "citibike-nyc") {
+          return new TextEncoder().encode("test-secret");
+        }
+        return null;
+      },
+    };
+
+    const allowlist = new PgAllowlistStore(db);
+    const tokenStore = new PgServingTokenStore(db, keyMaterial);
+    const tokenService = new ServingTokenService(tokenStore, () => new Date("2026-02-06T18:30:10.000Z"));
+    const viewStore = new PgServingViewStore(db);
+    const viewService = new ServingViewService({
+      views: viewStore,
+      allowlist,
+      tokens: tokenService,
+      tokenStore,
+    });
+
+    const stationInfoEvents: Array<{ event: string; details: Record<string, unknown> }> = [];
+    const handler = createControlPlaneHandler({
+      time: {
+        servingViews: viewService,
+        viewStore,
+        network: {
+          async getSummary() {
+            return {
+              active_station_count: 100,
+              empty_station_count: 12,
+              full_station_count: 8,
+              pct_serving_grade: 0.92,
+              worst_5_station_keys_by_severity: ["s1", "s2", "s3", "s4", "s5"],
+              observed_bucket_ts: "2026-02-06T18:30:00.000Z",
+            };
+          },
+        },
+        config: {
+          view_version: "sv.v1",
+          ttl_seconds: 120,
+          tile_schema_version: "tile.v1",
+          severity_version: "sev.v1",
+          severity_spec_sha256: "sev-spec-hash",
+          required_datasets: ["gbfs.station_status"],
+          optional_datasets: [],
+        },
+        clock: () => new Date("2026-02-06T18:30:20.000Z"),
+      },
+      config: {
+        bucket_size_seconds: 300,
+        severity_version: "sev.v1",
+        severity_legend_bins: [{ min: 0, max: 1, label: "all" }],
+        map: {
+          initial_center: { lon: -73.98, lat: 40.75 },
+          initial_zoom: 12,
+          max_bounds: { min_lon: -74.3, min_lat: 40.45, max_lon: -73.65, max_lat: 40.95 },
+          min_zoom: 9,
+          max_zoom: 18,
+        },
+        speed_presets: [1, 10, 60],
+        cache_policy: { live_tile_max_age_s: 10 },
+      },
+      timeline: {
+        tokens: tokenService,
+        timelineStore: {
+          async getRange() {
+            return {
+              min_observation_ts: "2026-02-06T00:00:00Z",
+              max_observation_ts: "2026-02-06T18:00:00Z",
+              live_edge_ts: "2026-02-06T18:00:00Z",
+            };
+          },
+          async getDensity() {
+            return [];
+          },
+        },
+        default_bucket_seconds: 300,
+      },
+      search: {
+        allowlist,
+        searchStore: {
+          async searchStations() {
+            return [];
+          },
+        },
+      },
+      stations: {
+        tokens: tokenService,
+        stationsStore: {
+          async getStationDetail() {
+            return {
+              station_key: "STA-001",
+              name: "W 52 St",
+              capacity: 40,
+              bikes_available: 12,
+              docks_available: 28,
+              bucket_quality: "ok",
+            };
+          },
+          async getStationSeries() {
+            return [
+              {
+                bucket_ts: "2026-02-06T20:00:00Z",
+                bikes_available: 12,
+                docks_available: 28,
+                bucket_quality: "ok",
+                severity: 0.2,
+                pressure_score: 0.4,
+              },
+            ];
+          },
+        },
+        default_bucket_seconds: 300,
+        max_series_window_s: 7 * 24 * 60 * 60,
+        max_series_points: 1000,
+        logger: {
+          info(event, details) {
+            stationInfoEvents.push({ event, details });
+          },
+          warn() {},
+        },
+      },
+    });
+
+    const timeRes = await handler(new Request("https://example.test/api/time?system_id=citibike-nyc"));
+    expect(timeRes.status).toBe(200);
+    const sv = (await timeRes.json()).recommended_live_sv as string;
+
+    const detailRes = await handler(
+      new Request(`https://example.test/api/stations/STA-001?sv=${encodeURIComponent(sv)}`)
+    );
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.headers.get("Cache-Control")).toBe("no-store");
+    const detailBody = await detailRes.json();
+    expect(detailBody.station_key).toBe("STA-001");
+    expect(detailBody.bucket_quality).toBe("ok");
+
+    const seriesRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(sv)}&from=1738872000&to=1738875600&bucket=300`
+      )
+    );
+    expect(seriesRes.status).toBe(200);
+    expect(seriesRes.headers.get("Cache-Control")).toBe("no-store");
+    const seriesBody = await seriesRes.json();
+    expect(seriesBody.station_key).toBe("STA-001");
+    expect(seriesBody.points.length).toBe(1);
+    expect(seriesBody.points[0]?.bucket_quality).toBe("ok");
+    const detailOk = stationInfoEvents.find((evt) => evt.event === "stations.detail.ok");
+    const seriesOk = stationInfoEvents.find((evt) => evt.event === "stations.series.ok");
+    expect(detailOk).toBeTruthy();
+    expect(seriesOk).toBeTruthy();
+    expect(detailOk?.details.station_key).toBe("STA-001");
+    expect(seriesOk?.details.station_key).toBe("STA-001");
+    expect(detailOk?.details.sv).toBe(sv);
+    expect(seriesOk?.details.sv).toBe(sv);
+    expect(Number(detailOk?.details.payload_bytes)).toBeGreaterThan(0);
+    expect(Number(seriesOk?.details.payload_bytes)).toBeGreaterThan(0);
+  });
 });
