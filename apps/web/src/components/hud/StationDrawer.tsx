@@ -14,10 +14,13 @@ type Tier2State =
     | { status: "error"; message: string };
 
 type UfE2EState = {
+    tier1OpenedCount?: number;
     tier2RequestedCount?: number;
     tier2LoadingCount?: number;
     tier2SuccessCount?: number;
     tier2ErrorCount?: number;
+    tier2DebounceScheduledCount?: number;
+    tier2AbortCount?: number;
     tier2LastBundleBytes?: number;
     tier2LastHttpStatus?: number | null;
     tier2LastStationKey?: string;
@@ -68,6 +71,11 @@ export default function StationDrawer(props: {
             status: "idle",
             message: "Tier2 details are optional and loaded on demand.",
         });
+        updateUfE2E((current) => ({
+            ...current,
+            tier1OpenedCount: (current.tier1OpenedCount ?? 0) + 1,
+            tier2InFlight: false,
+        }));
         console.info("[StationDrawer] tier1_opened", {
             stationId,
             source: "tile_payload",
@@ -86,7 +94,14 @@ export default function StationDrawer(props: {
         if (debounceRef.current != null) {
             window.clearTimeout(debounceRef.current);
         }
-        abortRef.current?.abort();
+        if (abortRef.current) {
+            abortRef.current.abort();
+            updateUfE2E((current) => ({
+                ...current,
+                tier2AbortCount: (current.tier2AbortCount ?? 0) + 1,
+                tier2InFlight: false,
+            }));
+        }
 
         setTier2({
             status: "loading",
@@ -110,6 +125,10 @@ export default function StationDrawer(props: {
         });
 
         debounceRef.current = window.setTimeout(async () => {
+            updateUfE2E((current) => ({
+                ...current,
+                tier2DebounceScheduledCount: (current.tier2DebounceScheduledCount ?? 0) + 1,
+            }));
             const ctrl = new AbortController();
             abortRef.current = ctrl;
             try {
