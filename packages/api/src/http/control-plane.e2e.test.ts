@@ -286,6 +286,18 @@ describe("control-plane e2e", () => {
       time: {
         servingViews: viewService,
         viewStore,
+        network: {
+          async getSummary() {
+            return {
+              active_station_count: 100,
+              empty_station_count: 12,
+              full_station_count: 8,
+              pct_serving_grade: 0.92,
+              worst_5_station_keys_by_severity: ["s1", "s2", "s3", "s4", "s5"],
+              observed_bucket_ts: "2026-02-06T18:30:00.000Z",
+            };
+          },
+        },
         config: {
           view_version: "sv.v1",
           ttl_seconds: 120,
@@ -359,6 +371,10 @@ describe("control-plane e2e", () => {
     expect(timeRes.headers.get("Cache-Control")).toBe("no-store");
     const timeBody = await timeRes.json();
     expect(typeof timeBody.recommended_live_sv).toBe("string");
+    expect(timeBody.network.active_station_count).toBe(100);
+    expect(timeBody.network.worst_5_station_keys_by_severity).toEqual(["s1", "s2", "s3", "s4", "s5"]);
+    expect(timeBody.network.degrade_level).toBe(0);
+    expect(timeBody.network.client_should_throttle).toBe(false);
     const sv = timeBody.recommended_live_sv as string;
 
     const configRes = await handler(new Request("https://example.test/api/config?v=1"));

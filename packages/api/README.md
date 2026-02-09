@@ -79,6 +79,7 @@ Optional with defaults:
 - `POLICY_DEFAULT_HORIZON_STEPS` default `0`
 - `POLICY_MAX_MOVES` default `80`
 - `POLICY_BUDGET_PRESETS_JSON` default `[]`
+- `NETWORK_DEGRADE_LEVEL` default unset (when set to `0..3`, overrides `/api/time.network.degrade_level`)
 
 ## Running the API
 

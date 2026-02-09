@@ -43,6 +43,7 @@ type EnvConfig = {
   policy_default_horizon_steps: number;
   policy_max_moves: number;
   key_material_json: string;
+  network_degrade_level: number | null;
 };
 
 function parseIntEnv(name: string, fallback: number): number {
@@ -65,6 +66,18 @@ function parseCsv(raw: string | undefined, fallback: string[]): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+function parseOptionalIntEnv(name: string): number | null {
+  const raw = process.env[name];
+  if (!raw || raw.trim().length === 0) {
+    return null;
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) {
+    throw new Error(`Invalid integer env ${name}: ${raw}`);
+  }
+  return n;
 }
 
 function loadConfig(): EnvConfig {
@@ -102,6 +115,7 @@ function loadConfig(): EnvConfig {
     policy_default_horizon_steps: parseIntEnv("POLICY_DEFAULT_HORIZON_STEPS", 0),
     policy_max_moves: parseIntEnv("POLICY_MAX_MOVES", 80),
     key_material_json: process.env.SV_KEY_MATERIAL_JSON?.trim() || "{}",
+    network_degrade_level: parseOptionalIntEnv("NETWORK_DEGRADE_LEVEL"),
   };
 }
 
@@ -321,6 +335,70 @@ function buildServingViewBindings(db: SqlExecutor) {
   };
 }
 
+function buildNetworkHealthStore(db: SqlExecutor, degradeLevelOverride: number | null) {
+  return {
+    async getSummary(args: { system_id: string }) {
+      const counts = await db.query<{
+        bucket_ts: string | null;
+        active_station_count: number | string;
+        empty_station_count: number | string;
+        full_station_count: number | string;
+        pct_serving_grade: number | string | null;
+      }>(
+        `WITH latest AS (
+           SELECT MAX(bucket_ts) AS bucket_ts
+           FROM station_status_1m
+           WHERE system_id = $1
+         )
+         SELECT
+           l.bucket_ts::text AS bucket_ts,
+           COUNT(*) AS active_station_count,
+           COUNT(*) FILTER (WHERE s.bikes_available = 0) AS empty_station_count,
+           COUNT(*) FILTER (WHERE s.docks_available = 0) AS full_station_count,
+           AVG(CASE WHEN s.is_serving_grade THEN 1.0 ELSE 0.0 END) AS pct_serving_grade
+         FROM latest l
+         JOIN station_status_1m s
+           ON s.system_id = $1
+          AND s.bucket_ts = l.bucket_ts
+         GROUP BY l.bucket_ts`,
+        [args.system_id]
+      );
+      const row = counts.rows[0];
+      const activeStationCount = row ? Number(row.active_station_count) : 0;
+      const emptyStationCount = row ? Number(row.empty_station_count) : 0;
+      const fullStationCount = row ? Number(row.full_station_count) : 0;
+      const pctServingGrade = row && row.pct_serving_grade !== null ? Number(row.pct_serving_grade) : 0;
+
+      const worst = await db.query<{ station_key: string }>(
+        `WITH latest AS (
+           SELECT MAX(bucket_ts) AS bucket_ts
+           FROM station_severity_5m
+           WHERE system_id = $1
+         )
+         SELECT s.station_key
+         FROM latest l
+         JOIN station_severity_5m s
+           ON s.system_id = $1
+          AND s.bucket_ts = l.bucket_ts
+         ORDER BY s.severity DESC, s.station_key ASC
+         LIMIT 5`,
+        [args.system_id]
+      );
+
+      return {
+        active_station_count: activeStationCount,
+        empty_station_count: emptyStationCount,
+        full_station_count: fullStationCount,
+        pct_serving_grade: pctServingGrade,
+        worst_5_station_keys_by_severity: worst.rows.map((r) => r.station_key),
+        observed_bucket_ts: row?.bucket_ts ?? null,
+        degrade_level: degradeLevelOverride ?? undefined,
+        client_should_throttle: degradeLevelOverride === null ? undefined : degradeLevelOverride >= 1,
+      };
+    },
+  };
+}
+
 function parseBudgetPresets(jsonRaw: string | undefined) {
   if (!jsonRaw || jsonRaw.trim().length === 0) {
     return [];
@@ -354,6 +432,7 @@ async function main(): Promise<void> {
   const bindings = buildServingViewBindings(db);
   const timelineStore = buildTimelineStore(db);
   const searchStore = buildSearchStore(db);
+  const networkStore = buildNetworkHealthStore(db, cfg.network_degrade_level);
   const stationsStore = new PgStationsStore(db);
   const policyStore = new PgPolicyReadStore(db);
   const queue = new PgJobQueue(db);
@@ -377,6 +456,7 @@ async function main(): Promise<void> {
     time: {
       servingViews: viewService,
       viewStore,
+      network: networkStore,
       config: {
         view_version: cfg.view_version,
         ttl_seconds: cfg.sv_ttl_seconds,

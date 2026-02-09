@@ -90,4 +90,54 @@ describe("createTimeRouteHandler", () => {
     expect(body.datasets.length).toBe(1);
     expect(body.datasets[0].ingest_lag_s).toBe(60);
   });
+
+  it("adds network summary with derived degrade signal", async () => {
+    const handler = createTimeRouteHandler({
+      servingViews: {
+        async mintLiveToken() {
+          return {
+            ok: true as const,
+            sv: "sv1.kid.payload.sig",
+            view_spec_sha256: "abc123",
+            view_id: 7,
+          };
+        },
+      },
+      viewStore: {
+        async listWatermarks() {
+          return [
+            {
+              system_id: "citibike-nyc",
+              dataset_id: "gbfs.station_status",
+              as_of_ts: new Date("2026-02-06T18:00:00Z"),
+              max_observed_at: new Date("2026-02-06T17:59:30Z"),
+            },
+          ];
+        },
+      },
+      network: {
+        async getSummary() {
+          return {
+            active_station_count: 100,
+            empty_station_count: 28,
+            full_station_count: 10,
+            pct_serving_grade: 0.78,
+            worst_5_station_keys_by_severity: ["A", "B", "C", "D", "E"],
+            observed_bucket_ts: "2026-02-06T18:00:00Z",
+          };
+        },
+      },
+      config: baseConfig,
+      clock: () => new Date("2026-02-06T18:00:30Z"),
+    });
+
+    const res = await handler(new Request("https://example.test/api/time?system_id=citibike-nyc", { method: "GET" }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.network).toBeDefined();
+    expect(body.network.active_station_count).toBe(100);
+    expect(body.network.worst_5_station_keys_by_severity).toEqual(["A", "B", "C", "D", "E"]);
+    expect(body.network.degrade_level).toBe(1);
+    expect(body.network.client_should_throttle).toBe(true);
+  });
 });

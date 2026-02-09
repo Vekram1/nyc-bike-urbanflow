@@ -37,6 +37,19 @@ export type TimeRouteDeps = {
     required_datasets: DatasetId[];
     optional_datasets?: DatasetId[];
   };
+  network?: {
+    getSummary: (args: { system_id: string }) => Promise<{
+      active_station_count: number;
+      empty_station_count: number;
+      full_station_count: number;
+      pct_serving_grade: number;
+      worst_5_station_keys_by_severity?: string[];
+      tile_origin_p95_ms?: number | null;
+      observed_bucket_ts?: string | null;
+      degrade_level?: number;
+      client_should_throttle?: boolean;
+    }>;
+  };
   clock?: () => Date;
 };
 
@@ -64,6 +77,42 @@ function methodNotAllowed(): Response {
     405,
     { Allow: "GET" }
   );
+}
+
+function clampDegradeLevel(value: number): number {
+  if (value <= 0) {
+    return 0;
+  }
+  if (value >= 3) {
+    return 3;
+  }
+  return Math.floor(value);
+}
+
+function deriveDegradeLevel(summary: {
+  active_station_count: number;
+  empty_station_count: number;
+  full_station_count: number;
+  pct_serving_grade: number;
+}): number {
+  if (summary.active_station_count <= 0) {
+    return 3;
+  }
+  const constrainedServing = Math.max(0, Math.min(1, summary.pct_serving_grade));
+  const constrainedPressure = Math.max(
+    0,
+    Math.min(1, (summary.empty_station_count + summary.full_station_count) / summary.active_station_count)
+  );
+  if (constrainedServing < 0.5 || constrainedPressure > 0.7) {
+    return 3;
+  }
+  if (constrainedServing < 0.7 || constrainedPressure > 0.5) {
+    return 2;
+  }
+  if (constrainedServing < 0.85 || constrainedPressure > 0.35) {
+    return 1;
+  }
+  return 0;
 }
 
 export function createTimeRouteHandler(deps: TimeRouteDeps): (request: Request) => Promise<Response> {
@@ -102,6 +151,72 @@ export function createTimeRouteHandler(deps: TimeRouteDeps): (request: Request) 
     if (!out.ok) {
       return json(out.body, out.status);
     }
-    return json(out.body, out.status);
+    let network:
+      | {
+          active_station_count: number;
+          empty_station_count: number;
+          full_station_count: number;
+          pct_serving_grade: number;
+          worst_5_station_keys_by_severity: string[];
+          tile_origin_p95_ms?: number | null;
+          observed_bucket_ts?: string | null;
+          degrade_level: number;
+          client_should_throttle: boolean;
+        }
+      | undefined;
+
+    if (deps.network) {
+      try {
+        const summary = await deps.network.getSummary({ system_id: systemId });
+        const degradeLevel =
+          summary.degrade_level === undefined
+            ? deriveDegradeLevel(summary)
+            : clampDegradeLevel(summary.degrade_level);
+        const shouldThrottle =
+          summary.client_should_throttle === undefined
+            ? degradeLevel >= 1
+            : Boolean(summary.client_should_throttle);
+        network = {
+          active_station_count: summary.active_station_count,
+          empty_station_count: summary.empty_station_count,
+          full_station_count: summary.full_station_count,
+          pct_serving_grade: summary.pct_serving_grade,
+          worst_5_station_keys_by_severity: summary.worst_5_station_keys_by_severity ?? [],
+          tile_origin_p95_ms: summary.tile_origin_p95_ms ?? undefined,
+          observed_bucket_ts: summary.observed_bucket_ts ?? undefined,
+          degrade_level: degradeLevel,
+          client_should_throttle: shouldThrottle,
+        };
+        if (degradeLevel >= 1) {
+          console.warn(
+            JSON.stringify({
+              level: "warn",
+              event: "time_network_degrade",
+              ts: new Date().toISOString(),
+              system_id: systemId,
+              degrade_level: degradeLevel,
+              client_should_throttle: shouldThrottle,
+              active_station_count: summary.active_station_count,
+              empty_station_count: summary.empty_station_count,
+              full_station_count: summary.full_station_count,
+              pct_serving_grade: summary.pct_serving_grade,
+              observed_bucket_ts: summary.observed_bucket_ts ?? null,
+            })
+          );
+        }
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "time_network_summary_failed",
+            ts: new Date().toISOString(),
+            system_id: systemId,
+            message: error instanceof Error ? error.message : "unknown_error",
+          })
+        );
+      }
+    }
+
+    return json(network ? { ...out.body, network } : out.body, out.status);
   };
 }
