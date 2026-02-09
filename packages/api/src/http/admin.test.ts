@@ -186,4 +186,40 @@ describe("createAdminRouteHandler", () => {
     const body = await res.json();
     expect(body.error.code).toBe("unknown_param");
   });
+
+  it("returns 400 for unsupported version on admin endpoints", async () => {
+    const handler = createAdminRouteHandler(deps);
+
+    const pipelineRes = await handler(
+      new Request("https://example.test/api/pipeline_state?v=2", {
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(pipelineRes.status).toBe(400);
+    expect(pipelineRes.headers.get("Cache-Control")).toBe("no-store");
+    const pipelineBody = await pipelineRes.json();
+    expect(pipelineBody.error.code).toBe("unsupported_version");
+
+    const dlqRes = await handler(
+      new Request("https://example.test/api/admin/dlq?v=2", {
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(dlqRes.status).toBe(400);
+    expect(dlqRes.headers.get("Cache-Control")).toBe("no-store");
+    const dlqBody = await dlqRes.json();
+    expect(dlqBody.error.code).toBe("unsupported_version");
+
+    const resolveRes = await handler(
+      new Request("https://example.test/api/admin/dlq/resolve?v=2", {
+        method: "POST",
+        headers: { "X-Admin-Token": "secret-token", "Content-Type": "application/json" },
+        body: JSON.stringify({ dlq_id: 1, resolution_note: "note" }),
+      })
+    );
+    expect(resolveRes.status).toBe(400);
+    expect(resolveRes.headers.get("Cache-Control")).toBe("no-store");
+    const resolveBody = await resolveRes.json();
+    expect(resolveBody.error.code).toBe("unsupported_version");
+  });
 });
