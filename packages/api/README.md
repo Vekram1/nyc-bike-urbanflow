@@ -20,6 +20,7 @@ That entrypoint wires `createControlPlaneHandler(...)` to DB-backed stores for:
   - `/api/timeline`, `/api/timeline/density`
   - `/api/search`
   - `/api/stations/*`
+  - `/api/stations/{station_key}/drawer`
   - `/api/policy/*`
 - Data plane tile endpoints:
   - `/api/tiles/composite/{z}/{x}/{y}.mvt`
@@ -113,6 +114,17 @@ curl 'http://127.0.0.1:3000/api/tiles/composite/12/1200/1530.mvt?sv=<sv>&tile_sc
 # Split (secondary snapshot at T2 for dual-map UI)
 curl 'http://127.0.0.1:3000/api/tiles/composite/12/1200/1530.mvt?sv=<sv>&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev,press&T_bucket=1738872000&T2_bucket=1738871700&compare_mode=split'
 ```
+
+Station drawer evidence bundle example:
+
+```bash
+curl 'http://127.0.0.1:3000/api/stations/STA-001/drawer?v=1&sv=<sv>&T_bucket=1738872000&range=6h&severity_version=sev.v1&tile_schema=tile.v1'
+```
+
+Drawer endpoint bounds:
+- default `range=6h`, max `48h`
+- max series points `360` (server-decimated)
+- max episode markers `50`
 
 Admin ops examples:
 

@@ -4,6 +4,7 @@ import { createEpisodesTilesRouteHandler, type EpisodesTilesRouteDeps } from "./
 import { createPolicyRouteHandler, type PolicyRouteDeps } from "./policy";
 import { createPolicyMovesTilesRouteHandler, type PolicyMovesTilesRouteDeps } from "./policy-tiles";
 import { createSearchRouteHandler, type SearchRouteDeps } from "./search";
+import { createStationDrawerRouteHandler, type StationDrawerRouteDeps } from "./station-drawer";
 import { createStationsRouteHandler, type StationsRouteDeps } from "./stations";
 import { createTimeRouteHandler, type TimeRouteDeps } from "./time";
 import { createCompositeTilesRouteHandler, type CompositeTilesRouteDeps } from "./tiles";
@@ -16,6 +17,7 @@ export type ControlPlaneDeps = {
   search: SearchRouteDeps;
   policy?: PolicyRouteDeps;
   stations?: StationsRouteDeps;
+  stationDrawer?: StationDrawerRouteDeps;
   tiles?: CompositeTilesRouteDeps;
   policyTiles?: PolicyMovesTilesRouteDeps;
   episodesTiles?: EpisodesTilesRouteDeps;
@@ -39,6 +41,7 @@ export function createControlPlaneHandler(deps: ControlPlaneDeps): (request: Req
   const handleSearch = createSearchRouteHandler(deps.search);
   const handlePolicy = deps.policy ? createPolicyRouteHandler(deps.policy) : null;
   const handleStations = deps.stations ? createStationsRouteHandler(deps.stations) : null;
+  const handleStationDrawer = deps.stationDrawer ? createStationDrawerRouteHandler(deps.stationDrawer) : null;
   const handleTiles = deps.tiles ? createCompositeTilesRouteHandler(deps.tiles) : null;
   const handlePolicyTiles = deps.policyTiles ? createPolicyMovesTilesRouteHandler(deps.policyTiles) : null;
   const handleEpisodesTiles = deps.episodesTiles ? createEpisodesTilesRouteHandler(deps.episodesTiles) : null;
@@ -51,6 +54,12 @@ export function createControlPlaneHandler(deps: ControlPlaneDeps): (request: Req
         return json({ error: { code: "not_found", message: "Route not found" } }, 404);
       }
       return handleAdmin(request);
+    }
+    if (url.pathname.match(/^\/api\/stations\/[^/]+\/drawer$/)) {
+      if (!handleStationDrawer) {
+        return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+      }
+      return handleStationDrawer(request);
     }
     if (url.pathname.startsWith("/api/stations/")) {
       if (!handleStations) {

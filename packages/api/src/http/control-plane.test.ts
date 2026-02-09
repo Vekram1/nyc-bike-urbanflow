@@ -258,6 +258,80 @@ describe("createControlPlaneHandler", () => {
     expect(body.station_key).toBe("STA-001");
   });
 
+  it("dispatches /api/stations/{station_key}/drawer when drawer deps are configured", async () => {
+    const handler = createControlPlaneHandler({
+      ...deps,
+      stationDrawer: {
+        tokens: {
+          async validate() {
+            return {
+              ok: true as const,
+              payload: {
+                system_id: "citibike-nyc",
+                view_id: 10,
+                view_spec_sha256: "abc",
+              },
+            };
+          },
+        } as unknown as import("../sv/service").ServingTokenService,
+        allowlist: {
+          async isAllowed() {
+            return true;
+          },
+        },
+        stationsStore: {
+          async getStationDrawer() {
+            return {
+              station_key: "STA-001",
+              sv: null,
+              t_bucket_epoch_s: 1738872000,
+              range_s: 21600,
+              bucket_seconds: 300,
+              severity_version: "sev.v1",
+              tile_schema: "tile.v1",
+              metadata: { name: "W 52 St", capacity: 40 },
+              point_in_time: {
+                bucket_ts: "2026-02-06T20:00:00Z",
+                bikes_available: 12,
+                docks_available: 28,
+                bucket_quality: "ok",
+                severity: 0.2,
+                pressure_score: 0.4,
+              },
+              series: { points: [], truncated: false },
+              episodes: { items: [], truncated: false },
+            };
+          },
+        },
+        defaults: {
+          severity_version: "sev.v1",
+          tile_schema: "tile.v1",
+          range_s: 21600,
+          bucket_seconds: 300,
+        },
+        limits: {
+          max_range_s: 172800,
+          max_series_points: 360,
+          max_episodes: 50,
+        },
+        cache: {
+          max_age_s: 30,
+          s_maxage_s: 120,
+          stale_while_revalidate_s: 15,
+        },
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/stations/STA-001/drawer?v=1&sv=abc&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.station_key).toBe("STA-001");
+  });
+
   it("dispatches /api/policy/run when policy deps are configured", async () => {
     const handler = createControlPlaneHandler({
       ...deps,

@@ -684,6 +684,27 @@ async function main(): Promise<void> {
       max_series_window_s: 7 * 24 * 60 * 60,
       max_series_points: 1000,
     },
+    stationDrawer: {
+      tokens: tokenService,
+      allowlist,
+      stationsStore,
+      defaults: {
+        severity_version: cfg.severity_version,
+        tile_schema: cfg.tile_schema_version,
+        range_s: 6 * 60 * 60,
+        bucket_seconds: cfg.timeline_bucket_seconds,
+      },
+      limits: {
+        max_range_s: 48 * 60 * 60,
+        max_series_points: 360,
+        max_episodes: 50,
+      },
+      cache: {
+        max_age_s: cfg.tile_live_max_age_s,
+        s_maxage_s: cfg.tile_live_s_maxage_s,
+        stale_while_revalidate_s: cfg.tile_live_swr_s,
+      },
+    },
     tiles: {
       tokens: tokenService,
       allowlist,
