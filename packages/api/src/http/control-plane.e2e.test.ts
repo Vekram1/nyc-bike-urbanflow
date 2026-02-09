@@ -1528,6 +1528,16 @@ describe("control-plane e2e", () => {
     const pipelineUnknownBody = await pipelineUnknownRes.json();
     expect(pipelineUnknownBody.error.code).toBe("unknown_param");
 
+    const pipelineUnsupportedVersionRes = await handler(
+      new Request("https://example.test/api/pipeline_state?v=2", {
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(pipelineUnsupportedVersionRes.status).toBe(400);
+    expect(pipelineUnsupportedVersionRes.headers.get("Cache-Control")).toBe("no-store");
+    const pipelineUnsupportedVersionBody = await pipelineUnsupportedVersionRes.json();
+    expect(pipelineUnsupportedVersionBody.error.code).toBe("unsupported_version");
+
     const dlqUnknownRes = await handler(
       new Request("https://example.test/api/admin/dlq?v=1&limit=20&foo=bar", {
         headers: { "X-Admin-Token": "secret-token" },
@@ -1537,6 +1547,16 @@ describe("control-plane e2e", () => {
     expect(dlqUnknownRes.headers.get("Cache-Control")).toBe("no-store");
     const dlqUnknownBody = await dlqUnknownRes.json();
     expect(dlqUnknownBody.error.code).toBe("unknown_param");
+
+    const dlqUnsupportedVersionRes = await handler(
+      new Request("https://example.test/api/admin/dlq?v=2", {
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(dlqUnsupportedVersionRes.status).toBe(400);
+    expect(dlqUnsupportedVersionRes.headers.get("Cache-Control")).toBe("no-store");
+    const dlqUnsupportedVersionBody = await dlqUnsupportedVersionRes.json();
+    expect(dlqUnsupportedVersionBody.error.code).toBe("unsupported_version");
 
     const resolveUnknownRes = await handler(
       new Request("https://example.test/api/admin/dlq/resolve?v=1&foo=bar", {
@@ -1549,5 +1569,17 @@ describe("control-plane e2e", () => {
     expect(resolveUnknownRes.headers.get("Cache-Control")).toBe("no-store");
     const resolveUnknownBody = await resolveUnknownRes.json();
     expect(resolveUnknownBody.error.code).toBe("unknown_param");
+
+    const resolveUnsupportedVersionRes = await handler(
+      new Request("https://example.test/api/admin/dlq/resolve?v=2", {
+        method: "POST",
+        headers: { "X-Admin-Token": "secret-token", "Content-Type": "application/json" },
+        body: JSON.stringify({ dlq_id: 1, resolution_note: "ok" }),
+      })
+    );
+    expect(resolveUnsupportedVersionRes.status).toBe(400);
+    expect(resolveUnsupportedVersionRes.headers.get("Cache-Control")).toBe("no-store");
+    const resolveUnsupportedVersionBody = await resolveUnsupportedVersionRes.json();
+    expect(resolveUnsupportedVersionBody.error.code).toBe("unsupported_version");
   });
 });
