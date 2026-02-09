@@ -44,6 +44,8 @@ type UfE2EState = {
     hotkeyLastIgnoredAt?: string;
     inspectAnchorTileRequestKey?: string;
     inspectSessionId?: number;
+    inspectAnchorSetAt?: string;
+    inspectAnchorClearedAt?: string;
     controlsDisabled?: boolean;
     compareEnabled?: boolean;
     splitEnabled?: boolean;
@@ -186,6 +188,7 @@ export default function MapShell() {
                     ...current,
                     inspectAnchorTileRequestKey: tileRequestKey,
                     inspectSessionId: inspectSessionIdRef.current,
+                    inspectAnchorSetAt: new Date().toISOString(),
                 }));
             } else if (prev) {
                 console.info("[MapShell] tier1_drawer_closed", {
@@ -196,6 +199,7 @@ export default function MapShell() {
                 updateUfE2E((current) => ({
                     ...current,
                     inspectAnchorTileRequestKey: "",
+                    inspectAnchorClearedAt: new Date().toISOString(),
                 }));
             }
             lastDrawerStationRef.current = next;
@@ -275,6 +279,8 @@ export default function MapShell() {
                 hotkeyLastIgnoredAt: current.hotkeyLastIgnoredAt ?? "",
                 inspectAnchorTileRequestKey: current.inspectAnchorTileRequestKey ?? "",
                 inspectSessionId: current.inspectSessionId ?? 0,
+                inspectAnchorSetAt: current.inspectAnchorSetAt ?? "",
+                inspectAnchorClearedAt: current.inspectAnchorClearedAt ?? "",
                 controlsDisabled: hud.inspectLocked,
                 compareEnabled: hud.compareMode,
                 splitEnabled: hud.compareMode && hud.splitView,
