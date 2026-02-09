@@ -10,6 +10,13 @@ Use Bun for all tasks:
 bun run dev
 bun run lint
 bun run build
+bun run test:e2e
+```
+
+Before running e2e for the first time on a machine:
+
+```bash
+bunx playwright install chromium
 ```
 
 ## HUD Layout Intent
@@ -191,6 +198,9 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.tier2UiStatus`
   - `window.__UF_E2E.tier2UiMessage`
   - `window.__UF_E2E.tier2UiBundleBytes`
+- E2E helper actions for deterministic inspect-flow coverage:
+  - `window.__UF_E2E_ACTIONS.openInspect(stationId?)`
+  - `window.__UF_E2E_ACTIONS.closeInspect(reason?)`
 - Stable selector hooks for browser tests:
 - `data-uf-id="app-root"`
 - `data-uf-id="map-shell"`

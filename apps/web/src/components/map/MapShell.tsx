@@ -61,6 +61,11 @@ type UfE2EState = {
     playing?: boolean;
 };
 
+type UfE2EActions = {
+    openInspect: (stationId?: string) => void;
+    closeInspect: (reason?: "drawer_close_button" | "escape_key") => void;
+};
+
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
     if (typeof window === "undefined") return;
     const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
@@ -342,6 +347,29 @@ export default function MapShell() {
             lastInvariantViolationAt: new Date().toISOString(),
         }));
     }, [compareBucket, inspectOpen, selected?.station_id, tileRequestKey, timelineBucket]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const actions: UfE2EActions = {
+            openInspect: (stationId = "station-e2e") => {
+                openInspect({
+                    station_id: stationId,
+                    name: `Station ${stationId}`,
+                    capacity: 40,
+                    bikes: 12,
+                    docks: 28,
+                    bucket_quality: "ok",
+                    t_bucket: new Date().toISOString(),
+                    gbfs_last_updated: Math.floor(Date.now() / 1000),
+                    gbfs_ttl: 60,
+                });
+            },
+            closeInspect: (reason = "drawer_close_button") => {
+                closeInspect(reason);
+            },
+        };
+        (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS = actions;
+    }, [closeInspect, openInspect]);
 
     return (
         <div className="uf-root" data-uf-id="app-root">
