@@ -414,5 +414,15 @@ describe("policy e2e via control-plane", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     const body = await res.json();
     expect(body.error.code).toBe("unknown_param");
+
+    const unsupportedVersionRes = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=2&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(unsupportedVersionRes.status).toBe(400);
+    expect(unsupportedVersionRes.headers.get("Cache-Control")).toBe("no-store");
+    const unsupportedVersionBody = await unsupportedVersionRes.json();
+    expect(unsupportedVersionBody.error.code).toBe("unsupported_version");
   });
 });
