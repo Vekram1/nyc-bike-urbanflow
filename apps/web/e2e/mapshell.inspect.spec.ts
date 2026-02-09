@@ -777,3 +777,52 @@ test("compare offset label stays in sync with __UF_E2E compareOffsetBuckets", as
             text: "Offset 7 buckets",
         });
 });
+
+test("scrubber controls are disabled during inspect lock and re-enabled after close", async ({ page }) => {
+    await page.goto("/");
+
+    const play = page.locator('[data-uf-id="scrubber-play-toggle"]');
+    const speedDown = page.locator('[data-uf-id="scrubber-speed-down"]');
+    const speedUp = page.locator('[data-uf-id="scrubber-speed-up"]');
+    const stepBack = page.locator('[data-uf-id="scrubber-step-back"]');
+    const stepForward = page.locator('[data-uf-id="scrubber-step-forward"]');
+    const track = page.locator('[data-uf-id="scrubber-track"]');
+
+    await expect(play).toBeEnabled();
+    await expect(speedDown).toBeEnabled();
+    await expect(speedUp).toBeEnabled();
+    await expect(stepBack).toBeEnabled();
+    await expect(stepForward).toBeEnabled();
+    await expect(track).toBeEnabled();
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-scrubber-disabled");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+
+    await expect(play).toBeDisabled();
+    await expect(speedDown).toBeDisabled();
+    await expect(speedUp).toBeDisabled();
+    await expect(stepBack).toBeDisabled();
+    await expect(stepForward).toBeDisabled();
+    await expect(track).toBeDisabled();
+
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toHaveCount(0);
+
+    await expect(play).toBeEnabled();
+    await expect(speedDown).toBeEnabled();
+    await expect(speedUp).toBeEnabled();
+    await expect(stepBack).toBeEnabled();
+    await expect(stepForward).toBeEnabled();
+    await expect(track).toBeEnabled();
+});
