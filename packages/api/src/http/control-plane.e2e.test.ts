@@ -1280,6 +1280,14 @@ describe("control-plane e2e", () => {
     const seriesUnknownParamBody = await seriesUnknownParamRes.json();
     expect(seriesUnknownParamBody.error.code).toBe("unknown_param");
 
+    const seriesMissingSvRes = await handler(
+      new Request("https://example.test/api/stations/STA-001/series?from=1738872000&to=1738875600&bucket=300")
+    );
+    expect(seriesMissingSvRes.status).toBe(401);
+    expect(seriesMissingSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const seriesMissingSvBody = await seriesMissingSvRes.json();
+    expect(seriesMissingSvBody.error.code).toBe("sv_missing");
+
     const tooWideSeriesRes = await handler(
       new Request(
         `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(sv)}&from=1738872000&to=1739872000&bucket=300`
