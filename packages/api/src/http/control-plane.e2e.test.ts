@@ -1128,4 +1128,141 @@ describe("control-plane e2e", () => {
     expect(Number(detailOk?.details.payload_bytes)).toBeGreaterThan(0);
     expect(Number(seriesOk?.details.payload_bytes)).toBeGreaterThan(0);
   });
+
+  it("rejects unknown query params on admin endpoints with 400 + no-store", async () => {
+    const handler = createControlPlaneHandler({
+      time: {
+        servingViews: {
+          async mintLiveToken() {
+            return {
+              ok: true as const,
+              sv: "sv1.kid.payload.sig",
+              view_spec_sha256: "abc",
+              view_id: 1,
+            };
+          },
+        },
+        viewStore: {
+          async listWatermarks() {
+            return [];
+          },
+        },
+        config: {
+          view_version: "sv.v1",
+          ttl_seconds: 120,
+          tile_schema_version: "tile.v1",
+          severity_version: "sev.v1",
+          severity_spec_sha256: "sev-hash",
+          required_datasets: ["gbfs.station_status"],
+          optional_datasets: [],
+        },
+      },
+      config: {
+        bucket_size_seconds: 300,
+        severity_version: "sev.v1",
+        severity_legend_bins: [{ min: 0, max: 1, label: "all" }],
+        map: {
+          initial_center: { lon: -73.98, lat: 40.75 },
+          initial_zoom: 12,
+          max_bounds: { min_lon: -74.3, min_lat: 40.45, max_lon: -73.65, max_lat: 40.95 },
+          min_zoom: 9,
+          max_zoom: 18,
+        },
+        speed_presets: [1, 10, 60],
+        cache_policy: { live_tile_max_age_s: 10 },
+      },
+      timeline: {
+        tokens: {
+          async validate() {
+            return {
+              ok: true as const,
+              payload: { system_id: "citibike-nyc", view_id: 1, view_spec_sha256: "abc" },
+            };
+          },
+        },
+        timelineStore: {
+          async getRange() {
+            return {
+              min_observation_ts: "2026-02-06T00:00:00Z",
+              max_observation_ts: "2026-02-06T18:00:00Z",
+              live_edge_ts: "2026-02-06T18:00:00Z",
+            };
+          },
+          async getDensity() {
+            return [];
+          },
+        },
+        default_bucket_seconds: 300,
+      },
+      search: {
+        allowlist: {
+          async isAllowed() {
+            return true;
+          },
+        },
+        searchStore: {
+          async searchStations() {
+            return [];
+          },
+        },
+      },
+      admin: {
+        auth: {
+          admin_token: "secret-token",
+          allowed_origins: [],
+        },
+        config: {
+          default_system_id: "citibike-nyc",
+        },
+        store: {
+          async getPipelineState() {
+            return {
+              queue_depth: 0,
+              dlq_depth: 0,
+              feeds: [],
+              degrade_history: [],
+            };
+          },
+          async listDlq() {
+            return [];
+          },
+          async resolveDlq() {
+            return true;
+          },
+        },
+      },
+    });
+
+    const pipelineUnknownRes = await handler(
+      new Request("https://example.test/api/pipeline_state?v=1&foo=bar", {
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(pipelineUnknownRes.status).toBe(400);
+    expect(pipelineUnknownRes.headers.get("Cache-Control")).toBe("no-store");
+    const pipelineUnknownBody = await pipelineUnknownRes.json();
+    expect(pipelineUnknownBody.error.code).toBe("unknown_param");
+
+    const dlqUnknownRes = await handler(
+      new Request("https://example.test/api/admin/dlq?v=1&limit=20&foo=bar", {
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(dlqUnknownRes.status).toBe(400);
+    expect(dlqUnknownRes.headers.get("Cache-Control")).toBe("no-store");
+    const dlqUnknownBody = await dlqUnknownRes.json();
+    expect(dlqUnknownBody.error.code).toBe("unknown_param");
+
+    const resolveUnknownRes = await handler(
+      new Request("https://example.test/api/admin/dlq/resolve?v=1&foo=bar", {
+        method: "POST",
+        headers: { "X-Admin-Token": "secret-token", "Content-Type": "application/json" },
+        body: JSON.stringify({ dlq_id: 1, resolution_note: "ok" }),
+      })
+    );
+    expect(resolveUnknownRes.status).toBe(400);
+    expect(resolveUnknownRes.headers.get("Cache-Control")).toBe("no-store");
+    const resolveUnknownBody = await resolveUnknownRes.json();
+    expect(resolveUnknownBody.error.code).toBe("unknown_param");
+  });
 });
