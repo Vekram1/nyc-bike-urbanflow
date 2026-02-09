@@ -22,6 +22,9 @@ type UfE2EState = {
     tileRequestKey?: string;
     tileRequestKeyHistory?: string[];
     invariantViolations?: string[];
+    inspectOpenCount?: number;
+    inspectCloseCount?: number;
+    inspectCloseReasons?: Record<string, number>;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -60,14 +63,27 @@ export default function MapShell() {
     const openInspect = useCallback((station: StationPick) => {
         if (!selected) {
             hud.onInspectOpen();
+            updateUfE2E((current) => ({
+                ...current,
+                inspectOpenCount: (current.inspectOpenCount ?? 0) + 1,
+            }));
         }
         setSelected(station);
     }, [hud, selected]);
 
-    const closeInspect = useCallback(() => {
+    const closeInspect = useCallback((reason: "drawer_close_button" | "escape_key" = "drawer_close_button") => {
+        if (!selected) return;
         setSelected(null);
         hud.onInspectClose();
-    }, [hud]);
+        updateUfE2E((current) => ({
+            ...current,
+            inspectCloseCount: (current.inspectCloseCount ?? 0) + 1,
+            inspectCloseReasons: {
+                ...(current.inspectCloseReasons ?? {}),
+                [reason]: ((current.inspectCloseReasons ?? {})[reason] ?? 0) + 1,
+            },
+        }));
+    }, [hud, selected]);
 
     useEffect(() => {
         console.info("[MapShell] mounted");
@@ -83,7 +99,7 @@ export default function MapShell() {
             if (!inspectOpen) return;
 
             e.preventDefault();
-            closeInspect();
+            closeInspect("escape_key");
         };
 
         window.addEventListener("keydown", onKeyDown);
@@ -164,6 +180,9 @@ export default function MapShell() {
             compareBucket,
             tileRequestKey,
             tileRequestKeyHistory: [...(current.tileRequestKeyHistory ?? []), tileRequestKey].slice(-40),
+            inspectOpenCount: current.inspectOpenCount ?? 0,
+            inspectCloseCount: current.inspectCloseCount ?? 0,
+            inspectCloseReasons: current.inspectCloseReasons ?? {},
         }));
     }, [compareBucket, inspectOpen, selected?.station_id, tileRequestKey, timelineBucket]);
 
@@ -264,7 +283,7 @@ export default function MapShell() {
                     station={selected}
                     sv={mock.clock.sv}
                     timelineBucket={timelineBucket}
-                    onClose={closeInspect}
+                    onClose={() => closeInspect("drawer_close_button")}
                 />
             </HUDRoot>
             {hud.compareMode && hud.splitView ? (
