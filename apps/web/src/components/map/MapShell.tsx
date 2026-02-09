@@ -39,6 +39,13 @@ export default function MapShell() {
     }, [hud]);
 
     useEffect(() => {
+        console.info("[MapShell] mounted");
+        return () => {
+            console.info("[MapShell] unmounted");
+        };
+    }, []);
+
+    useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (hud.handleHotkey(e)) return;
             if (e.code !== "Escape") return;
@@ -51,6 +58,27 @@ export default function MapShell() {
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [closeInspect, hud, inspectOpen]);
+
+    useEffect(() => {
+        console.info("[MapShell] inspect_lock_changed", {
+            inspectOpen,
+            selectedStationId: selected?.station_id ?? null,
+            freezeMapUpdates: inspectOpen,
+        });
+    }, [inspectOpen, selected?.station_id]);
+
+    useEffect(() => {
+        console.info("[MapShell] playback_changed", {
+            playing: hud.playing,
+            speed: hud.speed,
+        });
+    }, [hud.playing, hud.speed]);
+
+    useEffect(() => {
+        console.info("[MapShell] layers_changed", {
+            layers: hud.layers,
+        });
+    }, [hud.layers]);
 
     return (
         <div className="uf-root">

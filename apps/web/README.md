@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Web App (`apps/web`)
 
-## Getting Started
+Frontend for UrbanFlow Twin (Profile A default), built with Next.js + React + TypeScript.
 
-First, run the development server:
+## Commands
+
+Use Bun for all tasks:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun run dev
+bun run lint
+bun run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## HUD Layout Intent
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The map is full-bleed and mounted once per session. All controls render as overlay HUD cards above the map.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
- 
-## Learn More
+- Top center: clock + serving status
+- Bottom: timeline scrubber and playback controls
+- Left: command stack and layer toggles
+- Right: network stats and performance
 
-To learn more about Next.js, take a look at the following resources:
+`HUDRoot` keeps `pointer-events: none` globally, while interactive cards enable `pointer-events: auto` so map pan/zoom still works around controls.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Playback and Inspect Behavior
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Playback is controlled by `useHudControls`.
+- Opening station inspect pauses playback and freezes map data updates (`freeze=true` on `MapView`).
+- Closing inspect resumes playback only if it was playing before inspect opened.
+- Keyboard shortcuts route through `useHudControls.handleHotkey` (`Space`, arrows, `Home`, `End`, `-`, `+`).
 
-## Deploy on Vercel
+## Logging (Debug)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Map/HUD state transitions that affect request behavior are logged in the browser console:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `MapView`: mount/unmount, map load, source/layer readiness, source refresh updates/failures.
+- `MapShell`: inspect lock transitions, playback/speed changes, layer toggle changes.
