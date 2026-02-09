@@ -160,6 +160,11 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `data-uf-id="drawer-row-docks"`
 - `data-uf-id="drawer-row-bucket-quality"`
 - `data-uf-id="drawer-row-t-bucket"`
+- `data-uf-id="drawer-station-title"`
+- `data-uf-id="drawer-updated-text"`
+- `data-uf-id="drawer-tier1-note"`
+- `data-uf-id="drawer-tier2-status-text"`
+- `data-uf-id="drawer-tier2-bundle-size"`
 - `data-uf-id="scrubber-play-toggle"`
 - `data-uf-id="scrubber-speed-down"`
 - `data-uf-id="scrubber-speed-up"`

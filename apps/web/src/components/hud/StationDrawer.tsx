@@ -221,14 +221,14 @@ export default function StationDrawer(props: {
         >
             <div style={{ padding: 14 }}>
                 <div style={{ fontSize: 12, opacity: 0.8 }}>Station</div>
-                <div id={titleId} style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }}>
+                <div id={titleId} style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }} data-uf-id="drawer-station-title">
                     {station.name}
                 </div>
 
-                <div id={descId} style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+                <div id={descId} style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }} data-uf-id="drawer-updated-text">
                     Updated: {updated}
                 </div>
-                <div id={tierId} style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                <div id={tierId} style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }} data-uf-id="drawer-tier1-note">
                     Tier1 view: tile payload only (no detail fetch).
                 </div>
 
@@ -253,11 +253,11 @@ export default function StationDrawer(props: {
                     >
                         {tier2.status === "loading" ? "Loading details..." : "Details (Tier2)"}
                     </button>
-                    <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+                    <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }} data-uf-id="drawer-tier2-status-text">
                         {tier2.message}
                     </div>
                     {tier2.status === "success" ? (
-                        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+                        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }} data-uf-id="drawer-tier2-bundle-size">
                             Bundle size: {tier2.bundleBytes.toLocaleString()} bytes
                         </div>
                     ) : null}
