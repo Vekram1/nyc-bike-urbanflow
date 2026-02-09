@@ -25,6 +25,12 @@ export default function MapShell() {
         playing: hud.playing,
     });
     const progressLabel = `Progress ${Math.round(hud.progress * 100)}%`;
+    const timelineBucket = Math.round(hud.progress * 100);
+    const tileRequestKey = JSON.stringify({
+        layers: hud.layers,
+        bucket: timelineBucket,
+        inspectLocked: hud.inspectLocked,
+    });
 
     const openInspect = useCallback((station: StationPick) => {
         if (!selected) {
@@ -79,6 +85,15 @@ export default function MapShell() {
             layers: hud.layers,
         });
     }, [hud.layers]);
+
+    useEffect(() => {
+        console.info("[MapShell] tile_request_key_changed", {
+            tileRequestKey,
+            timelineBucket,
+            inspectLocked: hud.inspectLocked,
+            layers: hud.layers,
+        });
+    }, [hud.inspectLocked, hud.layers, tileRequestKey, timelineBucket]);
 
     return (
         <div className="uf-root">

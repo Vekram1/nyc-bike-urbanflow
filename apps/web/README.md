@@ -56,3 +56,5 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 
 - `MapView`: mount/unmount, map load, source/layer readiness, source refresh updates/failures.
 - `MapShell`: inspect lock transitions, playback/speed changes, layer toggle changes.
+- `MapShell`: `tile_request_key_changed` emits a deterministic key from `{layers, timelineBucket, inspectLocked}`.
+  - During inspect lock, HUD timeline mutation actions are blocked, so the request key stays stable.
