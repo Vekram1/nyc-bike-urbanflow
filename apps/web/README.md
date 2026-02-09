@@ -106,6 +106,13 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.mapRefreshSkippedNoSource`
   - `window.__UF_E2E.mapRefreshBadPayload`
   - `window.__UF_E2E.mapRefreshLastFeatureCount`
+  - `window.__UF_E2E.tier2RequestedCount`
+  - `window.__UF_E2E.tier2LoadingCount`
+  - `window.__UF_E2E.tier2SuccessCount`
+  - `window.__UF_E2E.tier2ErrorCount`
+  - `window.__UF_E2E.tier2LastBundleBytes`
+  - `window.__UF_E2E.tier2LastHttpStatus`
+  - `window.__UF_E2E.tier2LastStationKey`
 - Stable selector hooks for browser tests:
   - `data-uf-id="app-root"`
   - `data-uf-id="map-shell"`

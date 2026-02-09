@@ -13,6 +13,22 @@ type Tier2State =
     | { status: "success"; message: string; bundleBytes: number; payload: unknown }
     | { status: "error"; message: string };
 
+type UfE2EState = {
+    tier2RequestedCount?: number;
+    tier2LoadingCount?: number;
+    tier2SuccessCount?: number;
+    tier2ErrorCount?: number;
+    tier2LastBundleBytes?: number;
+    tier2LastHttpStatus?: number | null;
+    tier2LastStationKey?: string;
+};
+
+function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
+    if (typeof window === "undefined") return;
+    const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
+    (window as { __UF_E2E?: UfE2EState }).__UF_E2E = update(current);
+}
+
 export default function StationDrawer(props: {
     station: StationPick | null;
     sv: string;
@@ -72,6 +88,12 @@ export default function StationDrawer(props: {
             status: "loading",
             message: `Loading Tier2 details (debounced ${TIER2_DEBOUNCE_MS}ms)...`,
         });
+        updateUfE2E((current) => ({
+            ...current,
+            tier2RequestedCount: (current.tier2RequestedCount ?? 0) + 1,
+            tier2LoadingCount: (current.tier2LoadingCount ?? 0) + 1,
+            tier2LastStationKey: stationId,
+        }));
         console.info("[StationDrawer] tier2_requested", {
             station_key: stationId,
             sv,
@@ -108,6 +130,13 @@ export default function StationDrawer(props: {
                     bundleBytes,
                     tBucketEpochS: fallbackBucketEpochS,
                 });
+                updateUfE2E((current) => ({
+                    ...current,
+                    tier2SuccessCount: (current.tier2SuccessCount ?? 0) + 1,
+                    tier2LastBundleBytes: bundleBytes,
+                    tier2LastHttpStatus: res.status,
+                    tier2LastStationKey: stationId,
+                }));
                 setTier2({
                     status: "success",
                     message: "Tier2 details loaded.",
@@ -122,6 +151,12 @@ export default function StationDrawer(props: {
                     error: message,
                     tBucketEpochS: fallbackBucketEpochS,
                 });
+                updateUfE2E((current) => ({
+                    ...current,
+                    tier2ErrorCount: (current.tier2ErrorCount ?? 0) + 1,
+                    tier2LastHttpStatus: null,
+                    tier2LastStationKey: stationId,
+                }));
                 setTier2({
                     status: "error",
                     message: `Tier2 load failed: ${message}`,
