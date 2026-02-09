@@ -703,4 +703,58 @@ describe("createPolicyRouteHandler", () => {
     const movesBody = await movesRes.json();
     expect(movesBody.error.code).toBe("token_invalid");
   });
+
+  it("returns 401 for expired sv token on run and moves routes", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return { ok: false as const, reason: "token_expired" };
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          throw new Error("not used");
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const runRes = await handler(
+      new Request("https://example.test/api/policy/run?v=1&sv=expired&policy_version=rebal.greedy.v1&T_bucket=1738872000")
+    );
+    expect(runRes.status).toBe(401);
+    expect(runRes.headers.get("Cache-Control")).toBe("no-store");
+    const runBody = await runRes.json();
+    expect(runBody.error.code).toBe("token_expired");
+
+    const movesRes = await handler(
+      new Request(
+        "https://example.test/api/policy/moves?v=1&sv=expired&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(movesRes.status).toBe(401);
+    expect(movesRes.headers.get("Cache-Control")).toBe("no-store");
+    const movesBody = await movesRes.json();
+    expect(movesBody.error.code).toBe("token_expired");
+  });
 });

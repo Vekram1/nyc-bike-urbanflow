@@ -399,6 +399,50 @@ describe("createStationDrawerRouteHandler", () => {
     expect(body.error.code).toBe("token_invalid");
   });
 
+  it("returns 401 when sv token is expired", async () => {
+    const handler = createStationDrawerRouteHandler({
+      tokens: {
+        async validate() {
+          return { ok: false as const, reason: "token_expired" };
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      stationsStore: {
+        async getStationDrawer() {
+          return null;
+        },
+      },
+      defaults: {
+        severity_version: "sev.v1",
+        tile_schema: "tile.v1",
+        range_s: 21600,
+        bucket_seconds: 300,
+      },
+      limits: {
+        max_range_s: 172800,
+        max_series_points: 360,
+        max_episodes: 50,
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request("https://example.test/api/stations/STA-001/drawer?v=1&sv=expired&T_bucket=1738872000&range=6h")
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("token_expired");
+  });
+
   it("returns 405 for non-GET requests", async () => {
     const handler = createStationDrawerRouteHandler({
       tokens: {
