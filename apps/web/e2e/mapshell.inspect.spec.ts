@@ -7,6 +7,10 @@ type UfE2EState = {
     mapViewMountCount?: number;
     tileRequestKey?: string;
     inspectOpen?: boolean;
+    inspectCloseCount?: number;
+    inspectCloseReasons?: Record<string, number>;
+    inspectLastCloseReason?: string;
+    playing?: boolean;
     selectedStationId?: string | null;
     blockedActions?: Record<string, number>;
 };
@@ -99,4 +103,60 @@ test("inspect lock blocks timeline mutations and keeps tile key stable", async (
             { timeout: 5_000 }
         )
         .not.toBe(lockedKey);
+});
+
+test("escape closes inspect drawer and resumes playback when previously playing", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return Boolean(state.playing);
+        })
+        .toBe(true);
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-escape");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                inspectOpen: Boolean(state.inspectOpen),
+                playing: Boolean(state.playing),
+            };
+        })
+        .toEqual({
+            inspectOpen: true,
+            playing: false,
+        });
+
+    const beforeClose = await readState(page);
+    const beforeEscapeCloseCount = beforeClose.inspectCloseCount ?? 0;
+    const beforeEscapeReasonCount = beforeClose.inspectCloseReasons?.escape_key ?? 0;
+
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toHaveCount(0);
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                inspectOpen: Boolean(state.inspectOpen),
+                playing: Boolean(state.playing),
+                inspectLastCloseReason: state.inspectLastCloseReason ?? "",
+                inspectCloseCount: state.inspectCloseCount ?? 0,
+                escapeCloseCount: state.inspectCloseReasons?.escape_key ?? 0,
+            };
+        })
+        .toEqual({
+            inspectOpen: false,
+            playing: true,
+            inspectLastCloseReason: "escape_key",
+            inspectCloseCount: beforeEscapeCloseCount + 1,
+            escapeCloseCount: beforeEscapeReasonCount + 1,
+        });
 });
