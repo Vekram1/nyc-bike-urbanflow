@@ -354,4 +354,68 @@ describe("createPolicyRouteHandler", () => {
     const movesBody = await movesRes.json();
     expect(movesBody.error.code).toBe("unsupported_version");
   });
+
+  it("returns 405 for non-GET on policy endpoints", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const configRes = await handler(new Request("https://example.test/api/policy/config?v=1", { method: "POST" }));
+    expect(configRes.status).toBe(405);
+    expect(configRes.headers.get("Cache-Control")).toBe("no-store");
+    const configBody = await configRes.json();
+    expect(configBody.error.code).toBe("method_not_allowed");
+
+    const runRes = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000",
+        { method: "POST" }
+      )
+    );
+    expect(runRes.status).toBe(405);
+    expect(runRes.headers.get("Cache-Control")).toBe("no-store");
+    const runBody = await runRes.json();
+    expect(runBody.error.code).toBe("method_not_allowed");
+
+    const movesRes = await handler(
+      new Request(
+        "https://example.test/api/policy/moves?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000",
+        { method: "POST" }
+      )
+    );
+    expect(movesRes.status).toBe(405);
+    expect(movesRes.headers.get("Cache-Control")).toBe("no-store");
+    const movesBody = await movesRes.json();
+    expect(movesBody.error.code).toBe("method_not_allowed");
+  });
 });
