@@ -376,6 +376,13 @@ describe("control-plane e2e", () => {
     expect(timeUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const timeUnknownParamBody = await timeUnknownParamRes.json();
     expect(timeUnknownParamBody.error.code).toBe("unknown_param");
+    const timeMethodRes = await handler(
+      new Request("https://example.test/api/time?system_id=citibike-nyc", { method: "POST" })
+    );
+    expect(timeMethodRes.status).toBe(405);
+    expect(timeMethodRes.headers.get("Cache-Control")).toBe("no-store");
+    const timeMethodBody = await timeMethodRes.json();
+    expect(timeMethodBody.error.code).toBe("method_not_allowed");
     const timeBody = await timeRes.json();
     expect(typeof timeBody.recommended_live_sv).toBe("string");
     expect(timeBody.network.active_station_count).toBe(100);
@@ -392,6 +399,13 @@ describe("control-plane e2e", () => {
     expect(configUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const configUnknownParamBody = await configUnknownParamRes.json();
     expect(configUnknownParamBody.error.code).toBe("unknown_param");
+    const configMethodRes = await handler(
+      new Request("https://example.test/api/config?v=1", { method: "POST" })
+    );
+    expect(configMethodRes.status).toBe(405);
+    expect(configMethodRes.headers.get("Cache-Control")).toBe("no-store");
+    const configMethodBody = await configMethodRes.json();
+    expect(configMethodBody.error.code).toBe("method_not_allowed");
 
     const timelineRes = await handler(
       new Request(`https://example.test/api/timeline?v=1&sv=${encodeURIComponent(sv)}`)
@@ -405,6 +419,15 @@ describe("control-plane e2e", () => {
     expect(timelineUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const timelineUnknownParamBody = await timelineUnknownParamRes.json();
     expect(timelineUnknownParamBody.error.code).toBe("unknown_param");
+    const timelineMethodRes = await handler(
+      new Request(`https://example.test/api/timeline?v=1&sv=${encodeURIComponent(sv)}`, {
+        method: "POST",
+      })
+    );
+    expect(timelineMethodRes.status).toBe(405);
+    expect(timelineMethodRes.headers.get("Cache-Control")).toBe("no-store");
+    const timelineMethodBody = await timelineMethodRes.json();
+    expect(timelineMethodBody.error.code).toBe("method_not_allowed");
 
     const densityRes = await handler(
       new Request(`https://example.test/api/timeline/density?v=1&bucket=300&sv=${encodeURIComponent(sv)}`)
@@ -419,6 +442,15 @@ describe("control-plane e2e", () => {
     expect(densityUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const densityUnknownParamBody = await densityUnknownParamRes.json();
     expect(densityUnknownParamBody.error.code).toBe("unknown_param");
+    const densityMethodRes = await handler(
+      new Request(`https://example.test/api/timeline/density?v=1&bucket=300&sv=${encodeURIComponent(sv)}`, {
+        method: "POST",
+      })
+    );
+    expect(densityMethodRes.status).toBe(405);
+    expect(densityMethodRes.headers.get("Cache-Control")).toBe("no-store");
+    const densityMethodBody = await densityMethodRes.json();
+    expect(densityMethodBody.error.code).toBe("method_not_allowed");
 
     const searchRes = await handler(
       new Request("https://example.test/api/search?system_id=citibike-nyc&q=52")
@@ -435,6 +467,13 @@ describe("control-plane e2e", () => {
     expect(searchUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const searchUnknownParamBody = await searchUnknownParamRes.json();
     expect(searchUnknownParamBody.error.code).toBe("unknown_param");
+    const searchMethodRes = await handler(
+      new Request("https://example.test/api/search?system_id=citibike-nyc&q=52", { method: "POST" })
+    );
+    expect(searchMethodRes.status).toBe(405);
+    expect(searchMethodRes.headers.get("Cache-Control")).toBe("no-store");
+    const searchMethodBody = await searchMethodRes.json();
+    expect(searchMethodBody.error.code).toBe("method_not_allowed");
 
     const auditEvents = db.getAuditEvents();
     expect(auditEvents.some((event) => event.event_type === "mint")).toBe(true);
