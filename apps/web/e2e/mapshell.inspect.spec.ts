@@ -12,6 +12,10 @@ type UfE2EState = {
     inspectCloseReasons?: Record<string, number>;
     inspectLastCloseReason?: string;
     playing?: boolean;
+    compareEnabled?: boolean;
+    splitEnabled?: boolean;
+    hudLastBlockedAction?: string;
+    hudLastBlockedReason?: string;
     selectedStationId?: string | null;
     blockedActions?: Record<string, number>;
 };
@@ -19,6 +23,10 @@ type UfE2EState = {
 type UfE2EActions = {
     openInspect: (stationId?: string) => void;
     closeInspect: (reason?: "drawer_close_button" | "escape_key") => void;
+    toggleCompareMode: () => void;
+    toggleSplitView: () => void;
+    compareOffsetUp: () => void;
+    compareOffsetDown: () => void;
 };
 
 async function readState(page: import("@playwright/test").Page): Promise<UfE2EState> {
@@ -393,4 +401,107 @@ test("clock exposes mode + sv and toggles inspect-lock badge", async ({ page }) 
     await page.keyboard.press("Escape");
     await expect(page.locator('[data-uf-id="station-drawer"]')).toHaveCount(0);
     await expect(inspectBadge).toHaveCount(0);
+});
+
+test("compare controls enforce disabled and inspect-lock guards", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                compareEnabled: Boolean(state.compareEnabled),
+                splitEnabled: Boolean(state.splitEnabled),
+            };
+        })
+        .toEqual({
+            compareEnabled: false,
+            splitEnabled: false,
+        });
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.toggleSplitView();
+    });
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                blocked: state.blockedActions?.toggleSplitView ?? 0,
+                reason: state.hudLastBlockedReason ?? "",
+            };
+        })
+        .toEqual({
+            blocked: 1,
+            reason: "compare_mode_disabled",
+        });
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.toggleCompareMode();
+    });
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                compareEnabled: Boolean(state.compareEnabled),
+                splitEnabled: Boolean(state.splitEnabled),
+            };
+        })
+        .toEqual({
+            compareEnabled: true,
+            splitEnabled: false,
+        });
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.toggleSplitView();
+    });
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                compareEnabled: Boolean(state.compareEnabled),
+                splitEnabled: Boolean(state.splitEnabled),
+            };
+        })
+        .toEqual({
+            compareEnabled: true,
+            splitEnabled: true,
+        });
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-compare-lock");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.toggleCompareMode();
+        actions?.compareOffsetUp();
+    });
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                blockedToggleCompare: state.blockedActions?.toggleCompareMode ?? 0,
+                blockedOffsetUp: state.blockedActions?.compareOffsetUp ?? 0,
+                lastBlockedReason: state.hudLastBlockedReason ?? "",
+            };
+        })
+        .toEqual({
+            blockedToggleCompare: 1,
+            blockedOffsetUp: 1,
+            lastBlockedReason: "inspect_lock",
+        });
 });

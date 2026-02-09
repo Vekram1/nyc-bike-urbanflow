@@ -64,6 +64,10 @@ type UfE2EState = {
 type UfE2EActions = {
     openInspect: (stationId?: string) => void;
     closeInspect: (reason?: "drawer_close_button" | "escape_key") => void;
+    toggleCompareMode: () => void;
+    toggleSplitView: () => void;
+    compareOffsetUp: () => void;
+    compareOffsetDown: () => void;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -367,9 +371,21 @@ export default function MapShell() {
             closeInspect: (reason = "drawer_close_button") => {
                 closeInspect(reason);
             },
+            toggleCompareMode: () => {
+                hud.toggleCompareMode();
+            },
+            toggleSplitView: () => {
+                hud.toggleSplitView();
+            },
+            compareOffsetUp: () => {
+                hud.compareOffsetUp();
+            },
+            compareOffsetDown: () => {
+                hud.compareOffsetDown();
+            },
         };
         (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS = actions;
-    }, [closeInspect, openInspect]);
+    }, [closeInspect, hud, openInspect]);
 
     return (
         <div className="uf-root" data-uf-id="app-root">
