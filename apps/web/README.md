@@ -53,6 +53,10 @@ The map is full-bleed and mounted once per session. All controls render as overl
   - tab visibility auto-pause/resume is preserved (`visibilitychange`).
 - Step granularity:
   - bucket stepping changes `progress` by `0.01` per action.
+- Compare mode:
+  - `compareMode` enables secondary time context.
+  - `compareOffsetBuckets` defines `T2_bucket = max(0, T_bucket - compareOffsetBuckets)`.
+  - `splitView` is only actionable when compare mode is enabled.
 - Debounce/anti-thrash behavior:
   - no delayed resume timer is used; inspect open/close transitions are edge-triggered and deterministic.
   - repeated blocked actions during inspect are ignored and logged, not queued.
@@ -65,6 +69,10 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `MapShell`: inspect lock transitions, playback/speed changes, layer toggle changes.
 - `MapShell`: `tile_request_key_changed` emits a deterministic key from `{layers, timelineBucket, inspectLocked}`.
   - During inspect lock, HUD timeline mutation actions are blocked, so the request key stays stable.
+- In compare mode the request key additionally includes:
+  - `compare_mode`
+  - `t2_bucket`
+  - `split_view`
 - `MapShell`: explicit Tier1 drawer lifecycle logs:
   - `tier1_drawer_opened`
   - `tier1_drawer_closed`

@@ -27,9 +27,15 @@ export default function MapShell() {
     });
     const progressLabel = `Progress ${Math.round(hud.progress * 100)}%`;
     const timelineBucket = Math.round(hud.progress * 100);
+    const compareBucket = hud.compareMode
+        ? Math.max(0, timelineBucket - hud.compareOffsetBuckets)
+        : null;
     const tileRequestKey = JSON.stringify({
         layers: hud.layers,
         bucket: timelineBucket,
+        compare_mode: hud.compareMode,
+        t2_bucket: compareBucket,
+        split_view: hud.splitView,
         inspectLocked: hud.inspectLocked,
     });
 
@@ -111,10 +117,21 @@ export default function MapShell() {
         console.info("[MapShell] tile_request_key_changed", {
             tileRequestKey,
             timelineBucket,
+            compareBucket,
+            compareMode: hud.compareMode,
+            splitView: hud.splitView,
             inspectLocked: hud.inspectLocked,
             layers: hud.layers,
         });
-    }, [hud.inspectLocked, hud.layers, tileRequestKey, timelineBucket]);
+    }, [
+        compareBucket,
+        hud.compareMode,
+        hud.inspectLocked,
+        hud.layers,
+        hud.splitView,
+        tileRequestKey,
+        timelineBucket,
+    ]);
 
     return (
         <div className="uf-root">
@@ -163,9 +180,16 @@ export default function MapShell() {
                         <CommandStack
                             playing={hud.playing}
                             inspectLocked={hud.inspectLocked}
+                            compareMode={hud.compareMode}
+                            splitView={hud.splitView}
+                            compareOffsetBuckets={hud.compareOffsetBuckets}
                             layers={hud.layers}
                             onTogglePlay={hud.togglePlay}
                             onToggleLayer={hud.toggleLayer}
+                            onToggleCompareMode={hud.toggleCompareMode}
+                            onToggleSplitView={hud.toggleSplitView}
+                            onCompareOffsetDown={hud.compareOffsetDown}
+                            onCompareOffsetUp={hud.compareOffsetUp}
                         />
                     </nav>
                 </div>
@@ -185,6 +209,20 @@ export default function MapShell() {
 
                 <StationDrawer station={selected} onClose={closeInspect} />
             </HUDRoot>
+            {hud.compareMode && hud.splitView ? (
+                <div
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        left: "50%",
+                        width: 2,
+                        background: "rgba(255,255,255,0.18)",
+                        pointerEvents: "none",
+                    }}
+                    aria-hidden="true"
+                />
+            ) : null}
         </div>
     );
 }

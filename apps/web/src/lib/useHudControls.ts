@@ -14,6 +14,9 @@ const DEFAULT_LAYERS: LayerToggles = {
 type PersistedHud = {
     speedIdx?: number;
     layers?: Partial<LayerToggles>;
+    compareMode?: boolean;
+    splitView?: boolean;
+    compareOffsetBuckets?: number;
 };
 
 function readPersistedHud(): PersistedHud | null {
@@ -53,13 +56,30 @@ export function useHudControls() {
     const wasPlayingBeforeHiddenRef = useRef(false);
     const autoPausedByHiddenRef = useRef(false);
     const [inspectLocked, setInspectLocked] = useState(false);
+    const [compareMode, setCompareMode] = useState(
+        typeof persisted?.compareMode === "boolean" ? persisted.compareMode : false
+    );
+    const [splitView, setSplitView] = useState(
+        typeof persisted?.splitView === "boolean" ? persisted.splitView : false
+    );
+    const [compareOffsetBuckets, setCompareOffsetBuckets] = useState(() => {
+        const persistedOffset = persisted?.compareOffsetBuckets;
+        if (typeof persistedOffset !== "number") return 6;
+        return Math.max(1, Math.min(24, Math.round(persistedOffset)));
+    });
 
     const speed = SPEED_STEPS[speedIdx] ?? 1;
 
     useEffect(() => {
-        const payload: PersistedHud = { speedIdx, layers };
+        const payload: PersistedHud = {
+            speedIdx,
+            layers,
+            compareMode,
+            splitView,
+            compareOffsetBuckets,
+        };
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    }, [layers, speedIdx]);
+    }, [compareMode, compareOffsetBuckets, layers, speedIdx, splitView]);
 
     useEffect(() => {
         if (!playing) return;
@@ -173,6 +193,65 @@ export function useHudControls() {
         setLayers((curr) => ({ ...curr, [key]: !curr[key] }));
     };
 
+    const toggleCompareMode = () => {
+        if (inspectLocked) {
+            console.info("[HudControls] compare_mode_toggle_blocked_inspect_lock");
+            return;
+        }
+        setCompareMode((curr) => {
+            const next = !curr;
+            if (!next) {
+                setSplitView(false);
+            }
+            console.info("[HudControls] compare_mode_changed", { enabled: next });
+            return next;
+        });
+    };
+
+    const toggleSplitView = () => {
+        if (inspectLocked) {
+            console.info("[HudControls] split_view_toggle_blocked_inspect_lock");
+            return;
+        }
+        if (!compareMode) {
+            console.info("[HudControls] split_view_toggle_blocked_compare_disabled");
+            return;
+        }
+        setSplitView((curr) => {
+            const next = !curr;
+            console.info("[HudControls] split_view_changed", { enabled: next });
+            return next;
+        });
+    };
+
+    const compareOffsetDown = () => {
+        if (inspectLocked) {
+            console.info("[HudControls] compare_offset_down_blocked_inspect_lock");
+            return;
+        }
+        setCompareOffsetBuckets((curr) => {
+            const next = Math.max(1, curr - 1);
+            if (next !== curr) {
+                console.info("[HudControls] compare_offset_changed", { from: curr, to: next });
+            }
+            return next;
+        });
+    };
+
+    const compareOffsetUp = () => {
+        if (inspectLocked) {
+            console.info("[HudControls] compare_offset_up_blocked_inspect_lock");
+            return;
+        }
+        setCompareOffsetBuckets((curr) => {
+            const next = Math.min(24, curr + 1);
+            if (next !== curr) {
+                console.info("[HudControls] compare_offset_changed", { from: curr, to: next });
+            }
+            return next;
+        });
+    };
+
     const onInspectOpen = () => {
         setInspectLocked(true);
         wasPlayingBeforeInspectRef.current = playing;
@@ -249,6 +328,9 @@ export function useHudControls() {
         progress,
         layers,
         inspectLocked,
+        compareMode,
+        splitView,
+        compareOffsetBuckets,
         seekTo,
         togglePlay,
         speedDown,
@@ -256,6 +338,10 @@ export function useHudControls() {
         stepBack,
         stepForward,
         toggleLayer,
+        toggleCompareMode,
+        toggleSplitView,
+        compareOffsetDown,
+        compareOffsetUp,
         onInspectOpen,
         onInspectClose,
         handleHotkey,

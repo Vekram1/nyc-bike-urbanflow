@@ -8,17 +8,31 @@ import type { LayerToggles } from "@/lib/hudTypes";
 type Props = {
     playing: boolean;
     inspectLocked: boolean;
+    compareMode: boolean;
+    splitView: boolean;
+    compareOffsetBuckets: number;
     layers: LayerToggles;
     onTogglePlay: () => void;
     onToggleLayer: (key: keyof LayerToggles) => void;
+    onToggleCompareMode: () => void;
+    onToggleSplitView: () => void;
+    onCompareOffsetDown: () => void;
+    onCompareOffsetUp: () => void;
 };
 
 export default function CommandStack({
     playing,
     inspectLocked,
+    compareMode,
+    splitView,
+    compareOffsetBuckets,
     layers,
     onTogglePlay,
     onToggleLayer,
+    onToggleCompareMode,
+    onToggleSplitView,
+    onCompareOffsetDown,
+    onCompareOffsetUp,
 }: Props) {
     return (
         <>
@@ -81,6 +95,59 @@ export default function CommandStack({
                     </label>
                 </div>
             </HUDCard>
+
+            <HUDCard>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 2 }}>
+                        Compare
+                    </div>
+                    <button
+                        type="button"
+                        style={rowBtnStyle}
+                        onClick={onToggleCompareMode}
+                        disabled={inspectLocked}
+                        aria-label="Toggle compare mode"
+                    >
+                        <span style={{ fontSize: 12, opacity: 0.92 }}>
+                            {compareMode ? "Compare On" : "Compare Off"}
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        style={rowBtnStyle}
+                        onClick={onToggleSplitView}
+                        disabled={inspectLocked || !compareMode}
+                        aria-label="Toggle split view"
+                    >
+                        <span style={{ fontSize: 12, opacity: 0.92 }}>
+                            {splitView ? "Split On" : "Split Off"}
+                        </span>
+                    </button>
+                    <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                            type="button"
+                            style={smallBtnStyle}
+                            onClick={onCompareOffsetDown}
+                            disabled={inspectLocked}
+                            aria-label="Decrease compare offset"
+                        >
+                            -
+                        </button>
+                        <div style={{ fontSize: 12, opacity: 0.9, alignSelf: "center" }}>
+                            Offset {compareOffsetBuckets} buckets
+                        </div>
+                        <button
+                            type="button"
+                            style={smallBtnStyle}
+                            onClick={onCompareOffsetUp}
+                            disabled={inspectLocked}
+                            aria-label="Increase compare offset"
+                        >
+                            +
+                        </button>
+                    </div>
+                </div>
+            </HUDCard>
         </>
     );
 }
@@ -115,4 +182,14 @@ const rowBtnStyle: React.CSSProperties = {
     justifyContent: "space-between",
     gap: 12,
     alignItems: "center",
+};
+
+const smallBtnStyle: React.CSSProperties = {
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    color: "rgba(230,237,243,0.92)",
+    borderRadius: 8,
+    padding: "2px 8px",
+    cursor: "pointer",
+    fontSize: 12,
 };
