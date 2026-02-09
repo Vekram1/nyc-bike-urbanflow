@@ -302,6 +302,17 @@ describe("policy e2e via control-plane", () => {
     const expiredRunBody = await expiredRun.json();
     expect(expiredRunBody.error.code).toBe("token_expired");
 
+    policyTokenFailure = "token_invalid";
+    const invalidRun = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(invalidRun.status).toBe(401);
+    expect(invalidRun.headers.get("Cache-Control")).toBe("no-store");
+    const invalidRunBody = await invalidRun.json();
+    expect(invalidRunBody.error.code).toBe("token_invalid");
+
     policyTokenFailure = "token_revoked";
     const revokedMoves = await handler(
       new Request(
