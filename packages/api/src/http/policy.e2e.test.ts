@@ -336,6 +336,28 @@ describe("policy e2e via control-plane", () => {
     expect(invalidMovesBody.error.code).toBe("token_invalid");
 
     policyTokenFailure = null;
+    policyTileTokenFailure = "token_expired";
+    const expiredTile = await handler(
+      new Request(
+        "https://example.test/api/tiles/policy_moves/12/1200/1530.mvt?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(expiredTile.status).toBe(401);
+    expect(expiredTile.headers.get("Cache-Control")).toBe("no-store");
+    const expiredTileBody = await expiredTile.json();
+    expect(expiredTileBody.error.code).toBe("token_expired");
+
+    policyTileTokenFailure = "token_revoked";
+    const revokedTile = await handler(
+      new Request(
+        "https://example.test/api/tiles/policy_moves/12/1200/1530.mvt?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(revokedTile.status).toBe(403);
+    expect(revokedTile.headers.get("Cache-Control")).toBe("no-store");
+    const revokedTileBody = await revokedTile.json();
+    expect(revokedTileBody.error.code).toBe("token_revoked");
+
     policyTileTokenFailure = "token_invalid";
     const invalidTokenTile = await handler(
       new Request(
