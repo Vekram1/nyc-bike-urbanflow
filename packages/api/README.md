@@ -80,6 +80,7 @@ Optional with defaults:
 - `POLICY_MAX_MOVES` default `80`
 - `POLICY_BUDGET_PRESETS_JSON` default `[]`
 - `NETWORK_DEGRADE_LEVEL` default unset (when set to `0..3`, overrides `/api/time.network.degrade_level`)
+- `REPLAY_TILE_CACHE_DIR` default unset (when set, enables replay tile write-through cache on local disk)
 
 ## Running the API
 

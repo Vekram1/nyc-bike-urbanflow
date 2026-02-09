@@ -28,5 +28,6 @@ export * from "./http/timeline";
 export * from "./http/tiles";
 export * from "./tiles/composite";
 export * from "./tiles/policy_moves";
+export * from "./tiles/replay_cache";
 export * from "./stations/store";
 export * from "./policy/store";

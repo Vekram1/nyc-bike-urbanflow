@@ -13,6 +13,7 @@ import { PgServingTokenStore, type ServingKeyMaterialProvider } from "./sv/store
 import { createCompositeTileStore } from "./tiles/composite";
 import { createEpisodesTileStore } from "./tiles/episodes";
 import { createPolicyMovesTileStore } from "./tiles/policy_moves";
+import { FileReplayTileCache } from "./tiles/replay_cache";
 
 type EnvConfig = {
   port: number;
@@ -44,6 +45,7 @@ type EnvConfig = {
   policy_max_moves: number;
   key_material_json: string;
   network_degrade_level: number | null;
+  replay_tile_cache_dir: string | null;
 };
 
 function parseIntEnv(name: string, fallback: number): number {
@@ -116,6 +118,7 @@ function loadConfig(): EnvConfig {
     policy_max_moves: parseIntEnv("POLICY_MAX_MOVES", 80),
     key_material_json: process.env.SV_KEY_MATERIAL_JSON?.trim() || "{}",
     network_degrade_level: parseOptionalIntEnv("NETWORK_DEGRADE_LEVEL"),
+    replay_tile_cache_dir: process.env.REPLAY_TILE_CACHE_DIR?.trim() || null,
   };
 }
 
@@ -451,6 +454,7 @@ async function main(): Promise<void> {
     max_features_per_tile: cfg.tile_max_features,
     max_bytes_per_tile: cfg.tile_max_bytes,
   });
+  const replayTileCache = cfg.replay_tile_cache_dir ? new FileReplayTileCache(cfg.replay_tile_cache_dir) : undefined;
 
   const handler = createControlPlaneHandler({
     time: {
@@ -506,6 +510,7 @@ async function main(): Promise<void> {
       allowlist,
       servingViews: bindings,
       tileStore,
+      replayCache: replayTileCache,
       cache: {
         max_age_s: cfg.tile_live_max_age_s,
         s_maxage_s: cfg.tile_live_s_maxage_s,

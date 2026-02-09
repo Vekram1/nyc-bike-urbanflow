@@ -253,6 +253,132 @@ describe("createCompositeTilesRouteHandler", () => {
     expect(res.headers.get("Cache-Control")).toContain("max-age=600");
   });
 
+  it("serves replay tile from write-through cache on hit", async () => {
+    let storeCalled = false;
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return {
+            ok: true as const,
+            payload: {
+              system_id: "citibike-nyc",
+              view_id: 42,
+              view_spec_sha256: "view-hash",
+              issued_at_s: 1738872000,
+              expires_at_s: 1739476800,
+            },
+          };
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      replayCache: {
+        async get() {
+          return {
+            mvt: new Uint8Array([9, 9]),
+            feature_count: 4,
+            bytes: 2,
+            degrade_level: 0,
+          };
+        },
+        async put() {
+          throw new Error("should not write on cache hit");
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile() {
+          storeCalled = true;
+          throw new Error("should not hit tile store on replay cache hit");
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+        replay_max_age_s: 600,
+        replay_s_maxage_s: 3600,
+        replay_stale_while_revalidate_s: 60,
+        replay_min_ttl_s: 86400,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=abc&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(storeCalled).toBe(false);
+    expect(res.headers.get("X-Replay-Tile-Source")).toBe("write-through-cache");
+    expect(res.headers.get("Cache-Control")).toContain("immutable");
+  });
+
+  it("writes replay tile to cache on miss", async () => {
+    let putCount = 0;
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return {
+            ok: true as const,
+            payload: {
+              system_id: "citibike-nyc",
+              view_id: 42,
+              view_spec_sha256: "view-hash",
+              issued_at_s: 1738872000,
+              expires_at_s: 1739476800,
+            },
+          };
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      replayCache: {
+        async get() {
+          return null;
+        },
+        async put(_key, value) {
+          putCount += 1;
+          expect(value.feature_count).toBe(3);
+          expect(value.bytes).toBe(3);
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile() {
+          return {
+            ok: true as const,
+            mvt: new Uint8Array([1, 2, 3]),
+            feature_count: 3,
+            bytes: 3,
+          };
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+        replay_max_age_s: 600,
+        replay_s_maxage_s: 3600,
+        replay_stale_while_revalidate_s: 60,
+        replay_min_ttl_s: 86400,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?v=1&sv=abc&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(putCount).toBe(1);
+    expect(res.headers.get("X-Replay-Tile-Source")).toBe("origin-write-through");
+  });
+
   it("returns 429 with origin shield headers when tile store is overloaded", async () => {
     const handler = createCompositeTilesRouteHandler({
       tokens: {
