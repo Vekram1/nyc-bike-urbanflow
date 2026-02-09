@@ -1,7 +1,7 @@
 // apps/web/src/components/hud/CommandStack.tsx
 "use client";
 
-import { useMemo, useState, type KeyboardEventHandler } from "react";
+import { useEffect, useMemo, useState, type KeyboardEventHandler } from "react";
 
 import HUDCard from "./HUDCard";
 import Keycap from "./Keycap";
@@ -50,9 +50,12 @@ export default function CommandStack({
     onSearchPick,
 }: Props) {
     const [query, setQuery] = useState("");
+    const [remoteResults, setRemoteResults] = useState<SearchResult[] | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [remoteError, setRemoteError] = useState<string | null>(null);
     const trimmedQuery = query.trim();
     const canSearch = trimmedQuery.length >= 2;
-    const results = useMemo(() => {
+    const localResults = useMemo(() => {
         if (!canSearch) return [];
         const q = trimmedQuery.toLowerCase();
         return searchStations
@@ -63,12 +66,61 @@ export default function CommandStack({
             })
             .slice(0, 8);
     }, [canSearch, searchStations, trimmedQuery]);
+    const results = remoteResults ?? localResults;
+
+    useEffect(() => {
+        if (!canSearch) {
+            setRemoteResults(null);
+            setRemoteError(null);
+            setLoading(false);
+            return;
+        }
+
+        const controller = new AbortController();
+        const timer = window.setTimeout(async () => {
+            setLoading(true);
+            setRemoteError(null);
+            try {
+                const params = new URLSearchParams({
+                    q: trimmedQuery,
+                    limit: "8",
+                });
+                const res = await fetch(`/api/search?${params.toString()}`, {
+                    cache: "no-store",
+                    signal: controller.signal,
+                });
+                const body = (await res.json()) as {
+                    results?: SearchResult[];
+                    error?: { message?: string };
+                };
+                if (!res.ok) {
+                    setRemoteResults(null);
+                    setRemoteError(body.error?.message ?? "Search unavailable");
+                    return;
+                }
+                setRemoteResults(Array.isArray(body.results) ? body.results : []);
+            } catch (error: unknown) {
+                if ((error as { name?: string })?.name === "AbortError") return;
+                setRemoteResults(null);
+                setRemoteError("Search unavailable");
+            } finally {
+                setLoading(false);
+            }
+        }, 120);
+
+        return () => {
+            window.clearTimeout(timer);
+            controller.abort();
+        };
+    }, [canSearch, trimmedQuery]);
 
     const searchHint = useMemo(() => {
         if (!canSearch) return "Type at least 2 chars";
+        if (loading) return "Searching...";
+        if (remoteError) return `${remoteError} (showing local matches)`;
         if (results.length === 0) return "No matches";
         return `${results.length} result${results.length === 1 ? "" : "s"}`;
-    }, [canSearch, results.length]);
+    }, [canSearch, loading, remoteError, results.length]);
 
     const handlePick = (item: SearchResult) => {
         onSearchPick({
@@ -76,6 +128,8 @@ export default function CommandStack({
             name: item.name,
         });
         setQuery("");
+        setRemoteResults(null);
+        setRemoteError(null);
     };
 
     const onSearchKeyDown: KeyboardEventHandler<HTMLInputElement> = (event) => {
