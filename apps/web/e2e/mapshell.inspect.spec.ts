@@ -354,3 +354,43 @@ test("tier2 details request updates drawer status lifecycle", async ({ page }) =
         )
         .toMatch(/^(success|error)$/);
 });
+
+test("clock exposes mode + sv and toggles inspect-lock badge", async ({ page }) => {
+    await page.goto("/");
+
+    const modeBadge = page.locator('[data-uf-id="clock-mode-badge"]');
+    const svLabel = page.locator('[data-uf-id="clock-sv"]');
+    const inspectBadge = page.locator('[data-uf-id="clock-inspect-lock"]');
+
+    await expect(modeBadge).toBeVisible();
+    await expect
+        .poll(async () => (await modeBadge.getAttribute("data-uf-mode")) ?? "")
+        .toMatch(/^(live|replay)$/);
+
+    await expect(svLabel).toBeVisible();
+    await expect
+        .poll(async () => (await svLabel.textContent())?.trim() ?? "")
+        .not.toBe("");
+
+    await expect(inspectBadge).toHaveCount(0);
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-clock");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+    await expect(inspectBadge).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toHaveCount(0);
+    await expect(inspectBadge).toHaveCount(0);
+});
