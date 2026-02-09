@@ -33,6 +33,12 @@ type UfE2EState = {
     controlsDisabled?: boolean;
     compareEnabled?: boolean;
     splitEnabled?: boolean;
+    layerSeverityEnabled?: boolean;
+    layerCapacityEnabled?: boolean;
+    layerLabelsEnabled?: boolean;
+    compareOffsetBuckets?: number;
+    playbackSpeed?: number;
+    playing?: boolean;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -222,11 +228,23 @@ export default function MapShell() {
             controlsDisabled: hud.inspectLocked,
             compareEnabled: hud.compareMode,
             splitEnabled: hud.compareMode && hud.splitView,
+            layerSeverityEnabled: hud.layers.severity,
+            layerCapacityEnabled: hud.layers.capacity,
+            layerLabelsEnabled: hud.layers.labels,
+            compareOffsetBuckets: hud.compareOffsetBuckets,
+            playbackSpeed: hud.speed,
+            playing: hud.playing,
         }));
     }, [
         compareBucket,
+        hud.compareOffsetBuckets,
         hud.compareMode,
         hud.inspectLocked,
+        hud.layers.capacity,
+        hud.layers.labels,
+        hud.layers.severity,
+        hud.playing,
+        hud.speed,
         hud.splitView,
         inspectOpen,
         selected?.station_id,

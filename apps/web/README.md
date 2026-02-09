@@ -101,6 +101,12 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.controlsDisabled`
   - `window.__UF_E2E.compareEnabled`
   - `window.__UF_E2E.splitEnabled`
+  - `window.__UF_E2E.layerSeverityEnabled`
+  - `window.__UF_E2E.layerCapacityEnabled`
+  - `window.__UF_E2E.layerLabelsEnabled`
+  - `window.__UF_E2E.compareOffsetBuckets`
+  - `window.__UF_E2E.playbackSpeed`
+  - `window.__UF_E2E.playing`
   - `window.__UF_E2E.blockedActions` (per-action counters while inspect lock blocks controls)
   - `window.__UF_E2E.mapRefreshAttempts`
   - `window.__UF_E2E.mapRefreshSuccess`
