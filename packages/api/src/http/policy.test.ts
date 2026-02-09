@@ -292,4 +292,66 @@ describe("createPolicyRouteHandler", () => {
     const body = await res.json();
     expect(body.error.code).toBe("unknown_param");
   });
+
+  it("returns 400 for unsupported version on policy endpoints", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const configRes = await handler(new Request("https://example.test/api/policy/config?v=2"));
+    expect(configRes.status).toBe(400);
+    expect(configRes.headers.get("Cache-Control")).toBe("no-store");
+    const configBody = await configRes.json();
+    expect(configBody.error.code).toBe("unsupported_version");
+
+    const runRes = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=2&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(runRes.status).toBe(400);
+    expect(runRes.headers.get("Cache-Control")).toBe("no-store");
+    const runBody = await runRes.json();
+    expect(runBody.error.code).toBe("unsupported_version");
+
+    const movesRes = await handler(
+      new Request(
+        "https://example.test/api/policy/moves?v=2&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(movesRes.status).toBe(400);
+    expect(movesRes.headers.get("Cache-Control")).toBe("no-store");
+    const movesBody = await movesRes.json();
+    expect(movesBody.error.code).toBe("unsupported_version");
+  });
 });
