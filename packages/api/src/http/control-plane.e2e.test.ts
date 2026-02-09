@@ -743,6 +743,16 @@ describe("control-plane e2e", () => {
     expect(okTile.headers.get("X-Tile-Degrade-Level")).toBe("1");
     expect(okTile.headers.get("Cache-Control")).toContain("max-age=30");
 
+    const unsupportedVersionTile = await handler(
+      new Request(
+        `https://example.test/api/tiles/composite/12/1200/1530.mvt?v=2&sv=${encodeURIComponent(sv)}&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000`
+      )
+    );
+    expect(unsupportedVersionTile.status).toBe(400);
+    expect(unsupportedVersionTile.headers.get("Cache-Control")).toBe("no-store");
+    const unsupportedVersionTileBody = await unsupportedVersionTile.json();
+    expect(unsupportedVersionTileBody.error.code).toBe("unsupported_version");
+
     mode = "overload";
     const overloaded = await handler(
       new Request(
