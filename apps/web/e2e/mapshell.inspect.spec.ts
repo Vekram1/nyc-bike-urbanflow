@@ -730,3 +730,50 @@ test("inspect lock state reflects in controlsDisabled and scrubber attr", async 
         .poll(async () => Boolean((await readState(page)).controlsDisabled))
         .toBe(false);
 });
+
+test("compare offset label stays in sync with __UF_E2E compareOffsetBuckets", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.toggleCompareMode();
+    });
+    await expect
+        .poll(async () => Boolean((await readState(page)).compareEnabled))
+        .toBe(true);
+
+    const offsetValue = page.locator('[data-uf-id="compare-offset-value"]');
+    const offsetUp = page.locator('[data-uf-id="compare-offset-up"]');
+    const offsetDown = page.locator('[data-uf-id="compare-offset-down"]');
+
+    await offsetUp.click();
+    await offsetUp.click();
+    await offsetDown.click();
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            const buckets = state.compareOffsetBuckets ?? -1;
+            const attr = (await offsetValue.getAttribute("data-uf-offset-buckets")) ?? "";
+            const text = (await offsetValue.textContent()) ?? "";
+            return {
+                buckets,
+                attr,
+                text,
+            };
+        })
+        .toEqual({
+            buckets: 7,
+            attr: "7",
+            text: "Offset 7 buckets",
+        });
+});
