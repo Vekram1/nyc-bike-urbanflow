@@ -14,6 +14,7 @@ type UfE2EState = {
     playing?: boolean;
     compareEnabled?: boolean;
     splitEnabled?: boolean;
+    compareOffsetBuckets?: number;
     hudLastBlockedAction?: string;
     hudLastBlockedReason?: string;
     selectedStationId?: string | null;
@@ -502,6 +503,65 @@ test("compare controls enforce disabled and inspect-lock guards", async ({ page 
         .toEqual({
             blockedToggleCompare: 1,
             blockedOffsetUp: 1,
+            lastBlockedReason: "inspect_lock",
+        });
+});
+
+test("compare offset clamps to bounds and blocks under inspect lock", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        for (let i = 0; i < 40; i += 1) actions?.compareOffsetDown();
+    });
+    await expect
+        .poll(async () => (await readState(page)).compareOffsetBuckets ?? -1)
+        .toBe(1);
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        for (let i = 0; i < 50; i += 1) actions?.compareOffsetUp();
+    });
+    await expect
+        .poll(async () => (await readState(page)).compareOffsetBuckets ?? -1)
+        .toBe(24);
+
+    const before = await readState(page);
+    const beforeUpBlocked = before.blockedActions?.compareOffsetUp ?? 0;
+    const beforeDownBlocked = before.blockedActions?.compareOffsetDown ?? 0;
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-offset-guard");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.compareOffsetUp();
+        actions?.compareOffsetDown();
+    });
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                upBlocked: state.blockedActions?.compareOffsetUp ?? 0,
+                downBlocked: state.blockedActions?.compareOffsetDown ?? 0,
+                lastBlockedReason: state.hudLastBlockedReason ?? "",
+            };
+        })
+        .toEqual({
+            upBlocked: beforeUpBlocked + 1,
+            downBlocked: beforeDownBlocked + 1,
             lastBlockedReason: "inspect_lock",
         });
 });
