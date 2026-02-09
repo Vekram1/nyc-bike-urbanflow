@@ -25,6 +25,8 @@ type UfE2EState = {
     compareBucket?: number | null;
     tileRequestKey?: string;
     tileRequestKeyHistory?: string[];
+    tileRequestKeyChangeCount?: number;
+    tileRequestKeyLastChangedAt?: string;
     invariantViolations?: string[];
     invariantViolationCount?: number;
     lastInvariantViolation?: string;
@@ -235,46 +237,55 @@ export default function MapShell() {
 
     useEffect(() => {
         if (typeof window === "undefined") return;
-        updateUfE2E((current) => ({
-            ...current,
-            mapShellMounted: true,
-            mapShellMountCount: current.mapShellMountCount ?? 0,
-            mapShellUnmountCount: current.mapShellUnmountCount ?? 0,
-            mapShellLastMountTs: current.mapShellLastMountTs ?? "",
-            mapShellLastUnmountTs: current.mapShellLastUnmountTs ?? "",
-            inspectOpen,
-            selectedStationId: selected?.station_id ?? null,
-            timelineBucket,
-            compareBucket,
-            tileRequestKey,
-            tileRequestKeyHistory: [...(current.tileRequestKeyHistory ?? []), tileRequestKey].slice(-40),
-            invariantViolations: current.invariantViolations ?? [],
-            invariantViolationCount: current.invariantViolationCount ?? 0,
-            lastInvariantViolation: current.lastInvariantViolation ?? "",
-            lastInvariantViolationAt: current.lastInvariantViolationAt ?? "",
-            inspectOpenCount: current.inspectOpenCount ?? 0,
-            inspectCloseCount: current.inspectCloseCount ?? 0,
-            inspectCloseReasons: current.inspectCloseReasons ?? {},
-            inspectOpenedAt: current.inspectOpenedAt ?? "",
-            inspectClosedAt: current.inspectClosedAt ?? "",
-            inspectLastCloseReason: current.inspectLastCloseReason ?? "",
-            hotkeyHandledCount: current.hotkeyHandledCount ?? 0,
-            hotkeyIgnoredCount: current.hotkeyIgnoredCount ?? 0,
-            hotkeyLastCode: current.hotkeyLastCode ?? "",
-            hotkeyLastHandledAt: current.hotkeyLastHandledAt ?? "",
-            hotkeyLastIgnoredAt: current.hotkeyLastIgnoredAt ?? "",
-            inspectAnchorTileRequestKey: current.inspectAnchorTileRequestKey ?? "",
-            inspectSessionId: current.inspectSessionId ?? 0,
-            controlsDisabled: hud.inspectLocked,
-            compareEnabled: hud.compareMode,
-            splitEnabled: hud.compareMode && hud.splitView,
-            layerSeverityEnabled: hud.layers.severity,
-            layerCapacityEnabled: hud.layers.capacity,
-            layerLabelsEnabled: hud.layers.labels,
-            compareOffsetBuckets: hud.compareOffsetBuckets,
-            playbackSpeed: hud.speed,
-            playing: hud.playing,
-        }));
+        const updatedAt = new Date().toISOString();
+        updateUfE2E((current) => {
+            const keyChanged = current.tileRequestKey !== tileRequestKey;
+            const nextHistory = keyChanged
+                ? [...(current.tileRequestKeyHistory ?? []), tileRequestKey].slice(-40)
+                : (current.tileRequestKeyHistory ?? []);
+            return {
+                ...current,
+                mapShellMounted: true,
+                mapShellMountCount: current.mapShellMountCount ?? 0,
+                mapShellUnmountCount: current.mapShellUnmountCount ?? 0,
+                mapShellLastMountTs: current.mapShellLastMountTs ?? "",
+                mapShellLastUnmountTs: current.mapShellLastUnmountTs ?? "",
+                inspectOpen,
+                selectedStationId: selected?.station_id ?? null,
+                timelineBucket,
+                compareBucket,
+                tileRequestKey,
+                tileRequestKeyHistory: nextHistory,
+                tileRequestKeyChangeCount: (current.tileRequestKeyChangeCount ?? 0) + (keyChanged ? 1 : 0),
+                tileRequestKeyLastChangedAt: keyChanged ? updatedAt : (current.tileRequestKeyLastChangedAt ?? ""),
+                invariantViolations: current.invariantViolations ?? [],
+                invariantViolationCount: current.invariantViolationCount ?? 0,
+                lastInvariantViolation: current.lastInvariantViolation ?? "",
+                lastInvariantViolationAt: current.lastInvariantViolationAt ?? "",
+                inspectOpenCount: current.inspectOpenCount ?? 0,
+                inspectCloseCount: current.inspectCloseCount ?? 0,
+                inspectCloseReasons: current.inspectCloseReasons ?? {},
+                inspectOpenedAt: current.inspectOpenedAt ?? "",
+                inspectClosedAt: current.inspectClosedAt ?? "",
+                inspectLastCloseReason: current.inspectLastCloseReason ?? "",
+                hotkeyHandledCount: current.hotkeyHandledCount ?? 0,
+                hotkeyIgnoredCount: current.hotkeyIgnoredCount ?? 0,
+                hotkeyLastCode: current.hotkeyLastCode ?? "",
+                hotkeyLastHandledAt: current.hotkeyLastHandledAt ?? "",
+                hotkeyLastIgnoredAt: current.hotkeyLastIgnoredAt ?? "",
+                inspectAnchorTileRequestKey: current.inspectAnchorTileRequestKey ?? "",
+                inspectSessionId: current.inspectSessionId ?? 0,
+                controlsDisabled: hud.inspectLocked,
+                compareEnabled: hud.compareMode,
+                splitEnabled: hud.compareMode && hud.splitView,
+                layerSeverityEnabled: hud.layers.severity,
+                layerCapacityEnabled: hud.layers.capacity,
+                layerLabelsEnabled: hud.layers.labels,
+                compareOffsetBuckets: hud.compareOffsetBuckets,
+                playbackSpeed: hud.speed,
+                playing: hud.playing,
+            };
+        });
     }, [
         compareBucket,
         hud.compareOffsetBuckets,
