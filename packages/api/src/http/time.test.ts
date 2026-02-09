@@ -31,6 +31,9 @@ describe("createTimeRouteHandler", () => {
     const res = await handler(new Request("https://example.test/api/time?system_id=citibike-nyc", { method: "POST" }));
     expect(res.status).toBe(405);
     expect(res.headers.get("Allow")).toBe("GET");
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("method_not_allowed");
   });
 
   it("returns 400 for missing system_id", async () => {

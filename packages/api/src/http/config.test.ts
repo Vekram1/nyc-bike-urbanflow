@@ -51,6 +51,9 @@ describe("createConfigRouteHandler", () => {
     const handler = createConfigRouteHandler(config);
     const res = await handler(new Request("https://example.test/api/config?v=1", { method: "POST" }));
     expect(res.status).toBe(405);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("method_not_allowed");
   });
 
   it("exports allowlist values from provider when static allowlist is omitted", async () => {
