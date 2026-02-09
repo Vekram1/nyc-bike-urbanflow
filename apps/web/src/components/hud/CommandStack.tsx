@@ -46,6 +46,7 @@ export default function CommandStack({
                         aria-label={playing ? "Pause playback" : "Start playback"}
                         title={playing ? "Pause playback" : "Start playback"}
                         disabled={inspectLocked}
+                        data-uf-id="command-play-toggle"
                     >
                         <span style={{ fontSize: 12, opacity: 0.92 }}>
                             {playing ? "Pause" : "Play"}
@@ -72,6 +73,7 @@ export default function CommandStack({
                             checked={layers.severity}
                             onChange={() => onToggleLayer("severity")}
                             aria-label="Toggle severity layer"
+                            data-uf-id="layer-toggle-severity"
                         />
                         <span>Severity</span>
                     </label>
@@ -81,6 +83,7 @@ export default function CommandStack({
                             checked={layers.capacity}
                             onChange={() => onToggleLayer("capacity")}
                             aria-label="Toggle capacity layer"
+                            data-uf-id="layer-toggle-capacity"
                         />
                         <span>Capacity</span>
                     </label>
@@ -90,6 +93,7 @@ export default function CommandStack({
                             checked={layers.labels}
                             onChange={() => onToggleLayer("labels")}
                             aria-label="Toggle station labels layer"
+                            data-uf-id="layer-toggle-labels"
                         />
                         <span>Stations (labels)</span>
                     </label>
@@ -107,6 +111,7 @@ export default function CommandStack({
                         onClick={onToggleCompareMode}
                         disabled={inspectLocked}
                         aria-label="Toggle compare mode"
+                        data-uf-id="compare-mode-toggle"
                     >
                         <span style={{ fontSize: 12, opacity: 0.92 }}>
                             {compareMode ? "Compare On" : "Compare Off"}
@@ -118,6 +123,7 @@ export default function CommandStack({
                         onClick={onToggleSplitView}
                         disabled={inspectLocked || !compareMode}
                         aria-label="Toggle split view"
+                        data-uf-id="compare-split-toggle"
                     >
                         <span style={{ fontSize: 12, opacity: 0.92 }}>
                             {splitView ? "Split On" : "Split Off"}
@@ -130,6 +136,7 @@ export default function CommandStack({
                             onClick={onCompareOffsetDown}
                             disabled={inspectLocked}
                             aria-label="Decrease compare offset"
+                            data-uf-id="compare-offset-down"
                         >
                             -
                         </button>
@@ -142,6 +149,7 @@ export default function CommandStack({
                             onClick={onCompareOffsetUp}
                             disabled={inspectLocked}
                             aria-label="Increase compare offset"
+                            data-uf-id="compare-offset-up"
                         >
                             +
                         </button>

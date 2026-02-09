@@ -66,6 +66,7 @@ export default function ScrubberBar({
                     aria-label={playing ? "Pause playback" : "Start playback"}
                     onClick={onTogglePlay}
                     disabled={inspectLocked}
+                    data-uf-id="scrubber-play-toggle"
                 >
                     {playing ? "Pause" : "Play"} <Keycap k="Space" />
                 </button>
@@ -78,6 +79,7 @@ export default function ScrubberBar({
                         title="Decrease playback speed"
                         aria-label="Decrease playback speed"
                         disabled={inspectLocked}
+                        data-uf-id="scrubber-speed-down"
                     >
                         - <span style={{ opacity: 0.7 }}>speed</span> <Keycap k="-" />
                     </button>
@@ -88,6 +90,7 @@ export default function ScrubberBar({
                         title="Increase playback speed"
                         aria-label="Increase playback speed"
                         disabled={inspectLocked}
+                        data-uf-id="scrubber-speed-up"
                     >
                         + <span style={{ opacity: 0.7 }}>speed</span> <Keycap k="+" />
                     </button>
@@ -110,6 +113,7 @@ export default function ScrubberBar({
                     aria-valuenow={progressPercent}
                     aria-valuetext={scrubberValueText}
                     disabled={inspectLocked}
+                    data-uf-id="scrubber-track"
                 >
                     <div
                         style={{
@@ -160,6 +164,7 @@ export default function ScrubberBar({
                         title="Step back one bucket"
                         aria-label="Step back one bucket"
                         disabled={inspectLocked}
+                        data-uf-id="scrubber-step-back"
                     >
                         Back <Keycap k="←" />
                     </button>
@@ -170,6 +175,7 @@ export default function ScrubberBar({
                         title="Step forward one bucket"
                         aria-label="Step forward one bucket"
                         disabled={inspectLocked}
+                        data-uf-id="scrubber-step-forward"
                     >
                         Step <Keycap k="→" />
                     </button>

@@ -114,3 +114,17 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `data-uf-tier2-t-bucket="<epoch_seconds>"`
 - `data-uf-id="drawer-tier2-button"`
 - `data-uf-id="drawer-close-button"`
+- `data-uf-id="scrubber-play-toggle"`
+- `data-uf-id="scrubber-speed-down"`
+- `data-uf-id="scrubber-speed-up"`
+- `data-uf-id="scrubber-track"`
+- `data-uf-id="scrubber-step-back"`
+- `data-uf-id="scrubber-step-forward"`
+- `data-uf-id="command-play-toggle"`
+- `data-uf-id="layer-toggle-severity"`
+- `data-uf-id="layer-toggle-capacity"`
+- `data-uf-id="layer-toggle-labels"`
+- `data-uf-id="compare-mode-toggle"`
+- `data-uf-id="compare-split-toggle"`
+- `data-uf-id="compare-offset-down"`
+- `data-uf-id="compare-offset-up"`
