@@ -2,6 +2,9 @@ const OPS_PAGE_PATH = "/admin/ops";
 const PIPELINE_STATE_PATH = "/api/pipeline_state";
 const DLQ_PATH = "/api/admin/dlq";
 const DLQ_RESOLVE_PATH = "/api/admin/dlq/resolve";
+const PIPELINE_ALLOWED_QUERY_PARAMS = new Set(["v", "system_id"]);
+const DLQ_ALLOWED_QUERY_PARAMS = new Set(["v", "limit", "include_resolved"]);
+const DLQ_RESOLVE_ALLOWED_QUERY_PARAMS = new Set(["v"]);
 
 type PipelineState = {
   queue_depth: number;
@@ -72,6 +75,15 @@ function parseLimit(raw: string | null, fallback: number): number | null {
     return null;
   }
   return n;
+}
+
+function hasUnknownQueryParam(searchParams: URLSearchParams, allowed: Set<string>): string | null {
+  for (const key of searchParams.keys()) {
+    if (!allowed.has(key)) {
+      return key;
+    }
+  }
+  return null;
 }
 
 function corsHeaders(request: Request, allowedOrigins: string[]): Record<string, string> | null {
@@ -208,6 +220,10 @@ export function createAdminRouteHandler(deps: AdminRouteDeps): (request: Request
           Allow: "GET",
         });
       }
+      const unknown = hasUnknownQueryParam(url.searchParams, PIPELINE_ALLOWED_QUERY_PARAMS);
+      if (unknown) {
+        return json({ error: { code: "unknown_param", message: `Unknown query parameter: ${unknown}` } }, 400, auth.cors);
+      }
       const systemId = url.searchParams.get("system_id")?.trim() || deps.config.default_system_id;
       const state = await deps.store.getPipelineState({ system_id: systemId });
       return json(state, 200, auth.cors);
@@ -219,6 +235,10 @@ export function createAdminRouteHandler(deps: AdminRouteDeps): (request: Request
           ...auth.cors,
           Allow: "GET",
         });
+      }
+      const unknown = hasUnknownQueryParam(url.searchParams, DLQ_ALLOWED_QUERY_PARAMS);
+      if (unknown) {
+        return json({ error: { code: "unknown_param", message: `Unknown query parameter: ${unknown}` } }, 400, auth.cors);
       }
       const limit = parseLimit(url.searchParams.get("limit"), 50);
       if (limit === null) {
@@ -241,6 +261,10 @@ export function createAdminRouteHandler(deps: AdminRouteDeps): (request: Request
           ...auth.cors,
           Allow: "POST",
         });
+      }
+      const unknown = hasUnknownQueryParam(url.searchParams, DLQ_RESOLVE_ALLOWED_QUERY_PARAMS);
+      if (unknown) {
+        return json({ error: { code: "unknown_param", message: `Unknown query parameter: ${unknown}` } }, 400, auth.cors);
       }
       const body = (await request.json().catch(() => null)) as
         | { dlq_id?: number; resolution_note?: string }

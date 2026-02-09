@@ -86,6 +86,18 @@ describe("createAdminRouteHandler", () => {
     expect(body.queue_depth).toBe(1);
   });
 
+  it("returns 400 for unknown query params on pipeline state", async () => {
+    const handler = createAdminRouteHandler(deps);
+    const res = await handler(
+      new Request("https://example.test/api/pipeline_state?v=1&foo=bar", {
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unknown_param");
+  });
+
   it("lists dlq with bounded limit parsing", async () => {
     const handler = createAdminRouteHandler(deps);
     const res = await handler(
@@ -96,6 +108,18 @@ describe("createAdminRouteHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.items.length).toBe(1);
+  });
+
+  it("returns 400 for unknown query params on dlq list", async () => {
+    const handler = createAdminRouteHandler(deps);
+    const res = await handler(
+      new Request("https://example.test/api/admin/dlq?v=1&limit=20&foo=bar", {
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unknown_param");
   });
 
   it("resolves dlq entries", async () => {
@@ -116,5 +140,19 @@ describe("createAdminRouteHandler", () => {
       })
     );
     expect(miss.status).toBe(404);
+  });
+
+  it("returns 400 for unknown query params on dlq resolve", async () => {
+    const handler = createAdminRouteHandler(deps);
+    const res = await handler(
+      new Request("https://example.test/api/admin/dlq/resolve?v=1&foo=bar", {
+        method: "POST",
+        headers: { "X-Admin-Token": "secret-token", "Content-Type": "application/json" },
+        body: JSON.stringify({ dlq_id: 1, resolution_note: "note" }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unknown_param");
   });
 });
