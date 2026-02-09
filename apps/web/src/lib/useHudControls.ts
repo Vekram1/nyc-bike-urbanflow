@@ -24,6 +24,8 @@ type UfE2EState = {
     hudActionCounts?: Record<string, number>;
     hudLastAction?: string;
     hudLastActionAt?: string;
+    compareOffsetLastValue?: number;
+    compareOffsetLastChangedAt?: string;
     hudLastBlockedAction?: string;
     hudLastBlockedReason?: string;
     hudLastBlockedAt?: string;
@@ -64,6 +66,16 @@ function markHudAction(action: string): void {
         hudActionCounts,
         hudLastAction: action,
         hudLastActionAt: new Date().toISOString(),
+    };
+}
+
+function markCompareOffsetChanged(value: number): void {
+    if (typeof window === "undefined") return;
+    const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
+    (window as { __UF_E2E?: UfE2EState }).__UF_E2E = {
+        ...current,
+        compareOffsetLastValue: value,
+        compareOffsetLastChangedAt: new Date().toISOString(),
     };
 }
 
@@ -290,6 +302,7 @@ export function useHudControls() {
             if (next !== curr) {
                 console.info("[HudControls] compare_offset_changed", { from: curr, to: next });
                 markHudAction("compareOffsetDown");
+                markCompareOffsetChanged(next);
             }
             return next;
         });
@@ -306,6 +319,7 @@ export function useHudControls() {
             if (next !== curr) {
                 console.info("[HudControls] compare_offset_changed", { from: curr, to: next });
                 markHudAction("compareOffsetUp");
+                markCompareOffsetChanged(next);
             }
             return next;
         });

@@ -125,6 +125,8 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.layerCapacityEnabled`
   - `window.__UF_E2E.layerLabelsEnabled`
   - `window.__UF_E2E.compareOffsetBuckets`
+  - `window.__UF_E2E.compareOffsetLastValue`
+  - `window.__UF_E2E.compareOffsetLastChangedAt`
   - `window.__UF_E2E.playbackSpeed`
   - `window.__UF_E2E.playing`
   - `window.__UF_E2E.hudActionCounts`
