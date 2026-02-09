@@ -74,4 +74,27 @@ describe("createSearchRouteHandler", () => {
     const body = await res.json();
     expect(body.error.code).toBe("invalid_bbox");
   });
+
+  it("returns 400 for unknown query params", async () => {
+    const handler = createSearchRouteHandler({
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      searchStore: {
+        async searchStations() {
+          return [];
+        },
+      },
+    });
+
+    const res = await handler(
+      new Request("https://example.test/api/search?system_id=citibike-nyc&q=52&foo=bar")
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unknown_param");
+    expect(body.error.message).toContain("foo");
+  });
 });

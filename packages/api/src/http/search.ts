@@ -61,6 +61,13 @@ export function createSearchRouteHandler(deps: SearchRouteDeps): (request: Reque
       return json({ error: { code: "not_found", message: "Route not found" } }, 404);
     }
 
+    const allowedParams = new Set(["system_id", "q", "bbox", "limit"]);
+    for (const key of url.searchParams.keys()) {
+      if (!allowedParams.has(key)) {
+        return json({ error: { code: "unknown_param", message: `Unknown query parameter: ${key}` } }, 400);
+      }
+    }
+
     const systemId = url.searchParams.get("system_id")?.trim() ?? "";
     if (systemId.length === 0) {
       return json(

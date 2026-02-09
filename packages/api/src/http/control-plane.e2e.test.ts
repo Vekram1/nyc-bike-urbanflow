@@ -402,6 +402,14 @@ describe("control-plane e2e", () => {
     const searchBody = await searchRes.json();
     expect(searchBody.results.length).toBe(1);
 
+    const searchUnknownParamRes = await handler(
+      new Request("https://example.test/api/search?system_id=citibike-nyc&q=52&foo=bar")
+    );
+    expect(searchUnknownParamRes.status).toBe(400);
+    expect(searchUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const searchUnknownParamBody = await searchUnknownParamRes.json();
+    expect(searchUnknownParamBody.error.code).toBe("unknown_param");
+
     const auditEvents = db.getAuditEvents();
     expect(auditEvents.some((event) => event.event_type === "mint")).toBe(true);
     expect(auditEvents.some((event) => event.event_type === "validate_ok")).toBe(true);
