@@ -1220,6 +1220,16 @@ describe("control-plane e2e", () => {
     const seriesUnknownParamBody = await seriesUnknownParamRes.json();
     expect(seriesUnknownParamBody.error.code).toBe("unknown_param");
 
+    const tooWideSeriesRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(sv)}&from=1738872000&to=1739872000&bucket=300`
+      )
+    );
+    expect(tooWideSeriesRes.status).toBe(400);
+    expect(tooWideSeriesRes.headers.get("Cache-Control")).toBe("no-store");
+    const tooWideSeriesBody = await tooWideSeriesRes.json();
+    expect(tooWideSeriesBody.error.code).toBe("range_too_large");
+
     const invalidDetailKeyRes = await handler(
       new Request(`https://example.test/api/stations/%20bad?sv=${encodeURIComponent(sv)}`)
     );
