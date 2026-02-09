@@ -39,7 +39,8 @@ The map is full-bleed and mounted once per session. All controls render as overl
   - optional `bucket_quality`, `t_bucket` when provided by source props
 - Station drawer Tier2 is explicit user action (`Details` button), not automatic on open.
   - Fetch is debounced by `350ms` to avoid request thrash from rapid clicks.
-  - Request includes cache-binding query params from client state: `sv` and `t_bucket`.
+  - Request includes bounded params aligned to backend contract: `v=1`, `sv`, `T_bucket`, `range=6h`.
+  - `T_bucket` is derived from tile payload (`gbfs_last_updated` preferred, then parsed `t_bucket`) with epoch-second fallback.
   - Frontend logs bundle size in bytes after successful load (`tier2_loaded`).
   - If the endpoint is unavailable, Tier1 remains usable and Tier2 reports a bounded error message.
 
@@ -74,6 +75,8 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `compare_mode`
   - `t2_bucket`
   - `split_view`
+- `MapShell`: inspect-lock invariant logs:
+  - `inspect_tile_key_mutated` (error) if request key changes while drawer is open.
 - `MapShell`: explicit Tier1 drawer lifecycle logs:
   - `tier1_drawer_opened`
   - `tier1_drawer_closed`
@@ -85,6 +88,8 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.timelineBucket`
   - `window.__UF_E2E.compareBucket`
   - `window.__UF_E2E.tileRequestKey`
+  - `window.__UF_E2E.tileRequestKeyHistory` (bounded last 40 entries)
+  - `window.__UF_E2E.invariantViolations` (bounded last 20 entries)
 - Stable selector hooks for browser tests:
   - `data-uf-id="app-root"`
   - `data-uf-id="map-shell"`
@@ -95,5 +100,6 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `data-uf-id="station-drawer"`
 - `data-uf-station-key="<station_key>"`
 - `data-uf-tier2-status="idle|loading|success|error"`
+- `data-uf-tier2-t-bucket="<epoch_seconds>"`
 - `data-uf-id="drawer-tier2-button"`
 - `data-uf-id="drawer-close-button"`

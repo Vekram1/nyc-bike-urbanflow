@@ -10,3 +10,9 @@ Current fixtures:
 - `fixtures/trips/*`
 - `fixtures/tiles/*`
 - `fixtures/policy/*`
+
+Tile contract assertions (backend):
+- `packages/api/src/http/tiles.contract.test.ts`
+- Validates fixture checksum integrity for `fixtures/tiles/composite_tile.contract.json`.
+- Asserts required property coverage for composite SQL shape (inv/sev/press/epi).
+- Asserts deterministic replay cache key behavior for fixed `z/x/y/T_bucket/sv` and canonicalized `layers`.
