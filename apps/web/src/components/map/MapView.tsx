@@ -39,6 +39,9 @@ type Props = {
     onStationPick?: (s: StationPick) => void;
     onStationsData?: (stations: StationPick[]) => void;
     onTileFetchSampleMs?: (latencyMs: number) => void;
+    sv: string;
+    timelineBucket: number;
+    systemId: string;
     selectedStationId?: string | null;
     freeze?: boolean; // when true, stop refreshing GBFS + keep view deterministic
 };
@@ -97,11 +100,35 @@ function toText(v: unknown): string | null {
 }
 
 export default function MapView(props: Props) {
-    const { onStationPick, onStationsData, onTileFetchSampleMs, selectedStationId, freeze } = props;
+    const {
+        onStationPick,
+        onStationsData,
+        onTileFetchSampleMs,
+        sv,
+        timelineBucket,
+        systemId,
+        selectedStationId,
+        freeze,
+    } = props;
 
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const mapRef = useRef<MapRef | null>(null);
     const lastSelectedRef = useRef<string | null>(null);
+    const svRef = useRef(sv);
+    const timelineBucketRef = useRef(timelineBucket);
+    const systemIdRef = useRef(systemId);
+
+    useEffect(() => {
+        svRef.current = sv;
+    }, [sv]);
+
+    useEffect(() => {
+        timelineBucketRef.current = timelineBucket;
+    }, [timelineBucket]);
+
+    useEffect(() => {
+        systemIdRef.current = systemId;
+    }, [systemId]);
 
     useEffect(() => {
         activeMapViewCount += 1;
@@ -272,7 +299,12 @@ export default function MapView(props: Props) {
 
         try {
             const started = performance.now();
-            const res = await fetch("/api/gbfs/stations", { cache: "no-store" });
+            const params = new URLSearchParams({
+                sv: svRef.current,
+                T_bucket: String(Math.max(0, Math.floor(timelineBucketRef.current))),
+                system_id: systemIdRef.current,
+            });
+            const res = await fetch(`/api/gbfs/stations?${params.toString()}`, { cache: "no-store" });
             const httpStatus = res.status;
             const json = await res.json();
             const latencyMs = Math.max(0, performance.now() - started);

@@ -13,6 +13,7 @@ import MapView, { StationPick } from "@/components/map/MapView";
 import { useHudControls } from "@/lib/useHudControls";
 import { useFps } from "@/lib/useFps";
 import { useRollingP95 } from "@/lib/useRollingP95";
+import { DEFAULT_SYSTEM_ID } from "@/lib/controlPlane";
 
 type UfE2EState = {
     mapShellMounted?: boolean;
@@ -459,6 +460,9 @@ export default function MapShell() {
                     onStationPick={openInspect}
                     onStationsData={setStationIndex}
                     onTileFetchSampleMs={handleTileFetchSample}
+                    sv={hud.sv}
+                    timelineBucket={timelineBucket}
+                    systemId={DEFAULT_SYSTEM_ID}
                     selectedStationId={selected?.station_id ?? null}
                     freeze={inspectOpen}
                 />

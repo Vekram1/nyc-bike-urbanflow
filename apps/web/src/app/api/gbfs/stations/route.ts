@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 
+const BACKEND_ORIGIN = process.env.URBANFLOW_API_ORIGIN?.trim() || "http://127.0.0.1:3000";
+const DEFAULT_SYSTEM_ID = process.env.SYSTEM_ID?.trim() || "citibike-nyc";
 const STATION_INFO_URL =
     "https://gbfs.citibikenyc.com/gbfs/en/station_information.json";
 const STATION_STATUS_URL =
     "https://gbfs.citibikenyc.com/gbfs/en/station_status.json";
+const ALLOWED_KEYS = new Set(["sv", "T_bucket", "system_id"]);
 
 type GbfsWrapper<T> = { last_updated: number; ttl: number; data: T };
 
@@ -31,8 +34,110 @@ type StationStatus = {
     }>;
 };
 
-export async function GET() {
+type TimeResponse = {
+    server_now?: string;
+    recommended_live_sv?: string;
+};
+
+type TimelineResponse = {
+    bucket_size_seconds?: number;
+};
+
+function json(status: number, body: unknown) {
+    return NextResponse.json(body, {
+        status,
+        headers: {
+            "Cache-Control": "no-store",
+        },
+    });
+}
+
+function parsePositiveInt(raw: string | null): number | null {
+    if (!raw) return null;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 0) return null;
+    return value;
+}
+
+function parseEpochSeconds(rawIso: string | undefined): number | null {
+    if (!rawIso) return null;
+    const ms = Date.parse(rawIso);
+    if (!Number.isFinite(ms)) return null;
+    return Math.floor(ms / 1000);
+}
+
+export async function GET(request: Request) {
     try {
+        const url = new URL(request.url);
+        for (const key of url.searchParams.keys()) {
+            if (!ALLOWED_KEYS.has(key)) {
+                return json(400, {
+                    error: {
+                        code: "unknown_param",
+                        message: `Unknown query parameter: ${key}`,
+                    },
+                });
+            }
+        }
+
+        const systemId = url.searchParams.get("system_id")?.trim() || DEFAULT_SYSTEM_ID;
+        const requestedBucket = parsePositiveInt(url.searchParams.get("T_bucket"));
+        if (url.searchParams.has("T_bucket") && requestedBucket == null) {
+            return json(400, {
+                error: {
+                    code: "invalid_t_bucket",
+                    message: "T_bucket must be a positive integer epoch second",
+                },
+            });
+        }
+
+        const timeRes = await fetch(
+            `${BACKEND_ORIGIN}/api/time?system_id=${encodeURIComponent(systemId)}`,
+            { cache: "no-store" }
+        );
+        if (!timeRes.ok) {
+            return json(502, {
+                error: {
+                    code: "time_unavailable",
+                    message: "Failed to resolve control-plane time state",
+                },
+            });
+        }
+        const timeBody = (await timeRes.json()) as TimeResponse;
+        const serverNow = parseEpochSeconds(timeBody.server_now) ?? Math.floor(Date.now() / 1000);
+        const requestedSv = url.searchParams.get("sv")?.trim() ?? "";
+        const effectiveSv =
+            requestedSv && !requestedSv.startsWith("sv:local-")
+                ? requestedSv
+                : timeBody.recommended_live_sv?.trim() ?? "";
+        if (!effectiveSv) {
+            return json(502, {
+                error: {
+                    code: "sv_unavailable",
+                    message: "No serving view token available from control plane",
+                },
+            });
+        }
+
+        const timelineRes = await fetch(
+            `${BACKEND_ORIGIN}/api/timeline?v=1&sv=${encodeURIComponent(effectiveSv)}`,
+            { cache: "no-store" }
+        );
+        if (!timelineRes.ok) {
+            const message = await timelineRes.text();
+            return json(timelineRes.status, {
+                error: {
+                    code: "sv_invalid_for_timeline",
+                    message: message || "Failed timeline validation for sv",
+                },
+            });
+        }
+        const timelineBody = (await timelineRes.json()) as TimelineResponse;
+        const bucketSize = Math.max(1, timelineBody.bucket_size_seconds ?? 300);
+        const upperBound = Math.max(0, Math.floor(serverNow / bucketSize) * bucketSize);
+        const requestedOrNow = requestedBucket ?? upperBound;
+        const effectiveBucket = Math.min(requestedOrNow, upperBound);
+
         const [infoRes, statusRes] = await Promise.all([
             fetch(STATION_INFO_URL, { cache: "no-store" }),
             fetch(STATION_STATUS_URL, { cache: "no-store" }),
@@ -104,30 +209,31 @@ export async function GET() {
 
                     gbfs_last_updated: statusJson.last_updated,
                     gbfs_ttl: statusJson.ttl,
+                    sv: effectiveSv,
+                    t_bucket: new Date(effectiveBucket * 1000).toISOString(),
                 },
             };
         });
 
-        return NextResponse.json(
+        return json(
+            200,
             {
                 ok: true,
                 as_of: statusJson.last_updated,
                 ttl: statusJson.ttl,
+                system_id: systemId,
+                sv: effectiveSv,
+                requested_t_bucket: requestedBucket,
+                effective_t_bucket: effectiveBucket,
                 type: "FeatureCollection" as const,
                 features,
             },
-            {
-                headers: {
-                    // live-ish data; don’t let browser cache hard
-                    "Cache-Control": "no-store",
-                },
-            }
         );
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "unknown error";
-        return NextResponse.json(
+        return json(
+            500,
             { ok: false, error: message },
-            { status: 500 }
         );
     }
 }
