@@ -324,6 +324,33 @@ describe("policy e2e via control-plane", () => {
     expect(invalidTile.headers.get("Cache-Control")).toBe("no-store");
     const invalidTileBody = await invalidTile.json();
     expect(invalidTileBody.error.code).toBe("signature_invalid");
+
+    policyTileTokenFailure = null;
+    const missingRunSv = await handler(
+      new Request("https://example.test/api/policy/run?v=1&policy_version=rebal.greedy.v1&T_bucket=1738872000")
+    );
+    expect(missingRunSv.status).toBe(401);
+    expect(missingRunSv.headers.get("Cache-Control")).toBe("no-store");
+    const missingRunSvBody = await missingRunSv.json();
+    expect(missingRunSvBody.error.code).toBe("sv_missing");
+
+    const missingMovesSv = await handler(
+      new Request("https://example.test/api/policy/moves?v=1&policy_version=rebal.greedy.v1&T_bucket=1738872000&top_n=1")
+    );
+    expect(missingMovesSv.status).toBe(401);
+    expect(missingMovesSv.headers.get("Cache-Control")).toBe("no-store");
+    const missingMovesSvBody = await missingMovesSv.json();
+    expect(missingMovesSvBody.error.code).toBe("sv_missing");
+
+    const missingTileSv = await handler(
+      new Request(
+        "https://example.test/api/tiles/policy_moves/12/1200/1530.mvt?v=1&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(missingTileSv.status).toBe(401);
+    expect(missingTileSv.headers.get("Cache-Control")).toBe("no-store");
+    const missingTileSvBody = await missingTileSv.json();
+    expect(missingTileSvBody.error.code).toBe("sv_missing");
   });
 
   it("enforces bounded query params on policy routes", async () => {
