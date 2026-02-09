@@ -21,6 +21,8 @@ type PersistedHud = {
 
 type UfE2EState = {
     blockedActions?: Record<string, number>;
+    hudActionCounts?: Record<string, number>;
+    hudLastAction?: string;
 };
 
 function readPersistedHud(): PersistedHud | null {
@@ -42,6 +44,18 @@ function markBlockedAction(action: string): void {
     (window as { __UF_E2E?: UfE2EState }).__UF_E2E = {
         ...current,
         blockedActions,
+    };
+}
+
+function markHudAction(action: string): void {
+    if (typeof window === "undefined") return;
+    const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
+    const hudActionCounts = { ...(current.hudActionCounts ?? {}) };
+    hudActionCounts[action] = (hudActionCounts[action] ?? 0) + 1;
+    (window as { __UF_E2E?: UfE2EState }).__UF_E2E = {
+        ...current,
+        hudActionCounts,
+        hudLastAction: action,
     };
 }
 
@@ -141,6 +155,7 @@ export function useHudControls() {
         }
         const clamped = Math.min(1, Math.max(0, next));
         console.info("[HudControls] seek", { next: clamped });
+        markHudAction("seek");
         setProgress(clamped);
     };
 
@@ -150,6 +165,7 @@ export function useHudControls() {
             markBlockedAction("togglePlay");
             return;
         }
+        markHudAction("togglePlay");
         setPlaying((v) => !v);
     };
     const speedDown = () => {
@@ -165,6 +181,7 @@ export function useHudControls() {
                     from: SPEED_STEPS[i],
                     to: SPEED_STEPS[next],
                 });
+                markHudAction("speedDown");
             }
             return next;
         });
@@ -182,6 +199,7 @@ export function useHudControls() {
                     from: SPEED_STEPS[i],
                     to: SPEED_STEPS[next],
                 });
+                markHudAction("speedUp");
             }
             return next;
         });
@@ -195,6 +213,7 @@ export function useHudControls() {
         setProgress((p) => {
             const next = Math.max(0, p - 0.01);
             console.info("[HudControls] step_back", { from: p, to: next });
+            markHudAction("stepBack");
             return next;
         });
     };
@@ -207,10 +226,12 @@ export function useHudControls() {
         setProgress((p) => {
             const next = Math.min(1, p + 0.01);
             console.info("[HudControls] step_forward", { from: p, to: next });
+            markHudAction("stepForward");
             return next;
         });
     };
     const toggleLayer = (key: keyof LayerToggles) => {
+        markHudAction(`toggleLayer:${key}`);
         setLayers((curr) => ({ ...curr, [key]: !curr[key] }));
     };
 
@@ -226,6 +247,7 @@ export function useHudControls() {
                 setSplitView(false);
             }
             console.info("[HudControls] compare_mode_changed", { enabled: next });
+            markHudAction("toggleCompareMode");
             return next;
         });
     };
@@ -243,6 +265,7 @@ export function useHudControls() {
         setSplitView((curr) => {
             const next = !curr;
             console.info("[HudControls] split_view_changed", { enabled: next });
+            markHudAction("toggleSplitView");
             return next;
         });
     };
@@ -257,6 +280,7 @@ export function useHudControls() {
             const next = Math.max(1, curr - 1);
             if (next !== curr) {
                 console.info("[HudControls] compare_offset_changed", { from: curr, to: next });
+                markHudAction("compareOffsetDown");
             }
             return next;
         });
@@ -272,6 +296,7 @@ export function useHudControls() {
             const next = Math.min(24, curr + 1);
             if (next !== curr) {
                 console.info("[HudControls] compare_offset_changed", { from: curr, to: next });
+                markHudAction("compareOffsetUp");
             }
             return next;
         });
@@ -286,6 +311,7 @@ export function useHudControls() {
         console.info("[HudControls] inspect_open", {
             wasPlayingBeforeInspect: wasPlayingBeforeInspectRef.current,
         });
+        markHudAction("inspectOpen");
     };
 
     const onInspectClose = () => {
@@ -293,6 +319,7 @@ export function useHudControls() {
         console.info("[HudControls] inspect_close", {
             resumePlayback: wasPlayingBeforeInspectRef.current,
         });
+        markHudAction("inspectClose");
         if (wasPlayingBeforeInspectRef.current) {
             setPlaying(true);
         }
