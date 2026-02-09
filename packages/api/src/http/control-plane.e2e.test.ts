@@ -1159,6 +1159,24 @@ describe("control-plane e2e", () => {
     expect(seriesMethodRes.headers.get("Cache-Control")).toBe("no-store");
     const seriesMethodBody = await seriesMethodRes.json();
     expect(seriesMethodBody.error.code).toBe("method_not_allowed");
+
+    const detailUnknownParamRes = await handler(
+      new Request(`https://example.test/api/stations/STA-001?sv=${encodeURIComponent(sv)}&foo=bar`)
+    );
+    expect(detailUnknownParamRes.status).toBe(400);
+    expect(detailUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const detailUnknownParamBody = await detailUnknownParamRes.json();
+    expect(detailUnknownParamBody.error.code).toBe("unknown_param");
+
+    const seriesUnknownParamRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(sv)}&from=1738872000&to=1738875600&bucket=300&foo=bar`
+      )
+    );
+    expect(seriesUnknownParamRes.status).toBe(400);
+    expect(seriesUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const seriesUnknownParamBody = await seriesUnknownParamRes.json();
+    expect(seriesUnknownParamBody.error.code).toBe("unknown_param");
   });
 
   it("rejects unknown query params on admin endpoints with 400 + no-store", async () => {
