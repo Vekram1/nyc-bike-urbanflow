@@ -304,6 +304,24 @@ describe("createControlPlaneHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.station_key).toBe("STA-001");
+
+    const unknownDetailParamRes = await handler(
+      new Request("https://example.test/api/stations/STA-001?sv=abc&foo=bar")
+    );
+    expect(unknownDetailParamRes.status).toBe(400);
+    expect(unknownDetailParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const unknownDetailParamBody = await unknownDetailParamRes.json();
+    expect(unknownDetailParamBody.error.code).toBe("unknown_param");
+
+    const unknownSeriesParamRes = await handler(
+      new Request(
+        "https://example.test/api/stations/STA-001/series?sv=abc&from=1738872000&to=1738875600&bucket=300&foo=bar"
+      )
+    );
+    expect(unknownSeriesParamRes.status).toBe(400);
+    expect(unknownSeriesParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const unknownSeriesParamBody = await unknownSeriesParamRes.json();
+    expect(unknownSeriesParamBody.error.code).toBe("unknown_param");
   });
 
   it("dispatches /api/stations/{station_key}/drawer when drawer deps are configured", async () => {
@@ -378,6 +396,16 @@ describe("createControlPlaneHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.station_key).toBe("STA-001");
+
+    const unknownParamRes = await handler(
+      new Request(
+        "https://example.test/api/stations/STA-001/drawer?v=1&sv=abc&T_bucket=1738872000&foo=bar"
+      )
+    );
+    expect(unknownParamRes.status).toBe(400);
+    expect(unknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const unknownParamBody = await unknownParamRes.json();
+    expect(unknownParamBody.error.code).toBe("unknown_param");
   });
 
   it("dispatches /api/policy/run when policy deps are configured", async () => {
