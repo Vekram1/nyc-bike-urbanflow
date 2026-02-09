@@ -24,6 +24,10 @@ type UfE2EState = {
     hudActionCounts?: Record<string, number>;
     hudLastAction?: string;
     hudLastActionAt?: string;
+    compareModeLastValue?: boolean;
+    compareModeLastChangedAt?: string;
+    splitViewLastValue?: boolean;
+    splitViewLastChangedAt?: string;
     compareOffsetLastValue?: number;
     compareOffsetLastChangedAt?: string;
     hudLastBlockedAction?: string;
@@ -76,6 +80,26 @@ function markCompareOffsetChanged(value: number): void {
         ...current,
         compareOffsetLastValue: value,
         compareOffsetLastChangedAt: new Date().toISOString(),
+    };
+}
+
+function markCompareModeChanged(value: boolean): void {
+    if (typeof window === "undefined") return;
+    const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
+    (window as { __UF_E2E?: UfE2EState }).__UF_E2E = {
+        ...current,
+        compareModeLastValue: value,
+        compareModeLastChangedAt: new Date().toISOString(),
+    };
+}
+
+function markSplitViewChanged(value: boolean): void {
+    if (typeof window === "undefined") return;
+    const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
+    (window as { __UF_E2E?: UfE2EState }).__UF_E2E = {
+        ...current,
+        splitViewLastValue: value,
+        splitViewLastChangedAt: new Date().toISOString(),
     };
 }
 
@@ -265,9 +289,11 @@ export function useHudControls() {
             const next = !curr;
             if (!next) {
                 setSplitView(false);
+                markSplitViewChanged(false);
             }
             console.info("[HudControls] compare_mode_changed", { enabled: next });
             markHudAction("toggleCompareMode");
+            markCompareModeChanged(next);
             return next;
         });
     };
@@ -287,6 +313,7 @@ export function useHudControls() {
             const next = !curr;
             console.info("[HudControls] split_view_changed", { enabled: next });
             markHudAction("toggleSplitView");
+            markSplitViewChanged(next);
             return next;
         });
     };
