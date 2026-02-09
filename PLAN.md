@@ -135,20 +135,23 @@ Frontend interaction reliability (required):
   - Enter on focused search input picks the top result.
   - Picking a result opens Tier1 inspect for that station immediately.
 - Tier1 inventory clarity:
-  - Tier1 must explicitly show `capacity`, `bikes_available`, `docks_available`, and `docks_disabled`.
-  - Tier1 must show a reconciliation line:
-    `capacity_delta = (bikes_available + docks_available + docks_disabled) - capacity`.
-  - Tier1 must display whether reconciliation is approximately matched (`|delta| <= 1`) or mismatched.
+  - Tier1 default labels must be user-facing and explicit:
+    - `Total Capacity`
+    - `Bikes Available`
+    - `Empty Docks`
+  - Delta/reconciliation math is not required in Tier1 default view.
 
 Frontend UX simplification and timeline safety (required):
 - Tier1 station drawer (default view) must prioritize:
-  - `num_bikes_available`
-  - `num_docks_available`
+  - `Bikes Available`
+  - `Empty Docks`
+  - `Total Capacity`
 - Tier1 station drawer (default view) must de-emphasize or hide advanced technical fields:
   - `station_key`
   - `T_bucket`
   - `bucket_quality`
   - compare/bucket-offset internals
+  - delta/reconciliation diagnostics
 - Timeline future bound:
   - Users must not be able to scrub, step, or otherwise move app time into the future beyond server-now.
   - Any attempted future seek must clamp to current server-now.

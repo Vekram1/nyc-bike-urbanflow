@@ -906,7 +906,7 @@ test("go-live button switches replay back to live time progression", async ({ pa
         .toBeGreaterThan(beforeLive);
 });
 
-test("tier1 drawer shows explicit inventory reconciliation fields", async ({ page }) => {
+test("tier1 drawer shows simplified capacity/bikes/docks labels", async ({ page }) => {
     await page.goto("/");
 
     await expect
@@ -924,15 +924,12 @@ test("tier1 drawer shows explicit inventory reconciliation fields", async ({ pag
     });
     await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
 
+    await expect(page.locator('[data-uf-id="drawer-row-capacity"]')).toBeVisible();
     await expect(page.locator('[data-uf-id="drawer-row-bikes"]')).toBeVisible();
     await expect(page.locator('[data-uf-id="drawer-row-docks"]')).toBeVisible();
-    await expect(page.locator('[data-uf-id="drawer-capacity-check"]')).toBeVisible();
+    await expect(page.locator('[data-uf-id="drawer-capacity-check"]')).toHaveCount(0);
 
-    const advanced = page.locator('[data-uf-id="drawer-advanced"]');
-    await expect(advanced).toBeVisible();
-    await advanced.locator("summary").click();
-
-    await expect(page.locator('[data-uf-id="drawer-row-docks-disabled"]')).toBeVisible();
-    await expect(page.locator('[data-uf-id="drawer-row-inventory-known"]')).toBeVisible();
-    await expect(page.locator('[data-uf-id="drawer-row-capacity-delta"]')).toBeVisible();
+    await expect(page.locator('[data-uf-id="drawer-row-capacity"]')).toContainText("Total Capacity");
+    await expect(page.locator('[data-uf-id="drawer-row-bikes"]')).toContainText("Bikes Available");
+    await expect(page.locator('[data-uf-id="drawer-row-docks"]')).toContainText("Empty Docks");
 });

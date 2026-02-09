@@ -255,8 +255,7 @@ export function useHudControls() {
         const clamped = Math.min(1, Math.max(0, next));
         console.info("[HudControls] seek", { next: clamped });
         markHudAction("seek");
-        setMode("replay");
-        setPlaying(false);
+        enterReplayPaused();
         const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
         const requested = windowAnchorMs + Math.round(clamped * LIVE_WINDOW_MS);
         setPlaybackTsMs(Math.min(replayMax, requested));
@@ -307,14 +306,21 @@ export function useHudControls() {
             return next;
         });
     };
+
+    const enterReplayPaused = () => {
+        setMode("replay");
+        setPlaying(false);
+        // Reset to 1x on manual time navigation to avoid unexpected fast replay.
+        setSpeedIdx(1);
+    };
+
     const stepBack = () => {
         if (inspectLocked) {
             console.info("[HudControls] step_back_blocked_inspect_lock");
             markBlockedAction("stepBack", "inspect_lock");
             return;
         }
-        setMode("replay");
-        setPlaying(false);
+        enterReplayPaused();
         setPlaybackTsMs((curr) => {
             const replayMin = windowAnchorMs;
             const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
@@ -332,8 +338,7 @@ export function useHudControls() {
             markBlockedAction("stepForward", "inspect_lock");
             return;
         }
-        setMode("replay");
-        setPlaying(false);
+        enterReplayPaused();
         setPlaybackTsMs((curr) => {
             const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
             const next = Math.min(replayMax, curr + REPLAY_STEP_MS);
