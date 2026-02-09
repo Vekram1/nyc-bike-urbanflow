@@ -51,6 +51,10 @@ type UfE2EState = {
     mapStationPickCount?: number;
     mapClickMissCount?: number;
     mapLastPickedStationId?: string;
+    mapFeatureStateSetCount?: number;
+    mapFeatureStateClearCount?: number;
+    mapFeatureStateErrorCount?: number;
+    mapFeatureStateLastSelectedId?: string;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -94,6 +98,10 @@ export default function MapView(props: Props) {
             mapStationPickCount: current.mapStationPickCount ?? 0,
             mapClickMissCount: current.mapClickMissCount ?? 0,
             mapLastPickedStationId: current.mapLastPickedStationId ?? "",
+            mapFeatureStateSetCount: current.mapFeatureStateSetCount ?? 0,
+            mapFeatureStateClearCount: current.mapFeatureStateClearCount ?? 0,
+            mapFeatureStateErrorCount: current.mapFeatureStateErrorCount ?? 0,
+            mapFeatureStateLastSelectedId: current.mapFeatureStateLastSelectedId ?? "",
         }));
 
         if (activeMapViewCount > 1) {
@@ -261,13 +269,32 @@ export default function MapView(props: Props) {
         if (prev && prev !== next) {
             try {
                 map.setFeatureState({ source: SOURCE_ID, id: prev }, { selected: false });
-            } catch { }
+                updateUfE2E((current) => ({
+                    ...current,
+                    mapFeatureStateClearCount: (current.mapFeatureStateClearCount ?? 0) + 1,
+                }));
+            } catch {
+                updateUfE2E((current) => ({
+                    ...current,
+                    mapFeatureStateErrorCount: (current.mapFeatureStateErrorCount ?? 0) + 1,
+                }));
+            }
         }
 
         if (next) {
             try {
                 map.setFeatureState({ source: SOURCE_ID, id: next }, { selected: true });
-            } catch { }
+                updateUfE2E((current) => ({
+                    ...current,
+                    mapFeatureStateSetCount: (current.mapFeatureStateSetCount ?? 0) + 1,
+                    mapFeatureStateLastSelectedId: next,
+                }));
+            } catch {
+                updateUfE2E((current) => ({
+                    ...current,
+                    mapFeatureStateErrorCount: (current.mapFeatureStateErrorCount ?? 0) + 1,
+                }));
+            }
         }
 
         lastSelectedRef.current = next;
