@@ -34,6 +34,9 @@ The map is full-bleed and mounted once per session. All controls render as overl
   - speed changes
   - seek and bucket step actions
   This prevents deterministic-view drift while station details are open.
+- Station drawer Tier1 uses map feature payload only (no fetch on open):
+  - `station_id`, `name`, `capacity`, `bikes`, `docks`
+  - optional `bucket_quality`, `t_bucket` when provided by source props
 
 ## TimeController State Rules
 
@@ -58,3 +61,6 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `MapShell`: inspect lock transitions, playback/speed changes, layer toggle changes.
 - `MapShell`: `tile_request_key_changed` emits a deterministic key from `{layers, timelineBucket, inspectLocked}`.
   - During inspect lock, HUD timeline mutation actions are blocked, so the request key stays stable.
+- `MapShell`: explicit Tier1 drawer lifecycle logs:
+  - `tier1_drawer_opened`
+  - `tier1_drawer_closed`

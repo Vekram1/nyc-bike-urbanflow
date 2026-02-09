@@ -23,6 +23,8 @@ export type StationPick = {
     capacity: number | null;
     bikes: number | null;
     docks: number | null;
+    bucket_quality: string | null;
+    t_bucket: string | null;
     gbfs_last_updated: number | null;
     gbfs_ttl: number | null;
 };
@@ -41,6 +43,12 @@ function toNum(v: unknown): number | null {
     if (v == null) return null;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
+}
+
+function toText(v: unknown): string | null {
+    if (v == null) return null;
+    const text = String(v).trim();
+    return text.length > 0 ? text : null;
 }
 
 export default function MapView(props: Props) {
@@ -252,6 +260,8 @@ export default function MapView(props: Props) {
                     capacity: toNum(p.capacity),
                     bikes: toNum(p.bikes),
                     docks: toNum(p.docks),
+                    bucket_quality: toText(p.bucket_quality),
+                    t_bucket: toText(p.t_bucket),
                     gbfs_last_updated: toNum(p.gbfs_last_updated),
                     gbfs_ttl: toNum(p.gbfs_ttl),
                 });

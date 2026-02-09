@@ -1,7 +1,7 @@
 // apps/web/src/components/map/MapShell.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import HUDRoot from "@/components/hud/HUDRoot";
 import ClockChip from "@/components/hud/ClockChip";
@@ -15,6 +15,7 @@ import { useHudMockAdapter } from "@/lib/useHudMockAdapter";
 
 export default function MapShell() {
     const [selected, setSelected] = useState<StationPick | null>(null);
+    const lastDrawerStationRef = useRef<string | null>(null);
     const hud = useHudControls();
 
     // “Inspect lock” v0: freeze live GBFS updates while drawer open
@@ -72,6 +73,26 @@ export default function MapShell() {
             freezeMapUpdates: inspectOpen,
         });
     }, [inspectOpen, selected?.station_id]);
+
+    useEffect(() => {
+        const prev = lastDrawerStationRef.current;
+        const next = selected?.station_id ?? null;
+
+        if (prev !== next) {
+            if (next) {
+                console.info("[MapShell] tier1_drawer_opened", {
+                    stationId: next,
+                    tileOnly: true,
+                });
+            } else if (prev) {
+                console.info("[MapShell] tier1_drawer_closed", {
+                    stationId: prev,
+                    tileOnly: true,
+                });
+            }
+            lastDrawerStationRef.current = next;
+        }
+    }, [selected?.station_id]);
 
     useEffect(() => {
         console.info("[MapShell] playback_changed", {

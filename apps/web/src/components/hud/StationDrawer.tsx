@@ -18,13 +18,14 @@ export default function StationDrawer(props: {
             : "—";
     const titleId = `uf-drawer-title-${station.station_id}`;
     const descId = `uf-drawer-desc-${station.station_id}`;
+    const tierId = `uf-drawer-tier-${station.station_id}`;
 
     return (
         <div
             className="uf-drawer"
             role="dialog"
             aria-labelledby={titleId}
-            aria-describedby={descId}
+            aria-describedby={`${descId} ${tierId}`}
         >
             <div style={{ padding: 14 }}>
                 <div style={{ fontSize: 12, opacity: 0.8 }}>Station</div>
@@ -35,11 +36,17 @@ export default function StationDrawer(props: {
                 <div id={descId} style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
                     Updated: {updated}
                 </div>
+                <div id={tierId} style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                    Tier1 view: tile payload only (no detail fetch).
+                </div>
 
                 <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                    <Row label="Station key" value={station.station_id} />
                     <Row label="Capacity" value={fmtNum(station.capacity)} />
                     <Row label="Bikes" value={fmtNum(station.bikes)} />
                     <Row label="Docks" value={fmtNum(station.docks)} />
+                    <Row label="Bucket quality" value={fmtText(station.bucket_quality)} />
+                    <Row label="T_bucket" value={fmtText(station.t_bucket)} />
                 </div>
 
                 <button
@@ -75,4 +82,8 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function fmtNum(x: number | null) {
     return x == null || Number.isNaN(x) ? "—" : String(x);
+}
+
+function fmtText(x: string | null) {
+    return x == null || x.length === 0 ? "—" : x;
 }
