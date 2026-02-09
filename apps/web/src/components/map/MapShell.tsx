@@ -30,6 +30,9 @@ type UfE2EState = {
     hotkeyLastCode?: string;
     inspectAnchorTileRequestKey?: string;
     inspectSessionId?: number;
+    controlsDisabled?: boolean;
+    compareEnabled?: boolean;
+    splitEnabled?: boolean;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -216,8 +219,20 @@ export default function MapShell() {
             hotkeyLastCode: current.hotkeyLastCode ?? "",
             inspectAnchorTileRequestKey: current.inspectAnchorTileRequestKey ?? "",
             inspectSessionId: current.inspectSessionId ?? 0,
+            controlsDisabled: hud.inspectLocked,
+            compareEnabled: hud.compareMode,
+            splitEnabled: hud.compareMode && hud.splitView,
         }));
-    }, [compareBucket, inspectOpen, selected?.station_id, tileRequestKey, timelineBucket]);
+    }, [
+        compareBucket,
+        hud.compareMode,
+        hud.inspectLocked,
+        hud.splitView,
+        inspectOpen,
+        selected?.station_id,
+        tileRequestKey,
+        timelineBucket,
+    ]);
 
     useEffect(() => {
         if (!inspectOpen) return;
