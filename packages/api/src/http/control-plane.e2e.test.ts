@@ -986,6 +986,16 @@ describe("control-plane e2e", () => {
     expect(invalidBucketBody.error.code).toBe("invalid_t_bucket");
     expect(invalidBucketRes.headers.get("Cache-Control")).toBe("no-store");
 
+    const invalidStationKeyRes = await handler(
+      new Request(
+        `https://example.test/api/stations/%20bad/drawer?v=1&sv=${encodeURIComponent(sv)}&T_bucket=1738872000&range=6h&severity_version=sev.v1&tile_schema=tile.v1`
+      )
+    );
+    expect(invalidStationKeyRes.status).toBe(404);
+    expect(invalidStationKeyRes.headers.get("Cache-Control")).toBe("no-store");
+    const invalidStationKeyBody = await invalidStationKeyRes.json();
+    expect(invalidStationKeyBody.error.code).toBe("not_found");
+
     const drawerMethodRes = await handler(
       new Request(
         `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(sv)}&T_bucket=1738872000&range=6h&severity_version=sev.v1&tile_schema=tile.v1`,
