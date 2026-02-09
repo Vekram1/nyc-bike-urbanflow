@@ -73,6 +73,7 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
                         dateTime={dateIso}
                         style={{ fontSize: 12, opacity: 0.8 }}
                         aria-label="Current date"
+                        data-uf-id="clock-date"
                     >
                         {dateText}
                     </time>
@@ -80,6 +81,7 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
                         dateTime={timeIso}
                         style={{ fontSize: 14, fontWeight: 600 }}
                         aria-label="Current time"
+                        data-uf-id="clock-time"
                     >
                         {timeText}
                     </time>
@@ -104,10 +106,12 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
                                 background: "rgba(255,255,255,0.07)",
                                 opacity: 0.92,
                             }}
+                            data-uf-id="clock-mode-badge"
+                            data-uf-mode={mode}
                         >
                             {mode === "live" ? "Live" : "Replay"}
                         </span>
-                        <span style={{ opacity: 0.55 }} aria-label={`Serving view ${sv}`}>
+                        <span style={{ opacity: 0.55 }} aria-label={`Serving view ${sv}`} data-uf-id="clock-sv">
                             {compactSv(sv)}
                         </span>
                     </div>
@@ -123,6 +127,7 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
                                 background: "rgba(90,160,220,0.12)",
                                 color: "rgba(200,230,255,0.95)",
                             }}
+                            data-uf-id="clock-inspect-lock"
                         >
                             Inspect Lock
                         </div>
@@ -140,6 +145,7 @@ export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
                                 background: "rgba(255,180,0,0.12)",
                                 color: "rgba(255,220,160,0.95)",
                             }}
+                            data-uf-id="clock-delayed"
                         >
                             Delayed
                         </div>

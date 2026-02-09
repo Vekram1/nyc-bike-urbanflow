@@ -94,7 +94,7 @@ export default function ScrubberBar({
                     >
                         + <span style={{ opacity: 0.7 }}>speed</span> <Keycap k="+" />
                     </button>
-                    <div style={{ opacity: 0.7, fontSize: 12, alignSelf: "center" }}>
+                    <div style={{ opacity: 0.7, fontSize: 12, alignSelf: "center" }} data-uf-id="scrubber-speed-value">
                         {speed.toFixed(2)}x
                     </div>
                 </div>
@@ -189,6 +189,7 @@ export default function ScrubberBar({
                 aria-live="polite"
                 aria-atomic="true"
                 style={{ marginTop: 8, fontSize: 12, opacity: 0.75, display: "block" }}
+                data-uf-id="scrubber-progress-label"
             >
                 {progressLabel}
             </output>

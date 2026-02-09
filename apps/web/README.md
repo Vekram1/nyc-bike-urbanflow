@@ -151,12 +151,18 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.tier2UiMessage`
   - `window.__UF_E2E.tier2UiBundleBytes`
 - Stable selector hooks for browser tests:
-  - `data-uf-id="app-root"`
-  - `data-uf-id="map-shell"`
-  - `data-uf-id="hud-clock"`
-  - `data-uf-id="hud-timeline"`
-  - `data-uf-id="hud-controls"`
-  - `data-uf-id="hud-stats"`
+- `data-uf-id="app-root"`
+- `data-uf-id="map-shell"`
+- `data-uf-id="hud-clock"`
+- `data-uf-id="clock-date"`
+- `data-uf-id="clock-time"`
+- `data-uf-id="clock-mode-badge"` with `data-uf-mode="live|replay"`
+- `data-uf-id="clock-sv"`
+- `data-uf-id="clock-inspect-lock"`
+- `data-uf-id="clock-delayed"`
+- `data-uf-id="hud-timeline"`
+- `data-uf-id="hud-controls"`
+- `data-uf-id="hud-stats"`
 - `data-uf-id="station-drawer"`
 - `data-uf-station-key="<station_key>"`
 - `data-uf-tier2-status="idle|loading|success|error"`
@@ -177,9 +183,11 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `data-uf-id="scrubber-play-toggle"`
 - `data-uf-id="scrubber-speed-down"`
 - `data-uf-id="scrubber-speed-up"`
+- `data-uf-id="scrubber-speed-value"`
 - `data-uf-id="scrubber-track"`
 - `data-uf-id="scrubber-step-back"`
 - `data-uf-id="scrubber-step-forward"`
+- `data-uf-id="scrubber-progress-label"`
 - `data-uf-id="command-play-toggle"`
 - `data-uf-id="layer-toggle-severity"`
 - `data-uf-id="layer-toggle-capacity"`
