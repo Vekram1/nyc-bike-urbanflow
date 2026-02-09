@@ -21,6 +21,7 @@ describe("createSearchRouteHandler", () => {
       new Request("https://example.test/api/search?system_id=citibike-nyc&q=52", { method: "POST" })
     );
     expect(res.status).toBe(405);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
     const body = await res.json();
     expect(body.error.code).toBe("method_not_allowed");
   });
