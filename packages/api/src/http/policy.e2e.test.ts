@@ -10,8 +10,8 @@ type MutableState = {
 describe("policy e2e via control-plane", () => {
   it("covers pending -> ready for run/moves and policy-moves tile response", async () => {
     const state: MutableState = { runReady: false, runId: 71 };
-    let policyTokenFailure: null | "token_expired" | "token_revoked" | "signature_invalid" = null;
-    let policyTileTokenFailure: null | "token_expired" | "token_revoked" | "signature_invalid" = null;
+    let policyTokenFailure: null | "token_invalid" | "token_expired" | "token_revoked" | "signature_invalid" = null;
+    let policyTileTokenFailure: null | "token_invalid" | "token_expired" | "token_revoked" | "signature_invalid" = null;
     const queued: Array<{ type: string; dedupe_key?: string; payload: unknown }> = [];
     const events: Array<{ event: string; details: Record<string, unknown> }> = [];
 
@@ -313,17 +313,39 @@ describe("policy e2e via control-plane", () => {
     const revokedMovesBody = await revokedMoves.json();
     expect(revokedMovesBody.error.code).toBe("token_revoked");
 
+    policyTokenFailure = "token_invalid";
+    const invalidMoves = await handler(
+      new Request(
+        "https://example.test/api/policy/moves?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000&top_n=1"
+      )
+    );
+    expect(invalidMoves.status).toBe(401);
+    expect(invalidMoves.headers.get("Cache-Control")).toBe("no-store");
+    const invalidMovesBody = await invalidMoves.json();
+    expect(invalidMovesBody.error.code).toBe("token_invalid");
+
     policyTokenFailure = null;
-    policyTileTokenFailure = "signature_invalid";
-    const invalidTile = await handler(
+    policyTileTokenFailure = "token_invalid";
+    const invalidTokenTile = await handler(
       new Request(
         "https://example.test/api/tiles/policy_moves/12/1200/1530.mvt?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000"
       )
     );
-    expect(invalidTile.status).toBe(401);
-    expect(invalidTile.headers.get("Cache-Control")).toBe("no-store");
-    const invalidTileBody = await invalidTile.json();
-    expect(invalidTileBody.error.code).toBe("signature_invalid");
+    expect(invalidTokenTile.status).toBe(401);
+    expect(invalidTokenTile.headers.get("Cache-Control")).toBe("no-store");
+    const invalidTokenTileBody = await invalidTokenTile.json();
+    expect(invalidTokenTileBody.error.code).toBe("token_invalid");
+
+    policyTileTokenFailure = "signature_invalid";
+    const invalidSignatureTile = await handler(
+      new Request(
+        "https://example.test/api/tiles/policy_moves/12/1200/1530.mvt?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(invalidSignatureTile.status).toBe(401);
+    expect(invalidSignatureTile.headers.get("Cache-Control")).toBe("no-store");
+    const invalidSignatureTileBody = await invalidSignatureTile.json();
+    expect(invalidSignatureTileBody.error.code).toBe("signature_invalid");
 
     policyTileTokenFailure = null;
     const missingRunSv = await handler(
