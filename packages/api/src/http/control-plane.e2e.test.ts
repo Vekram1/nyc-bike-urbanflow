@@ -399,6 +399,11 @@ describe("control-plane e2e", () => {
     expect(configUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const configUnknownParamBody = await configUnknownParamRes.json();
     expect(configUnknownParamBody.error.code).toBe("unknown_param");
+    const configUnsupportedVersionRes = await handler(new Request("https://example.test/api/config?v=2"));
+    expect(configUnsupportedVersionRes.status).toBe(400);
+    expect(configUnsupportedVersionRes.headers.get("Cache-Control")).toBe("no-store");
+    const configUnsupportedVersionBody = await configUnsupportedVersionRes.json();
+    expect(configUnsupportedVersionBody.error.code).toBe("unsupported_version");
     const configMethodRes = await handler(
       new Request("https://example.test/api/config?v=1", { method: "POST" })
     );
