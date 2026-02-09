@@ -1282,6 +1282,16 @@ describe("control-plane e2e", () => {
     const missingRangeBoundaryBody = await missingRangeBoundaryRes.json();
     expect(missingRangeBoundaryBody.error.code).toBe("invalid_range");
 
+    const nonIntegerRangeRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(sv)}&from=1738872000.5&to=1738875600&bucket=300`
+      )
+    );
+    expect(nonIntegerRangeRes.status).toBe(400);
+    expect(nonIntegerRangeRes.headers.get("Cache-Control")).toBe("no-store");
+    const nonIntegerRangeBody = await nonIntegerRangeRes.json();
+    expect(nonIntegerRangeBody.error.code).toBe("invalid_range");
+
     const invalidDetailKeyRes = await handler(
       new Request(`https://example.test/api/stations/%20bad?sv=${encodeURIComponent(sv)}`)
     );
