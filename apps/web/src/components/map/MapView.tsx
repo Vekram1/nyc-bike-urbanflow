@@ -56,6 +56,8 @@ type Props = {
     timelineBucket: number;
     systemId: string;
     selectedStationId?: string | null;
+    policyImpactEnabled?: boolean;
+    policyImpactByStation?: Record<string, number>;
     freeze?: boolean; // when true, stop refreshing GBFS + keep view deterministic
 };
 
@@ -96,6 +98,9 @@ type UfE2EState = {
     mapFeatureStateLastSetAt?: string;
     mapFeatureStateLastClearAt?: string;
     mapFeatureStateLastErrorAt?: string;
+    policyImpactEnabled?: boolean;
+    policyImpactStationCount?: number;
+    policyImpactLastAppliedAt?: string;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -136,6 +141,8 @@ export default function MapView(props: Props) {
         timelineBucket,
         systemId,
         selectedStationId,
+        policyImpactEnabled = false,
+        policyImpactByStation = {},
         freeze,
     } = props;
 
@@ -145,6 +152,8 @@ export default function MapView(props: Props) {
     const svRef = useRef(sv);
     const timelineBucketRef = useRef(timelineBucket);
     const systemIdRef = useRef(systemId);
+    const policyImpactEnabledRef = useRef(policyImpactEnabled);
+    const policyImpactByStationRef = useRef(policyImpactByStation);
 
     useEffect(() => {
         svRef.current = sv;
@@ -157,6 +166,14 @@ export default function MapView(props: Props) {
     useEffect(() => {
         systemIdRef.current = systemId;
     }, [systemId]);
+
+    useEffect(() => {
+        policyImpactEnabledRef.current = policyImpactEnabled;
+    }, [policyImpactEnabled]);
+
+    useEffect(() => {
+        policyImpactByStationRef.current = policyImpactByStation;
+    }, [policyImpactByStation]);
 
     useEffect(() => {
         activeMapViewCount += 1;
@@ -195,6 +212,9 @@ export default function MapView(props: Props) {
             mapFeatureStateLastSetAt: current.mapFeatureStateLastSetAt ?? "",
             mapFeatureStateLastClearAt: current.mapFeatureStateLastClearAt ?? "",
             mapFeatureStateLastErrorAt: current.mapFeatureStateLastErrorAt ?? "",
+            policyImpactEnabled: current.policyImpactEnabled ?? false,
+            policyImpactStationCount: current.policyImpactStationCount ?? 0,
+            policyImpactLastAppliedAt: current.policyImpactLastAppliedAt ?? "",
         }));
 
         if (activeMapViewCount > 1) {
@@ -269,7 +289,22 @@ export default function MapView(props: Props) {
                         "case",
                         ["boolean", ["feature-state", "selected"], false],
                         "rgba(255,255,255,0.75)",
-                        "rgba(255,255,255,0.25)",
+                        [
+                            "case",
+                            [
+                                "all",
+                                ["coalesce", ["get", "policy_impact_enabled"], false],
+                                [">", ["coalesce", ["get", "policy_impact_delta"], 0], 0],
+                            ],
+                            "#22c55e",
+                            [
+                                "all",
+                                ["coalesce", ["get", "policy_impact_enabled"], false],
+                                ["<", ["coalesce", ["get", "policy_impact_delta"], 0], 0],
+                            ],
+                            "#ef4444",
+                            "rgba(255,255,255,0.25)",
+                        ],
                     ],
                 },
             });
@@ -335,6 +370,26 @@ export default function MapView(props: Props) {
             onTileFetchSampleMs?.(latencyMs);
 
             if (json?.type === "FeatureCollection") {
+                const impactEnabled = policyImpactEnabledRef.current;
+                const impactByStation = policyImpactByStationRef.current;
+                if (Array.isArray(json.features)) {
+                    for (const feature of json.features as Array<{ properties?: Record<string, unknown> }>) {
+                        if (!feature.properties || typeof feature.properties !== "object") continue;
+                        const stationIdRaw = feature.properties.station_id;
+                        const stationId =
+                            typeof stationIdRaw === "string" && stationIdRaw.length > 0
+                                ? stationIdRaw
+                                : "";
+                        const impactDelta =
+                            stationId.length > 0
+                                ? Number(impactByStation[stationId] ?? 0)
+                                : 0;
+                        feature.properties.policy_impact_enabled = impactEnabled;
+                        feature.properties.policy_impact_delta = Number.isFinite(impactDelta)
+                            ? impactDelta
+                            : 0;
+                    }
+                }
                 (src as SourceWithSetData).setData(json);
                 const featureCount = Array.isArray(json.features) ? json.features.length : 0;
                 if (onStationsData && Array.isArray(json.features)) {
@@ -385,6 +440,9 @@ export default function MapView(props: Props) {
                     mapRefreshLastLatencyMs: latencyMs,
                     mapZeroBikeColorHex: colorForBikesAvailabilityRatio(0),
                     mapAvailabilityBucketCounts: availabilityBucketCounts,
+                    policyImpactEnabled: policyImpactEnabledRef.current,
+                    policyImpactStationCount: Object.keys(policyImpactByStationRef.current).length,
+                    policyImpactLastAppliedAt: new Date().toISOString(),
                 }));
                 console.debug("[MapView] source_updated", {
                     sourceId: SOURCE_ID,
@@ -474,6 +532,13 @@ export default function MapView(props: Props) {
 
         lastSelectedRef.current = next;
     }, [selectedStationId]);
+
+    useEffect(() => {
+        if (freeze) return;
+        refreshStations().catch((e) =>
+            console.error("[MapView] policy_overlay_refresh_failed", { error: e })
+        );
+    }, [freeze, policyImpactByStation, policyImpactEnabled, refreshStations]);
 
     if (!token) {
         return (

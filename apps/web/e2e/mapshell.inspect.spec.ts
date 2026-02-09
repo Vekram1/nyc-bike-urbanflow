@@ -25,6 +25,11 @@ type UfE2EState = {
     mapHalfBikeColorHex?: string;
     mapNinetyBikeColorHex?: string;
     mapAvailabilityBucketCounts?: Record<string, number>;
+    policyStatus?: "idle" | "pending" | "ready" | "stale" | "error";
+    policyImpactEnabled?: boolean;
+    policyMoveCount?: number;
+    policyLastRunId?: number;
+    policyLastError?: string;
 };
 
 type UfE2EActions = {
@@ -1237,4 +1242,156 @@ test("map color ramp telemetry maps threshold buckets deterministically", async 
             timeout: 8_000,
         })
         .toBe(true);
+});
+
+test("run greedy transitions pending to ready and enables policy impact overlay", async ({ page }) => {
+    let runCalls = 0;
+
+    await page.route("**/api/time?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                server_now: "2026-02-09T18:00:00.000Z",
+                recommended_live_sv: "sv:e2e-policy",
+                network: {
+                    degrade_level: 0,
+                    client_should_throttle: false,
+                },
+            }),
+        });
+    });
+
+    await page.route("**/api/timeline?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                available_range: ["2026-02-09T16:00:00.000Z", "2026-02-09T18:00:00.000Z"],
+                bucket_size_seconds: 300,
+                live_edge_ts: "2026-02-09T18:00:00.000Z",
+            }),
+        });
+    });
+
+    await page.route("**/api/policy/config?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                default_policy_version: "rebal.greedy.v1",
+                available_policy_versions: ["rebal.greedy.v1"],
+                default_horizon_steps: 6,
+                max_moves: 100,
+            }),
+        });
+    });
+
+    await page.route("**/api/policy/run?*", async (route) => {
+        runCalls += 1;
+        if (runCalls < 2) {
+            await route.fulfill({
+                status: 202,
+                contentType: "application/json",
+                body: JSON.stringify({
+                    status: "pending",
+                    retry_after_ms: 10,
+                    cache_key: "e2e-policy",
+                }),
+            });
+            return;
+        }
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                status: "ready",
+                run: {
+                    run_id: 101,
+                    system_id: "citibike-nyc",
+                    policy_version: "rebal.greedy.v1",
+                    policy_spec_sha256: "abc123",
+                    sv: "sv:e2e-policy",
+                    decision_bucket_ts: "2026-02-09T18:00:00.000Z",
+                    horizon_steps: 6,
+                    input_quality: "ok",
+                    no_op: false,
+                    no_op_reason: null,
+                    error_reason: null,
+                    move_count: 2,
+                    created_at: "2026-02-09T18:00:01.000Z",
+                },
+            }),
+        });
+    });
+
+    await page.route("**/api/policy/moves?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                status: "ready",
+                run: {
+                    run_id: 101,
+                    policy_version: "rebal.greedy.v1",
+                    policy_spec_sha256: "abc123",
+                    decision_bucket_ts: "2026-02-09T18:00:00.000Z",
+                    horizon_steps: 6,
+                },
+                top_n: 100,
+                moves: [
+                    {
+                        move_rank: 1,
+                        from_station_key: "station-a",
+                        to_station_key: "station-b",
+                        bikes_moved: 3,
+                        dist_m: 200,
+                        budget_exhausted: false,
+                        neighbor_exhausted: false,
+                        reason_codes: ["rebalance"],
+                    },
+                    {
+                        move_rank: 2,
+                        from_station_key: "station-c",
+                        to_station_key: "station-d",
+                        bikes_moved: 2,
+                        dist_m: 300,
+                        budget_exhausted: false,
+                        neighbor_exhausted: false,
+                        reason_codes: ["rebalance"],
+                    },
+                ],
+            }),
+        });
+    });
+
+    await page.goto("/");
+
+    const runButton = page.locator('[data-uf-id="policy-run-button"]');
+    const statusBadge = page.locator('[data-uf-id="policy-status-badge"]');
+    const impactToggle = page.locator('[data-uf-id="policy-impact-toggle"]');
+
+    await expect(runButton).toBeVisible();
+    await runButton.click();
+
+    await expect(statusBadge).toHaveAttribute("data-uf-status", "ready");
+    await expect(statusBadge).toContainText("Ready (2 moves)");
+    await expect(impactToggle).toHaveAttribute("data-uf-enabled", "true");
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                status: state.policyStatus ?? "",
+                moveCount: state.policyMoveCount ?? 0,
+                runId: state.policyLastRunId ?? 0,
+                impactEnabled: Boolean(state.policyImpactEnabled),
+            };
+        })
+        .toEqual({
+            status: "ready",
+            moveCount: 2,
+            runId: 101,
+            impactEnabled: true,
+        });
 });

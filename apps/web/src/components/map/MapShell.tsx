@@ -13,7 +13,14 @@ import MapView, { StationPick } from "@/components/map/MapView";
 import { useHudControls } from "@/lib/useHudControls";
 import { useFps } from "@/lib/useFps";
 import { useRollingP95 } from "@/lib/useRollingP95";
-import { DEFAULT_SYSTEM_ID, fetchTimelineDensity } from "@/lib/controlPlane";
+import {
+    DEFAULT_SYSTEM_ID,
+    fetchPolicyConfig,
+    fetchPolicyMoves,
+    fetchPolicyRun,
+    fetchTimelineDensity,
+    type PolicyMove,
+} from "@/lib/controlPlane";
 
 type UfE2EState = {
     mapShellMounted?: boolean;
@@ -63,6 +70,11 @@ type UfE2EState = {
     playing?: boolean;
     mode?: "live" | "replay";
     playbackTsMs?: number;
+    policyStatus?: "idle" | "pending" | "ready" | "stale" | "error";
+    policyImpactEnabled?: boolean;
+    policyMoveCount?: number;
+    policyLastRunId?: number;
+    policyLastError?: string;
 };
 
 type UfE2EActions = {
@@ -80,6 +92,17 @@ function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
     (window as { __UF_E2E?: UfE2EState }).__UF_E2E = update(current);
 }
 
+function summarizePolicyImpact(moves: PolicyMove[]): Record<string, number> {
+    const next: Record<string, number> = {};
+    for (const move of moves) {
+        const delta = Number(move.bikes_moved);
+        if (!Number.isFinite(delta) || delta <= 0) continue;
+        next[move.from_station_key] = (next[move.from_station_key] ?? 0) - delta;
+        next[move.to_station_key] = (next[move.to_station_key] ?? 0) + delta;
+    }
+    return next;
+}
+
 export default function MapShell() {
     const [selected, setSelected] = useState<StationPick | null>(null);
     const [stationIndex, setStationIndex] = useState<StationPick[]>([]);
@@ -87,6 +110,14 @@ export default function MapShell() {
         sv: string;
         points: Array<{ pct: number; intensity: number }>;
     } | null>(null);
+    const [policyVersion, setPolicyVersion] = useState<string>("rebal.greedy.v1");
+    const [policyStatus, setPolicyStatus] = useState<"idle" | "pending" | "ready" | "stale" | "error">("idle");
+    const [policyError, setPolicyError] = useState<string | null>(null);
+    const [policyRunId, setPolicyRunId] = useState<number | null>(null);
+    const [policyMovesCount, setPolicyMovesCount] = useState(0);
+    const [policyImpactEnabled, setPolicyImpactEnabled] = useState(false);
+    const [policyImpactByStation, setPolicyImpactByStation] = useState<Record<string, number>>({});
+    const [policyRunSv, setPolicyRunSv] = useState<string | null>(null);
     const lastDrawerStationRef = useRef<string | null>(null);
     const hud = useHudControls();
     const fps = useFps();
@@ -129,6 +160,88 @@ export default function MapShell() {
             full,
         };
     }, [stationIndex]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadPolicyConfig = async () => {
+            try {
+                const out = await fetchPolicyConfig();
+                if (cancelled) return;
+                if (out.default_policy_version?.length > 0) {
+                    setPolicyVersion(out.default_policy_version);
+                }
+            } catch {
+                if (cancelled) return;
+            }
+        };
+        loadPolicyConfig();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const effectivePolicyStatus =
+        policyStatus === "ready" && policyRunSv && hud.sv && policyRunSv !== hud.sv
+            ? "stale"
+            : policyStatus;
+
+    const runPolicy = useCallback(async () => {
+        if (!hud.sv || hud.sv.startsWith("sv:local-")) {
+            setPolicyStatus("error");
+            setPolicyError("Live serving token unavailable");
+            return;
+        }
+
+        setPolicyStatus("pending");
+        setPolicyError(null);
+
+        const maxAttempts = 8;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            const run = await fetchPolicyRun({
+                sv: hud.sv,
+                policyVersion,
+                timelineBucket,
+                systemId: DEFAULT_SYSTEM_ID,
+            });
+            if (run.status === "pending") {
+                const waitMs = Math.max(250, Math.min(2000, run.retry_after_ms ?? 800));
+                await new Promise((resolve) => window.setTimeout(resolve, waitMs));
+                continue;
+            }
+
+            const movesOut = await fetchPolicyMoves({
+                sv: hud.sv,
+                policyVersion,
+                timelineBucket,
+                systemId: DEFAULT_SYSTEM_ID,
+                topN: 500,
+            });
+
+            const impact = summarizePolicyImpact(movesOut.moves);
+            setPolicyRunId(run.run.run_id);
+            setPolicyMovesCount(movesOut.moves.length);
+            setPolicyImpactByStation(impact);
+            setPolicyRunSv(hud.sv);
+            setPolicyStatus("ready");
+            setPolicyImpactEnabled(movesOut.moves.length > 0);
+            return;
+        }
+
+        setPolicyStatus("error");
+        setPolicyError("Policy run timed out");
+    }, [hud.sv, policyVersion, timelineBucket]);
+
+    const handleRunPolicy = useCallback(() => {
+        runPolicy().catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "Policy run failed";
+            setPolicyStatus("error");
+            setPolicyError(message);
+        });
+    }, [runPolicy]);
+
+    const handleTogglePolicyImpact = useCallback(() => {
+        setPolicyImpactEnabled((current) => !current);
+    }, []);
 
     useEffect(() => {
         if (!hud.sv || hud.sv.startsWith("sv:local-")) return;
@@ -428,6 +541,11 @@ export default function MapShell() {
                 playing: hud.playing,
                 mode: hud.mode,
                 playbackTsMs: hud.playbackTsMs,
+                policyStatus: effectivePolicyStatus,
+                policyImpactEnabled,
+                policyMoveCount: policyMovesCount,
+                policyLastRunId: policyRunId ?? 0,
+                policyLastError: policyError ?? "",
             };
         });
     }, [
@@ -444,6 +562,11 @@ export default function MapShell() {
         hud.speed,
         hud.splitView,
         inspectOpen,
+        policyError,
+        policyImpactEnabled,
+        policyMovesCount,
+        policyRunId,
+        effectivePolicyStatus,
         selected?.station_id,
         tileRequestKey,
         timelineBucket,
@@ -524,6 +647,8 @@ export default function MapShell() {
                     timelineBucket={timelineBucket}
                     systemId={DEFAULT_SYSTEM_ID}
                     selectedStationId={selected?.station_id ?? null}
+                    policyImpactEnabled={policyImpactEnabled}
+                    policyImpactByStation={policyImpactByStation}
                     freeze={inspectOpen}
                 />
             </div>
@@ -574,6 +699,9 @@ export default function MapShell() {
                             mode={hud.mode}
                             layers={hud.layers}
                             searchStations={searchStations}
+                            policyStatus={effectivePolicyStatus}
+                            policyMovesCount={policyMovesCount}
+                            policyImpactEnabled={policyImpactEnabled}
                             onTogglePlay={hud.togglePlay}
                             onGoLive={hud.goLive}
                             onToggleLayer={hud.toggleLayer}
@@ -582,6 +710,8 @@ export default function MapShell() {
                             onCompareOffsetDown={hud.compareOffsetDown}
                             onCompareOffsetUp={hud.compareOffsetUp}
                             onSearchPick={handleSearchPick}
+                            onRunPolicy={handleRunPolicy}
+                            onTogglePolicyImpact={handleTogglePolicyImpact}
                         />
                     </nav>
                 </div>

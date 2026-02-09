@@ -16,6 +16,9 @@ type Props = {
     mode: "live" | "replay";
     layers: LayerToggles;
     searchStations: Array<{ stationKey: string; name: string }>;
+    policyStatus: "idle" | "pending" | "ready" | "stale" | "error";
+    policyMovesCount: number;
+    policyImpactEnabled: boolean;
     onTogglePlay: () => void;
     onGoLive: () => void;
     onToggleLayer: (key: keyof LayerToggles) => void;
@@ -24,6 +27,8 @@ type Props = {
     onCompareOffsetDown: () => void;
     onCompareOffsetUp: () => void;
     onSearchPick: (station: { stationKey: string; name: string }) => void;
+    onRunPolicy: () => void;
+    onTogglePolicyImpact: () => void;
 };
 
 type SearchResult = {
@@ -40,6 +45,9 @@ export default function CommandStack({
     mode,
     layers,
     searchStations,
+    policyStatus,
+    policyMovesCount,
+    policyImpactEnabled,
     onTogglePlay,
     onGoLive,
     onToggleLayer,
@@ -48,6 +56,8 @@ export default function CommandStack({
     onCompareOffsetDown,
     onCompareOffsetUp,
     onSearchPick,
+    onRunPolicy,
+    onTogglePolicyImpact,
 }: Props) {
     const [query, setQuery] = useState("");
     const [activeResultIdx, setActiveResultIdx] = useState(0);
@@ -290,6 +300,53 @@ export default function CommandStack({
             <HUDCard>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 2 }}>
+                        Policy
+                    </div>
+                    <button
+                        type="button"
+                        style={rowBtnStyle}
+                        onClick={onRunPolicy}
+                        disabled={inspectLocked || policyStatus === "pending"}
+                        aria-label="Run greedy policy for current bucket"
+                        data-uf-id="policy-run-button"
+                    >
+                        <span style={{ fontSize: 12, opacity: 0.92 }}>
+                            {policyStatus === "pending" ? "Running Greedy..." : "Run Greedy"}
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        style={rowBtnStyle}
+                        onClick={onTogglePolicyImpact}
+                        disabled={inspectLocked || (policyMovesCount <= 0 && !policyImpactEnabled)}
+                        aria-label="Toggle policy impact overlay"
+                        data-uf-id="policy-impact-toggle"
+                        data-uf-enabled={policyImpactEnabled ? "true" : "false"}
+                    >
+                        <span style={{ fontSize: 12, opacity: 0.92 }}>
+                            {policyImpactEnabled ? "Impact On" : "Impact Off"}
+                        </span>
+                    </button>
+                    <div
+                        style={{
+                            fontSize: 11,
+                            opacity: 0.88,
+                            border: "1px solid rgba(255,255,255,0.16)",
+                            borderRadius: 999,
+                            padding: "2px 8px",
+                            width: "fit-content",
+                        }}
+                        data-uf-id="policy-status-badge"
+                        data-uf-status={policyStatus}
+                    >
+                        {policyStatusLabel(policyStatus, policyMovesCount)}
+                    </div>
+                </div>
+            </HUDCard>
+
+            <HUDCard>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 2 }}>
                         Layers
                     </div>
                     <label style={toggleStyle}>
@@ -400,6 +457,14 @@ function Row({ label, hint }: { label: string; hint: string }) {
             </span>
         </div>
     );
+}
+
+function policyStatusLabel(status: Props["policyStatus"], moveCount: number): string {
+    if (status === "pending") return "Policy: Computing";
+    if (status === "ready") return `Policy: Ready (${moveCount} moves)`;
+    if (status === "stale") return "Policy: Stale";
+    if (status === "error") return "Policy: Error";
+    return "Policy: Idle";
 }
 
 const toggleStyle: React.CSSProperties = {

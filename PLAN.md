@@ -140,6 +140,11 @@ Frontend interaction reliability (required):
     - `Bikes Available`
     - `Empty Docks`
   - Delta/reconciliation math is not required in Tier1 default view.
+- Policy interaction:
+  - HUD must provide an explicit `Run Greedy` action that requests policy output for the current `(sv, T_bucket)`.
+  - Policy run status must be visible in HUD as `Idle`, `Computing`, `Ready`, `Stale`, or `Error`.
+  - When a run is `Ready`, users can toggle `Policy Impact` to visualize per-station bike deltas from policy moves.
+  - If `sv` advances after a ready run, the last run is marked `Stale`; rerun requires explicit user action.
 
 Frontend UX simplification and timeline safety (required):
 - Tier1 station drawer (default view) must prioritize:
