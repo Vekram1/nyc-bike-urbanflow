@@ -38,6 +38,7 @@ export type StationPick = {
 type Props = {
     onStationPick?: (s: StationPick) => void;
     onStationsData?: (stations: StationPick[]) => void;
+    onTileFetchSampleMs?: (latencyMs: number) => void;
     selectedStationId?: string | null;
     freeze?: boolean; // when true, stop refreshing GBFS + keep view deterministic
 };
@@ -62,6 +63,7 @@ type UfE2EState = {
     mapRefreshLastErrorMessage?: string;
     mapRefreshLastHttpStatus?: number | null;
     mapRefreshLastErrorHttpStatus?: number | null;
+    mapRefreshLastLatencyMs?: number | null;
     mapStationPickCount?: number;
     mapClickMissCount?: number;
     mapLastPickedStationId?: string;
@@ -95,7 +97,7 @@ function toText(v: unknown): string | null {
 }
 
 export default function MapView(props: Props) {
-    const { onStationPick, onStationsData, selectedStationId, freeze } = props;
+    const { onStationPick, onStationsData, onTileFetchSampleMs, selectedStationId, freeze } = props;
 
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const mapRef = useRef<MapRef | null>(null);
@@ -121,6 +123,7 @@ export default function MapView(props: Props) {
             mapRefreshLastErrorMessage: current.mapRefreshLastErrorMessage ?? "",
             mapRefreshLastHttpStatus: current.mapRefreshLastHttpStatus ?? null,
             mapRefreshLastErrorHttpStatus: current.mapRefreshLastErrorHttpStatus ?? null,
+            mapRefreshLastLatencyMs: current.mapRefreshLastLatencyMs ?? null,
             mapStationPickCount: current.mapStationPickCount ?? 0,
             mapClickMissCount: current.mapClickMissCount ?? 0,
             mapLastPickedStationId: current.mapLastPickedStationId ?? "",
@@ -268,9 +271,12 @@ export default function MapView(props: Props) {
         }
 
         try {
+            const started = performance.now();
             const res = await fetch("/api/gbfs/stations", { cache: "no-store" });
             const httpStatus = res.status;
             const json = await res.json();
+            const latencyMs = Math.max(0, performance.now() - started);
+            onTileFetchSampleMs?.(latencyMs);
 
             if (json?.type === "FeatureCollection") {
                 (src as SourceWithSetData).setData(json);
@@ -311,6 +317,7 @@ export default function MapView(props: Props) {
                     mapRefreshLastErrorMessage: "",
                     mapRefreshLastHttpStatus: httpStatus,
                     mapRefreshLastErrorHttpStatus: null,
+                    mapRefreshLastLatencyMs: latencyMs,
                 }));
                 console.debug("[MapView] source_updated", {
                     sourceId: SOURCE_ID,
@@ -325,6 +332,7 @@ export default function MapView(props: Props) {
                     mapRefreshLastErrorMessage: "bad_payload",
                     mapRefreshLastHttpStatus: httpStatus,
                     mapRefreshLastErrorHttpStatus: httpStatus,
+                    mapRefreshLastLatencyMs: latencyMs,
                 }));
                 console.warn("Unexpected GBFS response:", json);
             }
@@ -335,10 +343,11 @@ export default function MapView(props: Props) {
                 mapRefreshFailureCount: (current.mapRefreshFailureCount ?? 0) + 1,
                 mapRefreshLastErrorMessage: message,
                 mapRefreshLastErrorHttpStatus: null,
+                mapRefreshLastLatencyMs: null,
             }));
             console.error("[MapView] refresh_failed", { error: message });
         }
-    }, [freeze, onStationsData]);
+    }, [freeze, onStationsData, onTileFetchSampleMs]);
 
     // poll live GBFS (disabled when freeze=true)
     useEffect(() => {

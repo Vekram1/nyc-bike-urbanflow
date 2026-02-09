@@ -1,7 +1,7 @@
 // apps/web/src/components/map/MapShell.tsx
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import HUDRoot from "@/components/hud/HUDRoot";
 import ClockChip from "@/components/hud/ClockChip";
@@ -11,7 +11,8 @@ import StatsCard from "@/components/hud/StatsCard";
 import StationDrawer from "@/components/hud/StationDrawer";
 import MapView, { StationPick } from "@/components/map/MapView";
 import { useHudControls } from "@/lib/useHudControls";
-import { useHudMockAdapter } from "@/lib/useHudMockAdapter";
+import { useFps } from "@/lib/useFps";
+import { useRollingP95 } from "@/lib/useRollingP95";
 
 type UfE2EState = {
     mapShellMounted?: boolean;
@@ -83,6 +84,8 @@ export default function MapShell() {
     const [stationIndex, setStationIndex] = useState<StationPick[]>([]);
     const lastDrawerStationRef = useRef<string | null>(null);
     const hud = useHudControls();
+    const fps = useFps();
+    const { p95: tileP95, spark, pushSample } = useRollingP95({ windowMs: 15_000 });
     const inspectAnchorTileKeyRef = useRef<string | null>(null);
     const inspectSessionIdRef = useRef(0);
 
@@ -98,14 +101,29 @@ export default function MapShell() {
         stationKey: station.station_id,
         name: station.name,
     }));
-
-    const mock = useHudMockAdapter({
-        layers: hud.layers,
-        inspectLocked: inspectOpen,
-        mode: hud.mode,
-        sv: hud.sv,
-        delayed: hud.delayed,
-    });
+    const handleTileFetchSample = useCallback(
+        (latencyMs: number) => {
+            pushSample(latencyMs);
+        },
+        [pushSample]
+    );
+    const stats = useMemo(() => {
+        let empty = 0;
+        let full = 0;
+        for (const station of stationIndex) {
+            if (typeof station.bikes === "number" && station.bikes <= 0) {
+                empty += 1;
+            }
+            if (typeof station.docks === "number" && station.docks <= 0) {
+                full += 1;
+            }
+        }
+        return {
+            activeStations: stationIndex.length,
+            empty,
+            full,
+        };
+    }, [stationIndex]);
     const tileRequestKey = JSON.stringify({
         layers: hud.layers,
         bucket: timelineBucket,
@@ -440,6 +458,7 @@ export default function MapShell() {
                 <MapView
                     onStationPick={openInspect}
                     onStationsData={setStationIndex}
+                    onTileFetchSampleMs={handleTileFetchSample}
                     selectedStationId={selected?.station_id ?? null}
                     freeze={inspectOpen}
                 />
@@ -450,10 +469,10 @@ export default function MapShell() {
                 <div className="uf-top-center" data-uf-id="hud-clock">
                     <section role="region" aria-label="Clock and serving status">
                         <ClockChip
-                            mode={mock.clock.mode}
-                            sv={mock.clock.sv}
-                            delayed={mock.clock.delayed}
-                            inspectLocked={mock.clock.inspectLocked}
+                            mode={hud.mode}
+                            sv={hud.sv}
+                            delayed={hud.delayed}
+                            inspectLocked={hud.inspectLocked}
                             displayTimeMs={timelineDisplayTimeMs}
                         />
                     </section>
@@ -505,19 +524,19 @@ export default function MapShell() {
                 <div className="uf-right-stack" data-uf-id="hud-stats">
                     <aside role="complementary" aria-label="Network stats and performance">
                         <StatsCard
-                            activeStations={mock.stats.activeStations}
-                            empty={mock.stats.empty}
-                            full={mock.stats.full}
-                            tileP95={mock.stats.tileP95}
-                            fps={mock.stats.fps}
-                            spark={mock.stats.spark}
+                            activeStations={stats.activeStations}
+                            empty={stats.empty}
+                            full={stats.full}
+                            tileP95={tileP95}
+                            fps={fps}
+                            spark={spark}
                         />
                     </aside>
                 </div>
 
                 <StationDrawer
                     station={selected}
-                    sv={mock.clock.sv}
+                    sv={hud.sv}
                     timelineBucket={timelineBucket}
                     onClose={() => closeInspect("drawer_close_button")}
                 />
