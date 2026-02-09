@@ -188,6 +188,41 @@ describe("createCompositeTilesRouteHandler", () => {
     expect(body.error.code).toBe("sv_missing");
   });
 
+  it("returns 403 when sv token is revoked", async () => {
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return { ok: false as const, reason: "token_revoked" };
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile() {
+          throw new Error("not used");
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?sv=revoked&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("token_revoked");
+  });
+
   it("returns 400 when required cache-key params are missing", async () => {
     const handler = createCompositeTilesRouteHandler({
       tokens: {
