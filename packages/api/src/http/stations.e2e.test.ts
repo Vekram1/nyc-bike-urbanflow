@@ -7,9 +7,13 @@ describe("station endpoints e2e", () => {
     const stationInfoEvents: Array<{ event: string; details: Record<string, unknown> }> = [];
     const drawerInfoEvents: Array<{ event: string; details: Record<string, unknown> }> = [];
     const issuedSv = "sv-live-e2e-token";
+    let forcedTokenReason: null | "token_revoked" | "token_expired" = null;
     const validateSv = async (token: string) => {
       if (token !== issuedSv) {
-        return { ok: false as const, reason: "invalid" };
+        return { ok: false as const, reason: "token_invalid" };
+      }
+      if (forcedTokenReason) {
+        return { ok: false as const, reason: forcedTokenReason };
       }
       return {
         ok: true as const,
@@ -283,5 +287,37 @@ describe("station endpoints e2e", () => {
     expect(unknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const unknownParamBody = await unknownParamRes.json();
     expect(unknownParamBody.error.code).toBe("unknown_param");
+
+    const missingSvRes = await handler(new Request("https://example.test/api/stations/STA-001"));
+    expect(missingSvRes.status).toBe(401);
+    expect(missingSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const missingSvBody = await missingSvRes.json();
+    expect(missingSvBody.error.code).toBe("sv_missing");
+
+    const invalidSvRes = await handler(new Request("https://example.test/api/stations/STA-001?sv=bogus"));
+    expect(invalidSvRes.status).toBe(401);
+    expect(invalidSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const invalidSvBody = await invalidSvRes.json();
+    expect(invalidSvBody.error.code).toBe("token_invalid");
+
+    forcedTokenReason = "token_revoked";
+    const revokedSvRes = await handler(
+      new Request(`https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(issuedSv)}&T_bucket=1738872000&range=6h`)
+    );
+    expect(revokedSvRes.status).toBe(403);
+    expect(revokedSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const revokedSvBody = await revokedSvRes.json();
+    expect(revokedSvBody.error.code).toBe("token_revoked");
+
+    forcedTokenReason = "token_expired";
+    const expiredSvRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(issuedSv)}&from=1738871700&to=1738872000&bucket=300`
+      )
+    );
+    expect(expiredSvRes.status).toBe(401);
+    expect(expiredSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const expiredSvBody = await expiredSvRes.json();
+    expect(expiredSvBody.error.code).toBe("token_expired");
   });
 });
