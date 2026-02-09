@@ -133,10 +133,24 @@ export default function MapShell() {
         timelineBucket,
     ]);
 
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const current = (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E ?? {};
+        (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E = {
+            ...current,
+            mapShellMounted: true,
+            inspectOpen,
+            selectedStationId: selected?.station_id ?? null,
+            timelineBucket,
+            compareBucket,
+            tileRequestKey,
+        };
+    }, [compareBucket, inspectOpen, selected?.station_id, tileRequestKey, timelineBucket]);
+
     return (
-        <div className="uf-root">
+        <div className="uf-root" data-uf-id="app-root">
             {/* MAP */}
-            <div className="uf-map" aria-label="Map">
+            <div className="uf-map" aria-label="Map" data-uf-id="map-shell">
                 <MapView
                     onStationPick={openInspect}
                     selectedStationId={selected?.station_id ?? null}
@@ -146,7 +160,7 @@ export default function MapShell() {
 
             {/* HUD OVERLAY */}
             <HUDRoot>
-                <div className="uf-top-center">
+                <div className="uf-top-center" data-uf-id="hud-clock">
                     <section role="region" aria-label="Clock and serving status">
                         <ClockChip
                             mode={mock.clock.mode}
@@ -157,7 +171,7 @@ export default function MapShell() {
                     </section>
                 </div>
 
-                <div className="uf-bottom">
+                <div className="uf-bottom" data-uf-id="hud-timeline">
                     <section role="region" aria-label="Timeline playback controls">
                         <ScrubberBar
                             playing={hud.playing}
@@ -175,7 +189,7 @@ export default function MapShell() {
                     </section>
                 </div>
 
-                <div className="uf-left-stack">
+                <div className="uf-left-stack" data-uf-id="hud-controls">
                     <nav aria-label="Playback and layer controls">
                         <CommandStack
                             playing={hud.playing}
@@ -194,7 +208,7 @@ export default function MapShell() {
                     </nav>
                 </div>
 
-                <div className="uf-right-stack">
+                <div className="uf-right-stack" data-uf-id="hud-stats">
                     <aside role="complementary" aria-label="Network stats and performance">
                         <StatsCard
                             activeStations={mock.stats.activeStations}

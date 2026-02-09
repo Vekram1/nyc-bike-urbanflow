@@ -61,6 +61,13 @@ export default function MapView(props: Props) {
     useEffect(() => {
         activeMapViewCount += 1;
         console.info("[MapView] mount", { activeMapViewCount });
+        if (typeof window !== "undefined") {
+            const current = (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E ?? {};
+            (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E = {
+                ...current,
+                mapViewMountCount: activeMapViewCount,
+            };
+        }
 
         if (activeMapViewCount > 1) {
             console.error("[MapView] mount_once_invariant_violation", {
@@ -73,6 +80,13 @@ export default function MapView(props: Props) {
         return () => {
             activeMapViewCount = Math.max(0, activeMapViewCount - 1);
             console.info("[MapView] unmount", { activeMapViewCount });
+            if (typeof window !== "undefined") {
+                const current = (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E ?? {};
+                (window as { __UF_E2E?: Record<string, unknown> }).__UF_E2E = {
+                    ...current,
+                    mapViewMountCount: activeMapViewCount,
+                };
+            }
         };
     }, []);
 

@@ -115,6 +115,7 @@ export default function StationDrawer(props: {
     return (
         <div
             className="uf-drawer"
+            data-uf-id="station-drawer"
             role="dialog"
             aria-labelledby={titleId}
             aria-describedby={`${descId} ${tierId}`}
@@ -148,6 +149,7 @@ export default function StationDrawer(props: {
                         onClick={onLoadTier2}
                         disabled={tier2.status === "loading"}
                         aria-label="Load Tier2 details"
+                        data-uf-id="drawer-tier2-button"
                     >
                         {tier2.status === "loading" ? "Loading details..." : "Details (Tier2)"}
                     </button>
@@ -166,6 +168,7 @@ export default function StationDrawer(props: {
                     style={primaryBtnStyle}
                     onClick={onClose}
                     aria-label="Close station details"
+                    data-uf-id="drawer-close-button"
                 >
                     Close
                 </button>

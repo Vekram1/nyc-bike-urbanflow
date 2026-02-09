@@ -76,3 +76,21 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `MapShell`: explicit Tier1 drawer lifecycle logs:
   - `tier1_drawer_opened`
   - `tier1_drawer_closed`
+- E2E runtime snapshot for browser-driven checks:
+  - `window.__UF_E2E.mapShellMounted`
+  - `window.__UF_E2E.mapViewMountCount`
+  - `window.__UF_E2E.inspectOpen`
+  - `window.__UF_E2E.selectedStationId`
+  - `window.__UF_E2E.timelineBucket`
+  - `window.__UF_E2E.compareBucket`
+  - `window.__UF_E2E.tileRequestKey`
+- Stable selector hooks for browser tests:
+  - `data-uf-id="app-root"`
+  - `data-uf-id="map-shell"`
+  - `data-uf-id="hud-clock"`
+  - `data-uf-id="hud-timeline"`
+  - `data-uf-id="hud-controls"`
+  - `data-uf-id="hud-stats"`
+  - `data-uf-id="station-drawer"`
+  - `data-uf-id="drawer-tier2-button"`
+  - `data-uf-id="drawer-close-button"`
