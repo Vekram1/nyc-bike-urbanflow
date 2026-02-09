@@ -94,6 +94,9 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.tileRequestKey`
   - `window.__UF_E2E.tileRequestKeyHistory` (bounded last 40 entries)
   - `window.__UF_E2E.invariantViolations` (bounded last 20 entries)
+  - `window.__UF_E2E.invariantViolationCount`
+  - `window.__UF_E2E.lastInvariantViolation`
+  - `window.__UF_E2E.lastInvariantViolationAt`
   - `window.__UF_E2E.inspectOpenCount`
   - `window.__UF_E2E.inspectCloseCount`
   - `window.__UF_E2E.inspectCloseReasons` (`drawer_close_button`, `escape_key`)

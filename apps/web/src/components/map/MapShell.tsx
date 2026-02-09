@@ -26,6 +26,9 @@ type UfE2EState = {
     tileRequestKey?: string;
     tileRequestKeyHistory?: string[];
     invariantViolations?: string[];
+    invariantViolationCount?: number;
+    lastInvariantViolation?: string;
+    lastInvariantViolationAt?: string;
     inspectOpenCount?: number;
     inspectCloseCount?: number;
     inspectCloseReasons?: Record<string, number>;
@@ -241,6 +244,10 @@ export default function MapShell() {
             compareBucket,
             tileRequestKey,
             tileRequestKeyHistory: [...(current.tileRequestKeyHistory ?? []), tileRequestKey].slice(-40),
+            invariantViolations: current.invariantViolations ?? [],
+            invariantViolationCount: current.invariantViolationCount ?? 0,
+            lastInvariantViolation: current.lastInvariantViolation ?? "",
+            lastInvariantViolationAt: current.lastInvariantViolationAt ?? "",
             inspectOpenCount: current.inspectOpenCount ?? 0,
             inspectCloseCount: current.inspectCloseCount ?? 0,
             inspectCloseReasons: current.inspectCloseReasons ?? {},
@@ -295,6 +302,9 @@ export default function MapShell() {
                 ...(current.invariantViolations ?? []),
                 "inspect_tile_key_mutated",
             ].slice(-20),
+            invariantViolationCount: (current.invariantViolationCount ?? 0) + 1,
+            lastInvariantViolation: "inspect_tile_key_mutated",
+            lastInvariantViolationAt: new Date().toISOString(),
         }));
     }, [compareBucket, inspectOpen, selected?.station_id, tileRequestKey, timelineBucket]);
 
