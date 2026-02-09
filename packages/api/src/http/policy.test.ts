@@ -595,4 +595,58 @@ describe("createPolicyRouteHandler", () => {
     const mismatchSystemBody = await mismatchSystem.json();
     expect(mismatchSystemBody.error.code).toBe("system_id_mismatch");
   });
+
+  it("returns 403 for revoked sv token on run and moves routes", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return { ok: false as const, reason: "token_revoked" };
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          throw new Error("not used");
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const runRes = await handler(
+      new Request("https://example.test/api/policy/run?v=1&sv=revoked&policy_version=rebal.greedy.v1&T_bucket=1738872000")
+    );
+    expect(runRes.status).toBe(403);
+    expect(runRes.headers.get("Cache-Control")).toBe("no-store");
+    const runBody = await runRes.json();
+    expect(runBody.error.code).toBe("token_revoked");
+
+    const movesRes = await handler(
+      new Request(
+        "https://example.test/api/policy/moves?v=1&sv=revoked&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(movesRes.status).toBe(403);
+    expect(movesRes.headers.get("Cache-Control")).toBe("no-store");
+    const movesBody = await movesRes.json();
+    expect(movesBody.error.code).toBe("token_revoked");
+  });
 });
