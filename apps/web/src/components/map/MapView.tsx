@@ -58,6 +58,8 @@ type UfE2EState = {
     mapStationPickCount?: number;
     mapClickMissCount?: number;
     mapLastPickedStationId?: string;
+    mapLastPickedAt?: string;
+    mapLastClickMissAt?: string;
     mapFeatureStateSetCount?: number;
     mapFeatureStateClearCount?: number;
     mapFeatureStateErrorCount?: number;
@@ -112,6 +114,8 @@ export default function MapView(props: Props) {
             mapStationPickCount: current.mapStationPickCount ?? 0,
             mapClickMissCount: current.mapClickMissCount ?? 0,
             mapLastPickedStationId: current.mapLastPickedStationId ?? "",
+            mapLastPickedAt: current.mapLastPickedAt ?? "",
+            mapLastClickMissAt: current.mapLastClickMissAt ?? "",
             mapFeatureStateSetCount: current.mapFeatureStateSetCount ?? 0,
             mapFeatureStateClearCount: current.mapFeatureStateClearCount ?? 0,
             mapFeatureStateErrorCount: current.mapFeatureStateErrorCount ?? 0,
@@ -383,6 +387,7 @@ export default function MapView(props: Props) {
                     updateUfE2E((current) => ({
                         ...current,
                         mapClickMissCount: (current.mapClickMissCount ?? 0) + 1,
+                        mapLastClickMissAt: new Date().toISOString(),
                     }));
                     return;
                 }
@@ -395,6 +400,7 @@ export default function MapView(props: Props) {
                     ...current,
                     mapStationPickCount: (current.mapStationPickCount ?? 0) + 1,
                     mapLastPickedStationId: station_id,
+                    mapLastPickedAt: new Date().toISOString(),
                 }));
                 // IMPORTANT: Mapbox props may be strings
                 onStationPick({

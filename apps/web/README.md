@@ -145,6 +145,8 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.mapStationPickCount`
   - `window.__UF_E2E.mapClickMissCount`
   - `window.__UF_E2E.mapLastPickedStationId`
+  - `window.__UF_E2E.mapLastPickedAt`
+  - `window.__UF_E2E.mapLastClickMissAt`
   - `window.__UF_E2E.mapFeatureStateSetCount`
   - `window.__UF_E2E.mapFeatureStateClearCount`
   - `window.__UF_E2E.mapFeatureStateErrorCount`
