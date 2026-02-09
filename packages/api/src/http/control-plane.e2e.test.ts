@@ -1103,6 +1103,26 @@ describe("control-plane e2e", () => {
     expect(revokedSvRes.headers.get("Cache-Control")).toBe("no-store");
     const revokedSvBody = await revokedSvRes.json();
     expect(revokedSvBody.error.code).toBe("token_revoked");
+
+    const expiredMint = await tokenService.mint({
+      systemId: "citibike-nyc",
+      viewId: 1,
+      viewSpecSha256: "spec-hash",
+      ttlSeconds: -120,
+    });
+    expect(expiredMint.ok).toBe(true);
+    if (!expiredMint.ok) {
+      throw new Error("expected expired token mint to succeed");
+    }
+    const expiredSvRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(expiredMint.token)}&T_bucket=1738872000&range=6h&severity_version=sev.v1&tile_schema=tile.v1`
+      )
+    );
+    expect(expiredSvRes.status).toBe(401);
+    expect(expiredSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const expiredSvBody = await expiredSvRes.json();
+    expect(expiredSvBody.error.code).toBe("token_expired");
   });
 
   it("serves station detail and series endpoints with sv-bound params", async () => {
@@ -1468,6 +1488,24 @@ describe("control-plane e2e", () => {
     expect(revokedSvRes.headers.get("Cache-Control")).toBe("no-store");
     const revokedSvBody = await revokedSvRes.json();
     expect(revokedSvBody.error.code).toBe("token_revoked");
+
+    const expiredMint = await tokenService.mint({
+      systemId: "citibike-nyc",
+      viewId: 1,
+      viewSpecSha256: "spec-hash",
+      ttlSeconds: -120,
+    });
+    expect(expiredMint.ok).toBe(true);
+    if (!expiredMint.ok) {
+      throw new Error("expected expired token mint to succeed");
+    }
+    const expiredSvRes = await handler(
+      new Request(`https://example.test/api/stations/STA-001?sv=${encodeURIComponent(expiredMint.token)}`)
+    );
+    expect(expiredSvRes.status).toBe(401);
+    expect(expiredSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const expiredSvBody = await expiredSvRes.json();
+    expect(expiredSvBody.error.code).toBe("token_expired");
   });
 
   it("rejects unknown query params on admin endpoints with 400 + no-store", async () => {
