@@ -986,6 +986,16 @@ describe("control-plane e2e", () => {
     const invalidSeverityBody = await invalidSeverityRes.json();
     expect(invalidSeverityBody.error.code).toBe("param_not_allowlisted");
 
+    const invalidTileSchemaRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(sv)}&T_bucket=1738872000&range=6h&severity_version=sev.v1&tile_schema=tile.v999`
+      )
+    );
+    expect(invalidTileSchemaRes.status).toBe(400);
+    expect(invalidTileSchemaRes.headers.get("Cache-Control")).toBe("no-store");
+    const invalidTileSchemaBody = await invalidTileSchemaRes.json();
+    expect(invalidTileSchemaBody.error.code).toBe("param_not_allowlisted");
+
     const invalidBucketRes = await handler(
       new Request(
         `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(sv)}&T_bucket=not-an-int&range=6h&severity_version=sev.v1&tile_schema=tile.v1`
