@@ -606,3 +606,53 @@ test("drawer close button records drawer_close_button reason telemetry", async (
             drawerReasonCount: beforeReasonCount + 1,
         });
 });
+
+test("playback hotkeys are ignored while input has focus", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return Boolean(typeof state.timelineBucket === "number");
+        })
+        .toBe(true);
+
+    const before = await readState(page);
+    const beforePlaying = Boolean(before.playing);
+    const beforeBucket = before.timelineBucket ?? -1;
+    const beforeIgnored = before.hotkeyIgnoredCount ?? 0;
+    const beforeHandled = before.hotkeyHandledCount ?? 0;
+
+    await page.evaluate(() => {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.setAttribute("data-uf-id", "e2e-hotkey-input");
+        input.style.position = "fixed";
+        input.style.top = "8px";
+        input.style.left = "8px";
+        input.style.zIndex = "9999";
+        document.body.appendChild(input);
+        input.focus();
+    });
+
+    await page.keyboard.press("Space");
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(100);
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                playing: Boolean(state.playing),
+                timelineBucket: state.timelineBucket ?? -1,
+                ignored: state.hotkeyIgnoredCount ?? 0,
+                handled: state.hotkeyHandledCount ?? 0,
+            };
+        })
+        .toEqual({
+            playing: beforePlaying,
+            timelineBucket: beforeBucket,
+            ignored: beforeIgnored + 2,
+            handled: beforeHandled,
+        });
+});
