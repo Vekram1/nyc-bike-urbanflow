@@ -43,11 +43,16 @@ type UfE2EState = {
     mapViewMountCount?: number;
     mapRefreshAttempts?: number;
     mapRefreshSuccess?: number;
+    mapRefreshFailureCount?: number;
     mapRefreshSkippedFrozen?: number;
     mapRefreshSkippedNoMap?: number;
     mapRefreshSkippedNoSource?: number;
     mapRefreshBadPayload?: number;
     mapRefreshLastFeatureCount?: number;
+    mapRefreshLastAttemptTs?: string;
+    mapRefreshLastSuccessTs?: string;
+    mapRefreshLastSkipReason?: string;
+    mapRefreshLastErrorMessage?: string;
     mapStationPickCount?: number;
     mapClickMissCount?: number;
     mapLastPickedStationId?: string;
@@ -90,11 +95,16 @@ export default function MapView(props: Props) {
             mapViewMountCount: activeMapViewCount,
             mapRefreshAttempts: current.mapRefreshAttempts ?? 0,
             mapRefreshSuccess: current.mapRefreshSuccess ?? 0,
+            mapRefreshFailureCount: current.mapRefreshFailureCount ?? 0,
             mapRefreshSkippedFrozen: current.mapRefreshSkippedFrozen ?? 0,
             mapRefreshSkippedNoMap: current.mapRefreshSkippedNoMap ?? 0,
             mapRefreshSkippedNoSource: current.mapRefreshSkippedNoSource ?? 0,
             mapRefreshBadPayload: current.mapRefreshBadPayload ?? 0,
             mapRefreshLastFeatureCount: current.mapRefreshLastFeatureCount ?? 0,
+            mapRefreshLastAttemptTs: current.mapRefreshLastAttemptTs ?? "",
+            mapRefreshLastSuccessTs: current.mapRefreshLastSuccessTs ?? "",
+            mapRefreshLastSkipReason: current.mapRefreshLastSkipReason ?? "",
+            mapRefreshLastErrorMessage: current.mapRefreshLastErrorMessage ?? "",
             mapStationPickCount: current.mapStationPickCount ?? 0,
             mapClickMissCount: current.mapClickMissCount ?? 0,
             mapLastPickedStationId: current.mapLastPickedStationId ?? "",
@@ -193,11 +203,13 @@ export default function MapView(props: Props) {
         updateUfE2E((current) => ({
             ...current,
             mapRefreshAttempts: (current.mapRefreshAttempts ?? 0) + 1,
+            mapRefreshLastAttemptTs: new Date().toISOString(),
         }));
         if (freeze) {
             updateUfE2E((current) => ({
                 ...current,
                 mapRefreshSkippedFrozen: (current.mapRefreshSkippedFrozen ?? 0) + 1,
+                mapRefreshLastSkipReason: "freeze",
             }));
             return; // <— Inspect lock: no updates while drawer is open
         }
@@ -207,6 +219,7 @@ export default function MapView(props: Props) {
             updateUfE2E((current) => ({
                 ...current,
                 mapRefreshSkippedNoMap: (current.mapRefreshSkippedNoMap ?? 0) + 1,
+                mapRefreshLastSkipReason: "no_map",
             }));
             return;
         }
@@ -216,32 +229,48 @@ export default function MapView(props: Props) {
             updateUfE2E((current) => ({
                 ...current,
                 mapRefreshSkippedNoSource: (current.mapRefreshSkippedNoSource ?? 0) + 1,
+                mapRefreshLastSkipReason: "no_source",
             }));
             return;
         }
 
-        const res = await fetch("/api/gbfs/stations", { cache: "no-store" });
-        const json = await res.json();
+        try {
+            const res = await fetch("/api/gbfs/stations", { cache: "no-store" });
+            const json = await res.json();
 
-        if (json?.type === "FeatureCollection") {
-            (src as SourceWithSetData).setData(json);
-            const featureCount = Array.isArray(json.features) ? json.features.length : 0;
+            if (json?.type === "FeatureCollection") {
+                (src as SourceWithSetData).setData(json);
+                const featureCount = Array.isArray(json.features) ? json.features.length : 0;
+                updateUfE2E((current) => ({
+                    ...current,
+                    mapRefreshSuccess: (current.mapRefreshSuccess ?? 0) + 1,
+                    mapRefreshLastFeatureCount: featureCount,
+                    mapRefreshLastSuccessTs: new Date().toISOString(),
+                    mapRefreshLastSkipReason: "",
+                    mapRefreshLastErrorMessage: "",
+                }));
+                console.debug("[MapView] source_updated", {
+                    sourceId: SOURCE_ID,
+                    featureCount,
+                    freeze: !!freeze,
+                });
+            } else {
+                updateUfE2E((current) => ({
+                    ...current,
+                    mapRefreshBadPayload: (current.mapRefreshBadPayload ?? 0) + 1,
+                    mapRefreshFailureCount: (current.mapRefreshFailureCount ?? 0) + 1,
+                    mapRefreshLastErrorMessage: "bad_payload",
+                }));
+                console.warn("Unexpected GBFS response:", json);
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "unknown_error";
             updateUfE2E((current) => ({
                 ...current,
-                mapRefreshSuccess: (current.mapRefreshSuccess ?? 0) + 1,
-                mapRefreshLastFeatureCount: featureCount,
+                mapRefreshFailureCount: (current.mapRefreshFailureCount ?? 0) + 1,
+                mapRefreshLastErrorMessage: message,
             }));
-            console.debug("[MapView] source_updated", {
-                sourceId: SOURCE_ID,
-                featureCount,
-                freeze: !!freeze,
-            });
-        } else {
-            updateUfE2E((current) => ({
-                ...current,
-                mapRefreshBadPayload: (current.mapRefreshBadPayload ?? 0) + 1,
-            }));
-            console.warn("Unexpected GBFS response:", json);
+            console.error("[MapView] refresh_failed", { error: message });
         }
     }, [freeze]);
 

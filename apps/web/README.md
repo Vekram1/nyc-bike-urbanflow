@@ -116,11 +116,16 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.blockedActions` (per-action counters while inspect lock blocks controls)
   - `window.__UF_E2E.mapRefreshAttempts`
   - `window.__UF_E2E.mapRefreshSuccess`
+  - `window.__UF_E2E.mapRefreshFailureCount`
   - `window.__UF_E2E.mapRefreshSkippedFrozen`
   - `window.__UF_E2E.mapRefreshSkippedNoMap`
   - `window.__UF_E2E.mapRefreshSkippedNoSource`
   - `window.__UF_E2E.mapRefreshBadPayload`
   - `window.__UF_E2E.mapRefreshLastFeatureCount`
+  - `window.__UF_E2E.mapRefreshLastAttemptTs`
+  - `window.__UF_E2E.mapRefreshLastSuccessTs`
+  - `window.__UF_E2E.mapRefreshLastSkipReason`
+  - `window.__UF_E2E.mapRefreshLastErrorMessage`
   - `window.__UF_E2E.mapStationPickCount`
   - `window.__UF_E2E.mapClickMissCount`
   - `window.__UF_E2E.mapLastPickedStationId`
