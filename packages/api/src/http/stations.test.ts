@@ -251,4 +251,43 @@ describe("createStationsRouteHandler", () => {
     const body = await res.json();
     expect(body.error.code).toBe("unknown_param");
   });
+
+  it("returns 405 for non-GET detail and series routes", async () => {
+    const handler = createStationsRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      stationsStore: {
+        async getStationDetail() {
+          return null;
+        },
+        async getStationSeries() {
+          return [];
+        },
+      },
+      default_bucket_seconds: 300,
+      max_series_window_s: 86400,
+      max_series_points: 288,
+    });
+
+    const detailRes = await handler(
+      new Request("https://example.test/api/stations/STA-001?sv=abc", { method: "POST" })
+    );
+    expect(detailRes.status).toBe(405);
+    expect(detailRes.headers.get("Cache-Control")).toBe("no-store");
+    const detailBody = await detailRes.json();
+    expect(detailBody.error.code).toBe("method_not_allowed");
+
+    const seriesRes = await handler(
+      new Request("https://example.test/api/stations/STA-001/series?sv=abc&from=1738872000&to=1738875600&bucket=300", {
+        method: "POST",
+      })
+    );
+    expect(seriesRes.status).toBe(405);
+    expect(seriesRes.headers.get("Cache-Control")).toBe("no-store");
+    const seriesBody = await seriesRes.json();
+    expect(seriesBody.error.code).toBe("method_not_allowed");
+  });
 });
