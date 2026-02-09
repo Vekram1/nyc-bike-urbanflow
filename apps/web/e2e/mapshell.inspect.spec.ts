@@ -656,3 +656,41 @@ test("playback hotkeys are ignored while input has focus", async ({ page }) => {
             handled: beforeHandled,
         });
 });
+
+test("layer toggles update __UF_E2E layer flags deterministically", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                severity: Boolean(state.layerSeverityEnabled),
+                capacity: Boolean(state.layerCapacityEnabled),
+                labels: Boolean(state.layerLabelsEnabled),
+            };
+        })
+        .toEqual({
+            severity: true,
+            capacity: true,
+            labels: false,
+        });
+
+    await page.locator('[data-uf-id="layer-toggle-severity"]').click();
+    await page.locator('[data-uf-id="layer-toggle-capacity"]').click();
+    await page.locator('[data-uf-id="layer-toggle-labels"]').click();
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                severity: Boolean(state.layerSeverityEnabled),
+                capacity: Boolean(state.layerCapacityEnabled),
+                labels: Boolean(state.layerLabelsEnabled),
+            };
+        })
+        .toEqual({
+            severity: false,
+            capacity: false,
+            labels: true,
+        });
+});
