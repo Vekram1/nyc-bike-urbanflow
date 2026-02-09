@@ -191,6 +191,9 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `data-uf-id="station-drawer"`
 - `data-uf-station-key="<station_key>"`
 - `data-uf-tier2-status="idle|loading|success|error"`
+- `data-uf-tier2-in-flight="true|false"`
+- `data-uf-tier2-last-http-status="<status|empty>"`
+- `data-uf-tier2-last-error="<message|empty>"`
 - `data-uf-tier2-t-bucket="<epoch_seconds>"`
 - `data-uf-id="drawer-tier2-button"`
 - `data-uf-id="drawer-close-button"`

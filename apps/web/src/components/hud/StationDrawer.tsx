@@ -56,6 +56,8 @@ export default function StationDrawer(props: {
         status: "idle",
         message: "Tier2 details are optional and loaded on demand.",
     });
+    const [tier2LastHttpStatusText, setTier2LastHttpStatusText] = useState("");
+    const [tier2LastErrorText, setTier2LastErrorText] = useState("");
 
     const stationId = station?.station_id ?? null;
     const tier2BucketEpochS = deriveTier2BucketEpochS(station);
@@ -91,6 +93,8 @@ export default function StationDrawer(props: {
             tier1OpenedCount: (current.tier1OpenedCount ?? 0) + 1,
             tier2InFlight: false,
         }));
+        setTier2LastHttpStatusText("");
+        setTier2LastErrorText("");
         console.info("[StationDrawer] tier1_opened", {
             stationId,
             source: "tile_payload",
@@ -122,6 +126,7 @@ export default function StationDrawer(props: {
             status: "loading",
             message: `Loading Tier2 details (debounced ${TIER2_DEBOUNCE_MS}ms)...`,
         });
+        setTier2LastErrorText("");
         updateUfE2E((current) => ({
             ...current,
             tier2RequestedCount: (current.tier2RequestedCount ?? 0) + 1,
@@ -147,6 +152,7 @@ export default function StationDrawer(props: {
             }));
             const ctrl = new AbortController();
             abortRef.current = ctrl;
+            let lastHttpStatus: number | null = null;
             try {
                 const params = new URLSearchParams({
                     v: "1",
@@ -158,6 +164,7 @@ export default function StationDrawer(props: {
                     `/api/stations/${encodeURIComponent(stationId)}/drawer?${params.toString()}`,
                     { cache: "no-store", signal: ctrl.signal }
                 );
+                lastHttpStatus = res.status;
                 const text = await res.text();
                 const bundleBytes = new TextEncoder().encode(text).length;
                 const payload = text.length > 0 ? JSON.parse(text) : null;
@@ -182,6 +189,8 @@ export default function StationDrawer(props: {
                     tier2LastErrorMessage: "",
                     tier2LastSuccessAt: new Date().toISOString(),
                 }));
+                setTier2LastHttpStatusText(String(res.status));
+                setTier2LastErrorText("");
                 setTier2({
                     status: "success",
                     message: "Tier2 details loaded.",
@@ -199,12 +208,14 @@ export default function StationDrawer(props: {
                 updateUfE2E((current) => ({
                     ...current,
                     tier2ErrorCount: (current.tier2ErrorCount ?? 0) + 1,
-                    tier2LastHttpStatus: null,
+                    tier2LastHttpStatus: lastHttpStatus,
                     tier2LastStationKey: stationId,
                     tier2InFlight: false,
                     tier2LastErrorMessage: message,
                     tier2LastErrorAt: new Date().toISOString(),
                 }));
+                setTier2LastHttpStatusText(lastHttpStatus == null ? "" : String(lastHttpStatus));
+                setTier2LastErrorText(message);
                 setTier2({
                     status: "error",
                     message: `Tier2 load failed: ${message}`,
@@ -221,6 +232,9 @@ export default function StationDrawer(props: {
             data-uf-id="station-drawer"
             data-uf-station-key={station.station_id}
             data-uf-tier2-status={tier2.status}
+            data-uf-tier2-in-flight={tier2.status === "loading" ? "true" : "false"}
+            data-uf-tier2-last-http-status={tier2LastHttpStatusText}
+            data-uf-tier2-last-error={tier2LastErrorText}
             role="dialog"
             aria-labelledby={titleId}
             aria-describedby={`${descId} ${tierId}`}
