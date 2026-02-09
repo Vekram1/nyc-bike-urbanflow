@@ -28,6 +28,9 @@ type UfE2EState = {
     tier2LastRequestedBucket?: number;
     tier2LastRequestedRange?: string;
     tier2LastErrorMessage?: string;
+    tier2UiStatus?: Tier2State["status"];
+    tier2UiMessage?: string;
+    tier2UiBundleBytes?: number;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -64,6 +67,15 @@ export default function StationDrawer(props: {
     const titleId = `uf-drawer-title-${stationId ?? "none"}`;
     const descId = `uf-drawer-desc-${stationId ?? "none"}`;
     const tierId = `uf-drawer-tier-${stationId ?? "none"}`;
+
+    useEffect(() => {
+        updateUfE2E((current) => ({
+            ...current,
+            tier2UiStatus: tier2.status,
+            tier2UiMessage: tier2.message,
+            tier2UiBundleBytes: tier2.status === "success" ? tier2.bundleBytes : 0,
+        }));
+    }, [tier2]);
 
     useEffect(() => {
         if (!stationId) return;
