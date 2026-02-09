@@ -1240,6 +1240,16 @@ describe("control-plane e2e", () => {
     const tooManyPointsBody = await tooManyPointsRes.json();
     expect(tooManyPointsBody.error.code).toBe("too_many_points");
 
+    const invalidBucketRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(sv)}&from=1738872000&to=1738875600&bucket=12`
+      )
+    );
+    expect(invalidBucketRes.status).toBe(400);
+    expect(invalidBucketRes.headers.get("Cache-Control")).toBe("no-store");
+    const invalidBucketBody = await invalidBucketRes.json();
+    expect(invalidBucketBody.error.code).toBe("invalid_bucket");
+
     const invalidDetailKeyRes = await handler(
       new Request(`https://example.test/api/stations/%20bad?sv=${encodeURIComponent(sv)}`)
     );
