@@ -49,6 +49,41 @@ describe("createCompositeTilesRouteHandler", () => {
     expect(body.error.code).toBe("unknown_param");
   });
 
+  it("returns 400 for unsupported version", async () => {
+    const handler = createCompositeTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchCompositeTile() {
+          throw new Error("not used");
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/composite/12/1200/1530.mvt?v=2&sv=abc&tile_schema=tile.v1&severity_version=sev.v1&layers=inv,sev&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("unsupported_version");
+  });
+
   it("returns 400 for invalid tile coordinates", async () => {
     const handler = createCompositeTilesRouteHandler({
       tokens: {

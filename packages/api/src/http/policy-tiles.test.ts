@@ -46,6 +46,41 @@ describe("createPolicyMovesTilesRouteHandler", () => {
     expect(body.error.code).toBe("unknown_param");
   });
 
+  it("returns 400 for unsupported version", async () => {
+    const handler = createPolicyMovesTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchPolicyMovesTile() {
+          throw new Error("not used");
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/policy_moves/12/1200/1530.mvt?v=2&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("unsupported_version");
+  });
+
   it("returns 200 and mvt headers on success", async () => {
     const handler = createPolicyMovesTilesRouteHandler({
       tokens: {
