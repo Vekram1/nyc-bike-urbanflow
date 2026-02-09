@@ -96,6 +96,14 @@ describe("createControlPlaneHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.recommended_live_sv).toBe("sv1.kid.payload.sig");
+
+    const unknownParamRes = await handler(
+      new Request("https://example.test/api/time?system_id=citibike-nyc&foo=bar")
+    );
+    expect(unknownParamRes.status).toBe(400);
+    expect(unknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const unknownParamBody = await unknownParamRes.json();
+    expect(unknownParamBody.error.code).toBe("unknown_param");
   });
 
   it("dispatches /api/config", async () => {
@@ -104,6 +112,12 @@ describe("createControlPlaneHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.bucket_size_seconds).toBe(300);
+
+    const unknownParamRes = await handler(new Request("https://example.test/api/config?v=1&foo=bar"));
+    expect(unknownParamRes.status).toBe(400);
+    expect(unknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const unknownParamBody = await unknownParamRes.json();
+    expect(unknownParamBody.error.code).toBe("unknown_param");
   });
 
   it("returns 404 for unknown paths", async () => {
@@ -118,6 +132,22 @@ describe("createControlPlaneHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.bucket_size_seconds).toBe(300);
+
+    const unknownTimelineRes = await handler(
+      new Request("https://example.test/api/timeline?v=1&sv=abc&foo=bar")
+    );
+    expect(unknownTimelineRes.status).toBe(400);
+    expect(unknownTimelineRes.headers.get("Cache-Control")).toBe("no-store");
+    const unknownTimelineBody = await unknownTimelineRes.json();
+    expect(unknownTimelineBody.error.code).toBe("unknown_param");
+
+    const unknownDensityRes = await handler(
+      new Request("https://example.test/api/timeline/density?v=1&sv=abc&bucket=300&foo=bar")
+    );
+    expect(unknownDensityRes.status).toBe(400);
+    expect(unknownDensityRes.headers.get("Cache-Control")).toBe("no-store");
+    const unknownDensityBody = await unknownDensityRes.json();
+    expect(unknownDensityBody.error.code).toBe("unknown_param");
   });
 
   it("dispatches /api/search", async () => {
@@ -128,6 +158,14 @@ describe("createControlPlaneHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.results)).toBe(true);
+
+    const unknownParamRes = await handler(
+      new Request("https://example.test/api/search?system_id=citibike-nyc&q=52&foo=bar")
+    );
+    expect(unknownParamRes.status).toBe(400);
+    expect(unknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const unknownParamBody = await unknownParamRes.json();
+    expect(unknownParamBody.error.code).toBe("unknown_param");
   });
 
   it("dispatches /api/pipeline_state when admin deps are configured", async () => {
