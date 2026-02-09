@@ -112,6 +112,8 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.hotkeyLastIgnoredAt`
   - `window.__UF_E2E.inspectAnchorTileRequestKey`
   - `window.__UF_E2E.inspectSessionId`
+  - `window.__UF_E2E.inspectSessionStartedAt`
+  - `window.__UF_E2E.inspectSessionEndedAt`
   - `window.__UF_E2E.inspectAnchorSetAt`
   - `window.__UF_E2E.inspectAnchorClearedAt`
   - `window.__UF_E2E.controlsDisabled`

@@ -44,6 +44,8 @@ type UfE2EState = {
     hotkeyLastIgnoredAt?: string;
     inspectAnchorTileRequestKey?: string;
     inspectSessionId?: number;
+    inspectSessionStartedAt?: string;
+    inspectSessionEndedAt?: string;
     inspectAnchorSetAt?: string;
     inspectAnchorClearedAt?: string;
     controlsDisabled?: boolean;
@@ -98,6 +100,7 @@ export default function MapShell() {
                 ...current,
                 inspectOpenCount: (current.inspectOpenCount ?? 0) + 1,
                 inspectOpenedAt: new Date().toISOString(),
+                inspectSessionStartedAt: new Date().toISOString(),
             }));
         }
         setSelected(station);
@@ -116,6 +119,7 @@ export default function MapShell() {
             },
             inspectClosedAt: new Date().toISOString(),
             inspectLastCloseReason: reason,
+            inspectSessionEndedAt: new Date().toISOString(),
         }));
     }, [hud, selected]);
 
@@ -279,6 +283,8 @@ export default function MapShell() {
                 hotkeyLastIgnoredAt: current.hotkeyLastIgnoredAt ?? "",
                 inspectAnchorTileRequestKey: current.inspectAnchorTileRequestKey ?? "",
                 inspectSessionId: current.inspectSessionId ?? 0,
+                inspectSessionStartedAt: current.inspectSessionStartedAt ?? "",
+                inspectSessionEndedAt: current.inspectSessionEndedAt ?? "",
                 inspectAnchorSetAt: current.inspectAnchorSetAt ?? "",
                 inspectAnchorClearedAt: current.inspectAnchorClearedAt ?? "",
                 controlsDisabled: hud.inspectLocked,
