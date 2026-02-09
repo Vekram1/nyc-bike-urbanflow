@@ -386,6 +386,13 @@ describe("control-plane e2e", () => {
     );
     expect(timelineRes.status).toBe(200);
     expect(timelineRes.headers.get("Cache-Control")).toBe("no-store");
+    const timelineUnknownParamRes = await handler(
+      new Request(`https://example.test/api/timeline?v=1&sv=${encodeURIComponent(sv)}&foo=bar`)
+    );
+    expect(timelineUnknownParamRes.status).toBe(400);
+    expect(timelineUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const timelineUnknownParamBody = await timelineUnknownParamRes.json();
+    expect(timelineUnknownParamBody.error.code).toBe("unknown_param");
 
     const densityRes = await handler(
       new Request(`https://example.test/api/timeline/density?v=1&bucket=300&sv=${encodeURIComponent(sv)}`)
@@ -393,6 +400,13 @@ describe("control-plane e2e", () => {
     expect(densityRes.status).toBe(200);
     const densityBody = await densityRes.json();
     expect(densityBody.points.length).toBe(1);
+    const densityUnknownParamRes = await handler(
+      new Request(`https://example.test/api/timeline/density?v=1&bucket=300&sv=${encodeURIComponent(sv)}&foo=bar`)
+    );
+    expect(densityUnknownParamRes.status).toBe(400);
+    expect(densityUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const densityUnknownParamBody = await densityUnknownParamRes.json();
+    expect(densityUnknownParamBody.error.code).toBe("unknown_param");
 
     const searchRes = await handler(
       new Request("https://example.test/api/search?system_id=citibike-nyc&q=52")

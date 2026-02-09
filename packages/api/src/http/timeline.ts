@@ -38,6 +38,8 @@ export type TimelineRouteDeps = {
   };
   default_bucket_seconds: number;
 };
+const TIMELINE_ALLOWED_QUERY_PARAMS = new Set(["v", "sv"]);
+const DENSITY_ALLOWED_QUERY_PARAMS = new Set(["v", "sv", "bucket"]);
 
 function json(body: unknown, status: number, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -61,6 +63,15 @@ function parseBucket(value: string | null, fallback: number): number | null {
   return n;
 }
 
+function hasUnknownQueryParam(searchParams: URLSearchParams, allowed: Set<string>): string | null {
+  for (const key of searchParams.keys()) {
+    if (!allowed.has(key)) {
+      return key;
+    }
+  }
+  return null;
+}
+
 export function createTimelineRouteHandler(deps: TimelineRouteDeps): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
     if (request.method !== "GET") {
@@ -71,6 +82,13 @@ export function createTimelineRouteHandler(deps: TimelineRouteDeps): (request: R
     const path = url.pathname;
     if (path !== "/api/timeline" && path !== "/api/timeline/density") {
       return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+    }
+    const unknown = hasUnknownQueryParam(
+      url.searchParams,
+      path === "/api/timeline" ? TIMELINE_ALLOWED_QUERY_PARAMS : DENSITY_ALLOWED_QUERY_PARAMS
+    );
+    if (unknown) {
+      return json({ error: { code: "unknown_param", message: `Unknown query parameter: ${unknown}` } }, 400);
     }
 
     const v = url.searchParams.get("v");

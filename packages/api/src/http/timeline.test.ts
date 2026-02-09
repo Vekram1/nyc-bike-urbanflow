@@ -96,4 +96,62 @@ describe("createTimelineRouteHandler", () => {
     const body = await res.json();
     expect(body.error.code).toBe("invalid_bucket");
   });
+
+  it("returns 400 for unknown query params on /api/timeline", async () => {
+    const handler = createTimelineRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      timelineStore: {
+        async getRange() {
+          return {
+            min_observation_ts: "2026-02-06T00:00:00Z",
+            max_observation_ts: "2026-02-06T18:00:00Z",
+            live_edge_ts: "2026-02-06T18:00:00Z",
+          };
+        },
+        async getDensity() {
+          return [];
+        },
+      },
+      default_bucket_seconds: 300,
+    });
+
+    const res = await handler(new Request("https://example.test/api/timeline?v=1&sv=abc&foo=bar"));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unknown_param");
+  });
+
+  it("returns 400 for unknown query params on /api/timeline/density", async () => {
+    const handler = createTimelineRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      timelineStore: {
+        async getRange() {
+          return {
+            min_observation_ts: "2026-02-06T00:00:00Z",
+            max_observation_ts: "2026-02-06T18:00:00Z",
+            live_edge_ts: "2026-02-06T18:00:00Z",
+          };
+        },
+        async getDensity() {
+          return [];
+        },
+      },
+      default_bucket_seconds: 300,
+    });
+
+    const res = await handler(
+      new Request("https://example.test/api/timeline/density?v=1&sv=abc&bucket=300&foo=bar")
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unknown_param");
+  });
 });
