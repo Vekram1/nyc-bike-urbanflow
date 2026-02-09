@@ -313,6 +313,17 @@ describe("policy e2e via control-plane", () => {
     const invalidRunBody = await invalidRun.json();
     expect(invalidRunBody.error.code).toBe("token_invalid");
 
+    policyTokenFailure = "signature_invalid";
+    const signatureInvalidRun = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(signatureInvalidRun.status).toBe(401);
+    expect(signatureInvalidRun.headers.get("Cache-Control")).toBe("no-store");
+    const signatureInvalidRunBody = await signatureInvalidRun.json();
+    expect(signatureInvalidRunBody.error.code).toBe("signature_invalid");
+
     policyTokenFailure = "token_revoked";
     const revokedMoves = await handler(
       new Request(
@@ -334,6 +345,17 @@ describe("policy e2e via control-plane", () => {
     expect(invalidMoves.headers.get("Cache-Control")).toBe("no-store");
     const invalidMovesBody = await invalidMoves.json();
     expect(invalidMovesBody.error.code).toBe("token_invalid");
+
+    policyTokenFailure = "signature_invalid";
+    const signatureInvalidMoves = await handler(
+      new Request(
+        "https://example.test/api/policy/moves?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000&top_n=1"
+      )
+    );
+    expect(signatureInvalidMoves.status).toBe(401);
+    expect(signatureInvalidMoves.headers.get("Cache-Control")).toBe("no-store");
+    const signatureInvalidMovesBody = await signatureInvalidMoves.json();
+    expect(signatureInvalidMovesBody.error.code).toBe("signature_invalid");
 
     policyTokenFailure = null;
     policyTileTokenFailure = "token_expired";
