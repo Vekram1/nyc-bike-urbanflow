@@ -61,6 +61,12 @@ export function createControlPlaneHandler(deps: ControlPlaneDeps): (request: Req
       }
       return handleStationDrawer(request);
     }
+    if (url.pathname === "/api/stations") {
+      if (!handleStations) {
+        return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+      }
+      return handleStations(request);
+    }
     if (url.pathname.startsWith("/api/stations/")) {
       if (!handleStations) {
         return json({ error: { code: "not_found", message: "Route not found" } }, 404);

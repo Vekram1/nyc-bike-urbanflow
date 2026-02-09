@@ -1,5 +1,5 @@
 import type { SqlExecutor } from "../db/types";
-import type { StationDetail, StationSeriesPoint } from "../http/stations";
+import type { StationDetail, StationSeriesPoint, StationSnapshot } from "../http/stations";
 import type {
   StationDrawerEpisode,
   StationDrawerPointInTime,
@@ -34,6 +34,18 @@ type StationSeriesRow = {
   pressure_delta_docks_5m: number | null;
   pressure_volatility_60m: number | null;
   pressure_rebalancing_suspected: boolean | null;
+};
+
+type StationSnapshotRow = {
+  station_key: string;
+  name: string | null;
+  lat: number | string;
+  lon: number | string;
+  capacity: number | null;
+  bucket_ts: string | null;
+  bikes_available: number | null;
+  docks_available: number | null;
+  bucket_quality: string | null;
 };
 
 type StationDrawerPointRow = {
@@ -208,6 +220,55 @@ export class PgStationsStore {
       pressure_delta_docks_5m: row.pressure_delta_docks_5m ?? undefined,
       pressure_volatility_60m: row.pressure_volatility_60m ?? undefined,
       pressure_rebalancing_suspected: row.pressure_rebalancing_suspected ?? undefined,
+    }));
+  }
+
+  async getStationsSnapshot(args: {
+    system_id: string;
+    view_id: number;
+    t_bucket_epoch_s: number | null;
+    limit: number;
+  }): Promise<StationSnapshot[]> {
+    const rows = await this.db.query<StationSnapshotRow>(
+      `SELECT
+         sc.station_key,
+         sc.name,
+         sc.lat,
+         sc.lon,
+         sc.capacity,
+         ss.bucket_ts::text AS bucket_ts,
+         ss.bikes_available,
+         ss.docks_available,
+         ss.bucket_quality
+       FROM stations_current sc
+       LEFT JOIN LATERAL (
+         SELECT
+           s.bucket_ts,
+           s.bikes_available,
+           s.docks_available,
+           s.bucket_quality
+         FROM station_status_1m s
+         WHERE s.system_id = sc.system_id
+           AND s.station_key = sc.station_key
+           AND ($2::bigint IS NULL OR s.bucket_ts <= TO_TIMESTAMP($2))
+         ORDER BY s.bucket_ts DESC
+         LIMIT 1
+       ) ss ON TRUE
+       WHERE sc.system_id = $1
+       ORDER BY sc.name ASC
+       LIMIT $3`,
+      [args.system_id, args.t_bucket_epoch_s, args.limit]
+    );
+    return rows.rows.map((row) => ({
+      station_key: row.station_key,
+      name: row.name,
+      lat: Number(row.lat),
+      lon: Number(row.lon),
+      capacity: row.capacity,
+      bucket_ts: row.bucket_ts,
+      bikes_available: row.bikes_available,
+      docks_available: row.docks_available,
+      bucket_quality: row.bucket_quality,
     }));
   }
 

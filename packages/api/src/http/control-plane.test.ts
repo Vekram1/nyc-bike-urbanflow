@@ -280,6 +280,21 @@ describe("createControlPlaneHandler", () => {
           },
         } as unknown as import("../sv/service").ServingTokenService,
         stationsStore: {
+          async getStationsSnapshot() {
+            return [
+              {
+                station_key: "STA-001",
+                name: "W 52 St",
+                lat: 40.75,
+                lon: -73.98,
+                capacity: 30,
+                bucket_ts: "2026-02-06T20:00:00Z",
+                bikes_available: 12,
+                docks_available: 18,
+                bucket_quality: "ok",
+              },
+            ];
+          },
           async getStationDetail() {
             return {
               station_key: "STA-001",
@@ -304,6 +319,16 @@ describe("createControlPlaneHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.station_key).toBe("STA-001");
+
+    const snapshotRes = await handler(
+      new Request("https://example.test/api/stations?v=1&sv=abc&T_bucket=1738872000")
+    );
+    expect(snapshotRes.status).toBe(200);
+    expect(snapshotRes.headers.get("Cache-Control")).toBe("no-store");
+    const snapshotBody = await snapshotRes.json();
+    expect(snapshotBody.type).toBe("FeatureCollection");
+    expect(Array.isArray(snapshotBody.features)).toBe(true);
+    expect(snapshotBody.features[0]?.id).toBe("STA-001");
 
     const seriesRes = await handler(
       new Request(

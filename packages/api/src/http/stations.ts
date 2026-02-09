@@ -29,6 +29,18 @@ export type StationSeriesPoint = {
   pressure_rebalancing_suspected?: boolean;
 };
 
+export type StationSnapshot = {
+  station_key: string;
+  name: string | null;
+  lat: number;
+  lon: number;
+  capacity: number | null;
+  bucket_ts: string | null;
+  bikes_available: number | null;
+  docks_available: number | null;
+  bucket_quality: string | null;
+};
+
 export type StationsRouteDeps = {
   tokens: {
     validate: (token: string) => Promise<
@@ -57,6 +69,12 @@ export type StationsRouteDeps = {
       bucket_seconds: number;
       limit: number;
     }) => Promise<StationSeriesPoint[]>;
+    getStationsSnapshot?: (args: {
+      system_id: string;
+      view_id: number;
+      t_bucket_epoch_s: number | null;
+      limit: number;
+    }) => Promise<StationSnapshot[]>;
   };
   default_bucket_seconds: number;
   max_series_window_s: number;
@@ -68,6 +86,7 @@ export type StationsRouteDeps = {
 };
 
 const stationKeyRe = /^[A-Za-z0-9._:-]{1,80}$/;
+const SNAPSHOT_ALLOWED_QUERY_PARAMS = new Set(["v", "sv", "T_bucket", "limit", "system_id"]);
 const DETAIL_ALLOWED_QUERY_PARAMS = new Set(["sv"]);
 const SERIES_ALLOWED_QUERY_PARAMS = new Set(["sv", "bucket", "from", "to", "start", "end"]);
 
@@ -108,6 +127,17 @@ function parseEpochSeconds(value: string | null): number | null {
   return n;
 }
 
+function parseLimit(value: string | null, fallback: number): number | null {
+  if (!value || value.trim().length === 0) {
+    return fallback;
+  }
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 10000) {
+    return null;
+  }
+  return n;
+}
+
 const defaultLogger = {
   info(event: string, details: Record<string, unknown>): void {
     console.info(JSON.stringify({ level: "info", event, ts: new Date().toISOString(), ...details }));
@@ -117,14 +147,17 @@ const defaultLogger = {
   },
 };
 
-function extractStationPath(pathname: string): { station_key: string; is_series: boolean } | null {
+function extractStationPath(pathname: string): { station_key: string; is_series: boolean; is_snapshot: boolean } | null {
+  if (pathname === "/api/stations") {
+    return { station_key: "", is_series: false, is_snapshot: true };
+  }
   const seriesMatch = pathname.match(/^\/api\/stations\/([^/]+)\/series$/);
   if (seriesMatch) {
-    return { station_key: decodeURIComponent(seriesMatch[1] ?? ""), is_series: true };
+    return { station_key: decodeURIComponent(seriesMatch[1] ?? ""), is_series: true, is_snapshot: false };
   }
   const detailMatch = pathname.match(/^\/api\/stations\/([^/]+)$/);
   if (detailMatch) {
-    return { station_key: decodeURIComponent(detailMatch[1] ?? ""), is_series: false };
+    return { station_key: decodeURIComponent(detailMatch[1] ?? ""), is_series: false, is_snapshot: false };
   }
   return null;
 }
@@ -153,10 +186,88 @@ export function createStationsRouteHandler(deps: StationsRouteDeps): (request: R
     }
     const unknown = hasUnknownQueryParam(
       url.searchParams,
-      route.is_series ? SERIES_ALLOWED_QUERY_PARAMS : DETAIL_ALLOWED_QUERY_PARAMS
+      route.is_snapshot
+        ? SNAPSHOT_ALLOWED_QUERY_PARAMS
+        : route.is_series
+          ? SERIES_ALLOWED_QUERY_PARAMS
+          : DETAIL_ALLOWED_QUERY_PARAMS
     );
     if (unknown) {
       return json({ error: { code: "unknown_param", message: `Unknown query parameter: ${unknown}` } }, 400);
+    }
+
+    if (route.is_snapshot) {
+      const sv = await validateSvQuery(
+        deps.tokens as unknown as import("../sv/service").ServingTokenService,
+        url.searchParams,
+        { ctx: { path: url.pathname } }
+      );
+      if (!sv.ok) {
+        return json({ error: { code: sv.code, message: sv.message } }, sv.status, sv.headers);
+      }
+      const requestedSystemId = url.searchParams.get("system_id")?.trim();
+      if (requestedSystemId && requestedSystemId !== sv.system_id) {
+        return json(
+          { error: { code: "system_id_mismatch", message: "system_id must match serving token system_id" } },
+          400
+        );
+      }
+      const tBucket = parseEpochSeconds(url.searchParams.get("T_bucket"));
+      if (url.searchParams.get("T_bucket") !== null && tBucket === null) {
+        return json(
+          { error: { code: "invalid_t_bucket", message: "T_bucket must be positive integer epoch seconds" } },
+          400
+        );
+      }
+      const limit = parseLimit(url.searchParams.get("limit"), 5000);
+      if (limit === null) {
+        return json({ error: { code: "invalid_limit", message: "limit must be integer between 1 and 10000" } }, 400);
+      }
+      const snapshotReader = deps.stationsStore.getStationsSnapshot;
+      if (!snapshotReader) {
+        return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+      }
+
+      const snapshot = await snapshotReader({
+        system_id: sv.system_id,
+        view_id: sv.view_id,
+        t_bucket_epoch_s: tBucket,
+        limit,
+      });
+      const effectiveBucket = tBucket;
+      const featureCollection = {
+        system_id: sv.system_id,
+        view_id: sv.view_id,
+        requested_t_bucket: tBucket,
+        effective_t_bucket: effectiveBucket,
+        type: "FeatureCollection" as const,
+        features: snapshot.map((station) => ({
+          type: "Feature" as const,
+          id: station.station_key,
+          geometry: {
+            type: "Point" as const,
+            coordinates: [station.lon, station.lat] as [number, number],
+          },
+          properties: {
+            station_id: station.station_key,
+            name: station.name ?? station.station_key,
+            capacity: station.capacity,
+            bikes: station.bikes_available,
+            docks: station.docks_available,
+            bucket_quality: station.bucket_quality,
+            t_bucket: station.bucket_ts,
+          },
+        })),
+      };
+      logger.info("stations.snapshot.ok", {
+        system_id: sv.system_id,
+        sv: svToken,
+        view_id: sv.view_id,
+        requested_t_bucket: tBucket,
+        features_returned: featureCollection.features.length,
+        payload_bytes: jsonByteSize(featureCollection),
+      });
+      return json(featureCollection, 200);
     }
 
     if (!stationKeyRe.test(route.station_key)) {
