@@ -418,4 +418,181 @@ describe("createPolicyRouteHandler", () => {
     const movesBody = await movesRes.json();
     expect(movesBody.error.code).toBe("method_not_allowed");
   });
+
+  it("validates required/typed run params", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: false as const, reason: "deduped" };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const missingPolicyVersion = await handler(
+      new Request("https://example.test/api/policy/run?v=1&sv=abc&T_bucket=1738872000")
+    );
+    expect(missingPolicyVersion.status).toBe(400);
+    expect(missingPolicyVersion.headers.get("Cache-Control")).toBe("no-store");
+    const missingPolicyVersionBody = await missingPolicyVersion.json();
+    expect(missingPolicyVersionBody.error.code).toBe("missing_policy_version");
+
+    const invalidBucket = await handler(
+      new Request("https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=bad")
+    );
+    expect(invalidBucket.status).toBe(400);
+    expect(invalidBucket.headers.get("Cache-Control")).toBe("no-store");
+    const invalidBucketBody = await invalidBucket.json();
+    expect(invalidBucketBody.error.code).toBe("invalid_t_bucket");
+
+    const invalidHorizonSteps = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000&horizon_steps=999"
+      )
+    );
+    expect(invalidHorizonSteps.status).toBe(400);
+    expect(invalidHorizonSteps.headers.get("Cache-Control")).toBe("no-store");
+    const invalidHorizonStepsBody = await invalidHorizonSteps.json();
+    expect(invalidHorizonStepsBody.error.code).toBe("invalid_horizon_steps");
+  });
+
+  it("validates top_n for moves responses", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return {
+            run_id: 7,
+            system_id: "citibike-nyc",
+            policy_version: "rebal.greedy.v1",
+            policy_spec_sha256: "abc",
+            sv: "abc",
+            decision_bucket_ts: "2026-02-06T18:00:00.000Z",
+            horizon_steps: 0,
+            input_quality: "ok",
+            status: "success",
+            no_op: false,
+            no_op_reason: null,
+            error_reason: null,
+            created_at: "2026-02-06T18:00:00.000Z",
+            move_count: 2,
+          };
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const invalidTopN = await handler(
+      new Request(
+        "https://example.test/api/policy/moves?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000&top_n=0"
+      )
+    );
+    expect(invalidTopN.status).toBe(400);
+    expect(invalidTopN.headers.get("Cache-Control")).toBe("no-store");
+    const invalidTopNBody = await invalidTopN.json();
+    expect(invalidTopNBody.error.code).toBe("invalid_top_n");
+  });
+
+  it("enforces sv presence and system_id binding", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: false as const, reason: "deduped" };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const missingSv = await handler(
+      new Request("https://example.test/api/policy/run?v=1&policy_version=rebal.greedy.v1&T_bucket=1738872000")
+    );
+    expect(missingSv.status).toBe(401);
+    expect(missingSv.headers.get("Cache-Control")).toBe("no-store");
+    const missingSvBody = await missingSv.json();
+    expect(missingSvBody.error.code).toBe("sv_missing");
+
+    const mismatchSystem = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=abc&system_id=other&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(mismatchSystem.status).toBe(400);
+    expect(mismatchSystem.headers.get("Cache-Control")).toBe("no-store");
+    const mismatchSystemBody = await mismatchSystem.json();
+    expect(mismatchSystemBody.error.code).toBe("system_id_mismatch");
+  });
 });
