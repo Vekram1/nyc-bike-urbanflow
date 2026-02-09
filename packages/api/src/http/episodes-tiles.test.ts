@@ -82,6 +82,8 @@ describe("createEpisodesTilesRouteHandler", () => {
       )
     );
     expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toContain("max-age=30");
+    expect(res.headers.get("Cache-Control")).toContain("stale-while-revalidate=15");
     expect(seen?.system_id).toBe("citibike-nyc");
     expect(seen?.severity_version).toBe("sev.v2");
   });

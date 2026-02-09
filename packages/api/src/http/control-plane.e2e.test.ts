@@ -540,6 +540,18 @@ describe("control-plane e2e", () => {
       time: {
         servingViews: viewService,
         viewStore,
+        network: {
+          async getSummary() {
+            return {
+              active_station_count: 100,
+              empty_station_count: 52,
+              full_station_count: 5,
+              pct_serving_grade: 0.62,
+              worst_5_station_keys_by_severity: ["s1", "s2", "s3", "s4", "s5"],
+              observed_bucket_ts: "2026-02-06T18:30:00.000Z",
+            };
+          },
+        },
         config: {
           view_version: "sv.v1",
           ttl_seconds: 120,
@@ -623,6 +635,8 @@ describe("control-plane e2e", () => {
     const timeRes = await handler(new Request("https://example.test/api/time?system_id=citibike-nyc"));
     expect(timeRes.status).toBe(200);
     const timeBody = await timeRes.json();
+    expect(timeBody.network.degrade_level).toBe(2);
+    expect(timeBody.network.client_should_throttle).toBe(true);
     const sv = timeBody.recommended_live_sv as string;
 
     const okTile = await handler(
@@ -648,5 +662,9 @@ describe("control-plane e2e", () => {
     expect(overloaded.headers.get("X-Origin-Block-Reason")).toBe("tile_overloaded");
     const body = await overloaded.json();
     expect(body.error.code).toBe("tile_overloaded");
+
+    const configWhileOverloaded = await handler(new Request("https://example.test/api/config?v=1"));
+    expect(configWhileOverloaded.status).toBe(200);
+    expect(configWhileOverloaded.headers.get("Cache-Control")).toBe("no-store");
   });
 });

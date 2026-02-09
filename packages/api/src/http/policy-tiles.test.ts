@@ -84,6 +84,8 @@ describe("createPolicyMovesTilesRouteHandler", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/vnd.mapbox-vector-tile");
     expect(res.headers.get("X-Tile-Feature-Count")).toBe("2");
+    expect(res.headers.get("Cache-Control")).toContain("max-age=30");
+    expect(res.headers.get("Cache-Control")).toContain("stale-while-revalidate=15");
   });
 
   it("returns 404 when policy run is missing", async () => {
@@ -123,5 +125,45 @@ describe("createPolicyMovesTilesRouteHandler", () => {
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error.code).toBe("policy_run_not_found");
+  });
+
+  it("returns 429 with origin shield headers when store overloads", async () => {
+    const handler = createPolicyMovesTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchPolicyMovesTile() {
+          return {
+            ok: false as const,
+            status: 429 as const,
+            code: "tile_overloaded",
+            message: "degraded",
+            retry_after_s: 6,
+          };
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/policy_moves/12/1200/1530.mvt?sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("6");
+    expect(res.headers.get("X-Origin-Block-Reason")).toBe("tile_overloaded");
   });
 });

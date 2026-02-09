@@ -192,6 +192,8 @@ describe("createCompositeTilesRouteHandler", () => {
     expect(res.headers.get("X-Tile-Feature-Count")).toBe("18");
     expect(res.headers.get("X-Tile-Bytes")).toBe("3");
     expect(res.headers.get("Cache-Control")).toContain("max-age=30");
+    expect(res.headers.get("Cache-Control")).toContain("stale-while-revalidate=15");
+    expect(res.headers.get("Cache-Control")).not.toContain("immutable");
     expect(seenArgs).toBeTruthy();
     expect(seenArgs?.system_id).toBe("citibike-nyc");
     expect(seenArgs?.view_id).toBe(42);
