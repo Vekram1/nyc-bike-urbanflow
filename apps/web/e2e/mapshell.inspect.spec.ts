@@ -694,3 +694,39 @@ test("layer toggles update __UF_E2E layer flags deterministically", async ({ pag
             labels: true,
         });
 });
+
+test("inspect lock state reflects in controlsDisabled and scrubber attr", async ({ page }) => {
+    await page.goto("/");
+
+    const scrubberTrack = page.locator('[data-uf-id="scrubber-track"]');
+    await expect(scrubberTrack).toHaveAttribute("data-uf-inspect-locked", "false");
+    await expect
+        .poll(async () => Boolean((await readState(page)).controlsDisabled))
+        .toBe(false);
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-controls-disabled");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+    await expect(scrubberTrack).toHaveAttribute("data-uf-inspect-locked", "true");
+    await expect
+        .poll(async () => Boolean((await readState(page)).controlsDisabled))
+        .toBe(true);
+
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toHaveCount(0);
+    await expect(scrubberTrack).toHaveAttribute("data-uf-inspect-locked", "false");
+    await expect
+        .poll(async () => Boolean((await readState(page)).controlsDisabled))
+        .toBe(false);
+});

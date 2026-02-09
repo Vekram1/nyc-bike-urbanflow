@@ -94,6 +94,12 @@ class FakeSqlDb implements SqlExecutor {
     return this.audits;
   }
 
+  revokeAllTokens(revokedAtIso: string): void {
+    for (const [tokenSha, row] of this.servingTokens.entries()) {
+      this.servingTokens.set(tokenSha, { ...row, revoked_at: revokedAtIso });
+    }
+  }
+
   async query<Row extends Record<string, unknown>>(
     text: string,
     params: Array<unknown> = []
@@ -1075,6 +1081,28 @@ describe("control-plane e2e", () => {
     expect(drawerMethodRes.headers.get("Cache-Control")).toBe("no-store");
     const drawerMethodBody = await drawerMethodRes.json();
     expect(drawerMethodBody.error.code).toBe("method_not_allowed");
+
+    const invalidSv = `${sv.slice(0, -1)}${sv.endsWith("A") ? "B" : "A"}`;
+    const invalidSvRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(invalidSv)}&T_bucket=1738872000&range=6h&severity_version=sev.v1&tile_schema=tile.v1`
+      )
+    );
+    expect(invalidSvRes.status).toBe(401);
+    expect(invalidSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const invalidSvBody = await invalidSvRes.json();
+    expect(invalidSvBody.error.code).toBe("signature_invalid");
+
+    db.revokeAllTokens("2026-02-06T18:30:11.000Z");
+    const revokedSvRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(sv)}&T_bucket=1738872000&range=6h&severity_version=sev.v1&tile_schema=tile.v1`
+      )
+    );
+    expect(revokedSvRes.status).toBe(403);
+    expect(revokedSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const revokedSvBody = await revokedSvRes.json();
+    expect(revokedSvBody.error.code).toBe("token_revoked");
   });
 
   it("serves station detail and series endpoints with sv-bound params", async () => {
@@ -1422,6 +1450,24 @@ describe("control-plane e2e", () => {
     expect(missingStationRes.headers.get("Cache-Control")).toBe("no-store");
     const missingStationBody = await missingStationRes.json();
     expect(missingStationBody.error.code).toBe("station_not_found");
+
+    const invalidSv = `${sv.slice(0, -1)}${sv.endsWith("A") ? "B" : "A"}`;
+    const invalidSvRes = await handler(
+      new Request(`https://example.test/api/stations/STA-001?sv=${encodeURIComponent(invalidSv)}`)
+    );
+    expect(invalidSvRes.status).toBe(401);
+    expect(invalidSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const invalidSvBody = await invalidSvRes.json();
+    expect(invalidSvBody.error.code).toBe("signature_invalid");
+
+    db.revokeAllTokens("2026-02-06T18:30:11.000Z");
+    const revokedSvRes = await handler(
+      new Request(`https://example.test/api/stations/STA-001?sv=${encodeURIComponent(sv)}`)
+    );
+    expect(revokedSvRes.status).toBe(403);
+    expect(revokedSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const revokedSvBody = await revokedSvRes.json();
+    expect(revokedSvBody.error.code).toBe("token_revoked");
   });
 
   it("rejects unknown query params on admin endpoints with 400 + no-store", async () => {
