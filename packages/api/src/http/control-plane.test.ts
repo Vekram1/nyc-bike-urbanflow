@@ -305,6 +305,18 @@ describe("createControlPlaneHandler", () => {
     const body = await res.json();
     expect(body.station_key).toBe("STA-001");
 
+    const seriesRes = await handler(
+      new Request(
+        "https://example.test/api/stations/STA-001/series?sv=abc&from=1738872000&to=1738875600&bucket=300"
+      )
+    );
+    expect(seriesRes.status).toBe(200);
+    expect(seriesRes.headers.get("Cache-Control")).toBe("no-store");
+    const seriesBody = await seriesRes.json();
+    expect(seriesBody.station_key).toBe("STA-001");
+    expect(seriesBody.bucket_seconds).toBe(300);
+    expect(Array.isArray(seriesBody.points)).toBe(true);
+
     const unknownDetailParamRes = await handler(
       new Request("https://example.test/api/stations/STA-001?sv=abc&foo=bar")
     );
