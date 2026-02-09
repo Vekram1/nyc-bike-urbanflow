@@ -48,11 +48,31 @@ export default function ScrubberBar({
         playing ? "playing" : "paused"
     }. Speed ${speed.toFixed(2)}x.${inspectLocked ? " Inspect lock is active." : ""}`;
 
-    const onTrackClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-        const rect = e.currentTarget.getBoundingClientRect();
+    const seekFromClientX = (target: HTMLButtonElement, clientX: number) => {
+        const rect = target.getBoundingClientRect();
         if (rect.width <= 0) return;
-        const x = e.clientX - rect.left;
+        const x = clientX - rect.left;
         onSeek(x / rect.width);
+    };
+
+    const onTrackClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+        seekFromClientX(e.currentTarget, e.clientX);
+    };
+
+    const onTrackPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+        const target = e.currentTarget;
+        seekFromClientX(target, e.clientX);
+
+        const onPointerMove = (event: PointerEvent) => {
+            seekFromClientX(target, event.clientX);
+        };
+        const onPointerUp = () => {
+            window.removeEventListener("pointermove", onPointerMove);
+            window.removeEventListener("pointerup", onPointerUp);
+        };
+
+        window.addEventListener("pointermove", onPointerMove);
+        window.addEventListener("pointerup", onPointerUp);
     };
 
     return (
@@ -120,6 +140,7 @@ export default function ScrubberBar({
                 <button
                     type="button"
                     onClick={onTrackClick}
+                    onPointerDown={onTrackPointerDown}
                     style={trackButtonStyle}
                     title="Seek timeline position"
                     aria-label="Seek timeline position"

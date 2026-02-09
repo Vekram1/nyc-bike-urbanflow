@@ -954,6 +954,64 @@ test("manual seek enters replay-paused and clamps to non-future time", async ({ 
     expect(timing.playbackTsMs).toBeLessThanOrEqual(timing.nowMs + 1500);
 });
 
+test("scrubber pointer seek enters replay-paused and live pause holds time", async ({ page }) => {
+    await page.goto("/");
+
+    const scrubberTrack = page.locator('[data-uf-id="scrubber-track"]');
+    const goLive = page.locator('[data-uf-id="scrubber-go-live"]');
+    const playToggle = page.locator('[data-uf-id="scrubber-play-toggle"]');
+
+    await expect(scrubberTrack).toBeVisible();
+
+    const box = await scrubberTrack.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+
+    const seekX = box.x + box.width * 0.12;
+    const seekY = box.y + box.height / 2;
+    await page.mouse.move(seekX, seekY);
+    await page.mouse.down();
+    await page.mouse.move(seekX + Math.min(18, box.width * 0.03), seekY, { steps: 2 });
+    await page.mouse.up();
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                mode: state.mode ?? "",
+                playing: Boolean(state.playing),
+            };
+        })
+        .toEqual({
+            mode: "replay",
+            playing: false,
+        });
+
+    await goLive.click();
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                mode: state.mode ?? "",
+                playing: Boolean(state.playing),
+            };
+        })
+        .toEqual({
+            mode: "live",
+            playing: true,
+        });
+
+    await playToggle.click();
+    await expect
+        .poll(async () => Boolean((await readState(page)).playing))
+        .toBe(false);
+
+    const pausedTs = (await readState(page)).playbackTsMs ?? 0;
+    await page.waitForTimeout(1200);
+    const pausedTsAfter = (await readState(page)).playbackTsMs ?? 0;
+    expect(pausedTsAfter).toBe(pausedTs);
+});
+
 test("tier1 drawer shows simplified capacity/bikes/docks labels", async ({ page }) => {
     await page.goto("/");
 

@@ -143,6 +143,7 @@ export function useHudControls() {
     const [mode, setMode] = useState<"live" | "replay">("live");
     const [rangeMinMs, setRangeMinMs] = useState(initialNowMs - LIVE_FALLBACK_WINDOW_MS);
     const [rangeMaxMs, setRangeMaxMs] = useState(initialNowMs);
+    const [timelineLiveEdgeMs, setTimelineLiveEdgeMs] = useState<number | null>(null);
     const [playbackTsMs, setPlaybackTsMs] = useState(initialNowMs);
     const [serverNowMs, setServerNowMs] = useState(initialNowMs);
     const [sv, setSv] = useState("sv:local-fallback");
@@ -179,8 +180,13 @@ export function useHudControls() {
     });
 
     const speed = SPEED_STEPS[speedIdx] ?? 1;
+    const replayMaxBoundMs = Math.max(
+        rangeMinMs,
+        Math.min(rangeMaxMs, serverNowMs, timelineLiveEdgeMs ?? Number.POSITIVE_INFINITY)
+    );
+    const boundedPlaybackTsMs = clamp(playbackTsMs, rangeMinMs, replayMaxBoundMs);
     const progressRange = Math.max(1, rangeMaxMs - rangeMinMs);
-    const progress = Math.min(1, Math.max(0, (playbackTsMs - rangeMinMs) / progressRange));
+    const progress = Math.min(1, Math.max(0, (boundedPlaybackTsMs - rangeMinMs) / progressRange));
 
     useEffect(() => {
         const payload: PersistedHud = {
@@ -248,7 +254,8 @@ export function useHudControls() {
                 if (minMs == null || maxMs == null) return;
                 const boundedMax = liveEdgeMs == null ? maxMs : Math.min(maxMs, liveEdgeMs);
                 setRangeMinMs(minMs);
-                setRangeMaxMs((current) => Math.max(current, Math.max(minMs, boundedMax)));
+                setRangeMaxMs(Math.max(minMs, boundedMax));
+                setTimelineLiveEdgeMs(liveEdgeMs ?? maxMs);
                 setPlaybackTsMs((current) => clamp(current, minMs, Math.max(minMs, boundedMax)));
             } catch {
                 // Keep fallback range on timeline failures.
@@ -268,25 +275,23 @@ export function useHudControls() {
 
         const timer = window.setInterval(() => {
             if (mode === "live") {
-                setServerNowMs((current) => current + 250);
-                setPlaybackTsMs((current) => current + 250);
+                setPlaybackTsMs((current) => clamp(current, rangeMinMs, replayMaxBoundMs));
                 return;
             }
 
-            const replayMax = Math.max(rangeMinMs, Math.min(rangeMaxMs, serverNowMs));
             setPlaybackTsMs((curr) => {
                 const stepMs = Math.max(1, Math.round((REPLAY_STEP_MS / 4) * speed));
-                const next = Math.min(replayMax, curr + stepMs);
-                if (next >= replayMax) {
+                const next = Math.min(replayMaxBoundMs, curr + stepMs);
+                if (next >= replayMaxBoundMs) {
                     setPlaying(false);
-                    return replayMax;
+                    return replayMaxBoundMs;
                 }
                 return next;
             });
         }, 250);
 
         return () => window.clearInterval(timer);
-    }, [mode, playing, rangeMaxMs, rangeMinMs, serverNowMs, speed]);
+    }, [mode, playing, rangeMinMs, replayMaxBoundMs, speed]);
 
     useEffect(() => {
         const onVisibilityChange = () => {
@@ -323,9 +328,8 @@ export function useHudControls() {
         markHudAction("seek");
         enterReplayPaused();
         const replayMin = rangeMinMs;
-        const replayMax = Math.max(rangeMinMs, Math.min(rangeMaxMs, serverNowMs));
-        const requested = replayMin + Math.round(clamped * Math.max(1, replayMax - replayMin));
-        setPlaybackTsMs(clamp(requested, replayMin, replayMax));
+        const requested = replayMin + Math.round(clamped * Math.max(1, replayMaxBoundMs - replayMin));
+        setPlaybackTsMs(clamp(requested, replayMin, replayMaxBoundMs));
     };
 
     const togglePlay = () => {
@@ -391,8 +395,7 @@ export function useHudControls() {
         enterReplayPaused();
         setPlaybackTsMs((curr) => {
             const replayMin = rangeMinMs;
-            const replayMax = Math.max(rangeMinMs, Math.min(rangeMaxMs, serverNowMs));
-            const bounded = Math.min(replayMax, curr);
+            const bounded = Math.min(replayMaxBoundMs, curr);
             const next = Math.max(replayMin, bounded - REPLAY_STEP_MS);
             console.info("[HudControls] step_back", { from: curr, to: next });
             markHudAction("stepBack");
@@ -409,8 +412,7 @@ export function useHudControls() {
         }
         enterReplayPaused();
         setPlaybackTsMs((curr) => {
-            const replayMax = Math.max(rangeMinMs, Math.min(rangeMaxMs, serverNowMs));
-            const next = Math.min(replayMax, curr + REPLAY_STEP_MS);
+            const next = Math.min(replayMaxBoundMs, curr + REPLAY_STEP_MS);
             console.info("[HudControls] step_forward", { from: curr, to: next });
             markHudAction("stepForward");
             markStepAction("stepForward");
@@ -424,10 +426,8 @@ export function useHudControls() {
             markBlockedAction("goLive", "inspect_lock");
             return;
         }
-        const replayMin = rangeMinMs;
-        const replayMax = Math.max(rangeMinMs, Math.min(rangeMaxMs, serverNowMs));
         setMode("live");
-        setPlaybackTsMs(clamp(serverNowMs, replayMin, replayMax));
+        setPlaybackTsMs(clamp(serverNowMs, rangeMinMs, replayMaxBoundMs));
         setPlaying(true);
         markHudAction("goLive");
     };
@@ -593,7 +593,7 @@ export function useHudControls() {
         progress,
         rangeMinMs,
         rangeMaxMs,
-        playbackTsMs,
+        playbackTsMs: boundedPlaybackTsMs,
         layers,
         inspectLocked,
         compareMode,
