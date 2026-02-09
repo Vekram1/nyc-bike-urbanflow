@@ -38,6 +38,8 @@ type UfE2EState = {
     hotkeyHandledCount?: number;
     hotkeyIgnoredCount?: number;
     hotkeyLastCode?: string;
+    hotkeyLastHandledAt?: string;
+    hotkeyLastIgnoredAt?: string;
     inspectAnchorTileRequestKey?: string;
     inspectSessionId?: number;
     controlsDisabled?: boolean;
@@ -137,6 +139,7 @@ export default function MapShell() {
                     ...current,
                     hotkeyHandledCount: (current.hotkeyHandledCount ?? 0) + 1,
                     hotkeyLastCode: e.code,
+                    hotkeyLastHandledAt: new Date().toISOString(),
                 }));
                 return;
             }
@@ -144,6 +147,7 @@ export default function MapShell() {
                 ...current,
                 hotkeyIgnoredCount: (current.hotkeyIgnoredCount ?? 0) + 1,
                 hotkeyLastCode: e.code,
+                hotkeyLastIgnoredAt: new Date().toISOString(),
             }));
             if (e.code !== "Escape") return;
             if (!inspectOpen) return;
@@ -257,6 +261,8 @@ export default function MapShell() {
             hotkeyHandledCount: current.hotkeyHandledCount ?? 0,
             hotkeyIgnoredCount: current.hotkeyIgnoredCount ?? 0,
             hotkeyLastCode: current.hotkeyLastCode ?? "",
+            hotkeyLastHandledAt: current.hotkeyLastHandledAt ?? "",
+            hotkeyLastIgnoredAt: current.hotkeyLastIgnoredAt ?? "",
             inspectAnchorTileRequestKey: current.inspectAnchorTileRequestKey ?? "",
             inspectSessionId: current.inspectSessionId ?? 0,
             controlsDisabled: hud.inspectLocked,
