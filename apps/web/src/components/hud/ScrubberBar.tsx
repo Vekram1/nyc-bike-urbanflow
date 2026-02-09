@@ -114,6 +114,9 @@ export default function ScrubberBar({
                     aria-valuetext={scrubberValueText}
                     disabled={inspectLocked}
                     data-uf-id="scrubber-track"
+                    data-uf-progress-percent={String(progressPercent)}
+                    data-uf-playing={playing ? "true" : "false"}
+                    data-uf-inspect-locked={inspectLocked ? "true" : "false"}
                 >
                     <div
                         style={{

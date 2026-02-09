@@ -206,6 +206,9 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `data-uf-id="scrubber-speed-up"`
 - `data-uf-id="scrubber-speed-value"`
 - `data-uf-id="scrubber-track"`
+  - `data-uf-progress-percent="<0-100>"`
+  - `data-uf-playing="true|false"`
+  - `data-uf-inspect-locked="true|false"`
 - `data-uf-id="scrubber-step-back"`
 - `data-uf-id="scrubber-step-forward"`
 - `data-uf-id="scrubber-progress-label"`
