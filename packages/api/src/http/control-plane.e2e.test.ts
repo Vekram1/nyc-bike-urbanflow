@@ -1108,7 +1108,10 @@ describe("control-plane e2e", () => {
       stations: {
         tokens: tokenService,
         stationsStore: {
-          async getStationDetail() {
+          async getStationDetail({ station_key }) {
+            if (station_key !== "STA-001") {
+              return null;
+            }
             return {
               station_key: "STA-001",
               name: "W 52 St",
@@ -1234,6 +1237,14 @@ describe("control-plane e2e", () => {
     expect(invalidSeriesKeyRes.headers.get("Cache-Control")).toBe("no-store");
     const invalidSeriesKeyBody = await invalidSeriesKeyRes.json();
     expect(invalidSeriesKeyBody.error.code).toBe("invalid_station_key");
+
+    const missingStationRes = await handler(
+      new Request(`https://example.test/api/stations/STA-404?sv=${encodeURIComponent(sv)}`)
+    );
+    expect(missingStationRes.status).toBe(404);
+    expect(missingStationRes.headers.get("Cache-Control")).toBe("no-store");
+    const missingStationBody = await missingStationRes.json();
+    expect(missingStationBody.error.code).toBe("station_not_found");
   });
 
   it("rejects unknown query params on admin endpoints with 400 + no-store", async () => {
