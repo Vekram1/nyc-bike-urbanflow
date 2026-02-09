@@ -48,6 +48,9 @@ type UfE2EState = {
     mapRefreshSkippedNoSource?: number;
     mapRefreshBadPayload?: number;
     mapRefreshLastFeatureCount?: number;
+    mapStationPickCount?: number;
+    mapClickMissCount?: number;
+    mapLastPickedStationId?: string;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -88,6 +91,9 @@ export default function MapView(props: Props) {
             mapRefreshSkippedNoSource: current.mapRefreshSkippedNoSource ?? 0,
             mapRefreshBadPayload: current.mapRefreshBadPayload ?? 0,
             mapRefreshLastFeatureCount: current.mapRefreshLastFeatureCount ?? 0,
+            mapStationPickCount: current.mapStationPickCount ?? 0,
+            mapClickMissCount: current.mapClickMissCount ?? 0,
+            mapLastPickedStationId: current.mapLastPickedStationId ?? "",
         }));
 
         if (activeMapViewCount > 1) {
@@ -307,12 +313,23 @@ export default function MapView(props: Props) {
             }}
             onClick={(e) => {
                 const f = e.features?.[0];
-                if (!f || !onStationPick) return;
+                if (!f || !onStationPick) {
+                    updateUfE2E((current) => ({
+                        ...current,
+                        mapClickMissCount: (current.mapClickMissCount ?? 0) + 1,
+                    }));
+                    return;
+                }
 
                 const p = (f.properties ?? {}) as Record<string, unknown>;
                 const station_id = String(p.station_id ?? f.id ?? "");
                 if (!station_id) return;
 
+                updateUfE2E((current) => ({
+                    ...current,
+                    mapStationPickCount: (current.mapStationPickCount ?? 0) + 1,
+                    mapLastPickedStationId: station_id,
+                }));
                 // IMPORTANT: Mapbox props may be strings
                 onStationPick({
                     station_id,

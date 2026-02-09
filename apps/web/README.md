@@ -106,6 +106,9 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.mapRefreshSkippedNoSource`
   - `window.__UF_E2E.mapRefreshBadPayload`
   - `window.__UF_E2E.mapRefreshLastFeatureCount`
+  - `window.__UF_E2E.mapStationPickCount`
+  - `window.__UF_E2E.mapClickMissCount`
+  - `window.__UF_E2E.mapLastPickedStationId`
   - `window.__UF_E2E.tier2RequestedCount`
   - `window.__UF_E2E.tier2LoadingCount`
   - `window.__UF_E2E.tier2SuccessCount`
