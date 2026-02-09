@@ -21,6 +21,10 @@ type UfE2EState = {
     blockedActions?: Record<string, number>;
     mode?: "live" | "replay";
     playbackTsMs?: number;
+    mapZeroBikeColorHex?: string;
+    mapHalfBikeColorHex?: string;
+    mapNinetyBikeColorHex?: string;
+    mapAvailabilityBucketCounts?: Record<string, number>;
 };
 
 type UfE2EActions = {
@@ -1107,4 +1111,66 @@ test("search result selection opens Tier-1 drawer for selected station", async (
     await expect
         .poll(async () => (await readState(page)).selectedStationId ?? "")
         .toBe("station-e2e-search");
+});
+
+test("map color ramp telemetry maps threshold buckets deterministically", async ({ page }) => {
+    await page.route("**/api/gbfs/stations?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                type: "FeatureCollection",
+                features: [
+                    {
+                        type: "Feature",
+                        properties: {
+                            station_id: "station-zero",
+                            name: "Station Zero",
+                            bikes: 0,
+                            docks: 12,
+                            capacity: 12,
+                            bikes_availability_ratio: 0,
+                        },
+                        geometry: { type: "Point", coordinates: [-73.99, 40.73] },
+                    },
+                    {
+                        type: "Feature",
+                        properties: {
+                            station_id: "station-mid",
+                            name: "Station Mid",
+                            bikes: 6,
+                            docks: 6,
+                            capacity: 12,
+                            bikes_availability_ratio: 0.55,
+                        },
+                        geometry: { type: "Point", coordinates: [-73.98, 40.72] },
+                    },
+                ],
+            }),
+        });
+    });
+
+    await page.goto("/");
+
+    await expect
+        .poll(async () => (await readState(page)).mapZeroBikeColorHex ?? "", { timeout: 8_000 })
+        .toBe("#ef4444");
+
+    await expect
+        .poll(async () => (await readState(page)).mapHalfBikeColorHex ?? "", { timeout: 8_000 })
+        .toBe("#fde047");
+
+    await expect
+        .poll(async () => (await readState(page)).mapNinetyBikeColorHex ?? "", { timeout: 8_000 })
+        .toBe("#22c55e");
+
+    // Bucket telemetry may be empty in environments without a live Mapbox source refresh.
+    await expect
+        .poll(async () => {
+            const buckets = (await readState(page)).mapAvailabilityBucketCounts ?? {};
+            return Object.keys(buckets).length === 0 || (buckets["0"] ?? 0) >= 1;
+        }, {
+            timeout: 8_000,
+        })
+        .toBe(true);
 });

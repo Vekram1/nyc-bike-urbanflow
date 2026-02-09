@@ -16,6 +16,19 @@ const NYC = {
 const SOURCE_ID = "gbfs-stations";
 const LAYER_ID = "gbfs-stations-circles";
 let activeMapViewCount = 0;
+const NO_RATIO_COLOR = "#7f8c8d";
+const BIKES_AVAILABILITY_BUCKET_COLORS: Array<{ minRatio: number; color: string }> = [
+    { minRatio: 0.1, color: "#f97316" },
+    { minRatio: 0.2, color: "#fb923c" },
+    { minRatio: 0.3, color: "#fdba74" },
+    { minRatio: 0.4, color: "#facc15" },
+    { minRatio: 0.5, color: "#fde047" },
+    { minRatio: 0.6, color: "#d9f99d" },
+    { minRatio: 0.7, color: "#86efac" },
+    { minRatio: 0.8, color: "#4ade80" },
+    { minRatio: 0.9, color: "#22c55e" },
+];
+const LOWEST_BUCKET_COLOR = "#ef4444";
 
 export type StationPick = {
     station_id: string;
@@ -67,6 +80,10 @@ type UfE2EState = {
     mapRefreshLastHttpStatus?: number | null;
     mapRefreshLastErrorHttpStatus?: number | null;
     mapRefreshLastLatencyMs?: number | null;
+    mapZeroBikeColorHex?: string;
+    mapHalfBikeColorHex?: string;
+    mapNinetyBikeColorHex?: string;
+    mapAvailabilityBucketCounts?: Record<string, number>;
     mapStationPickCount?: number;
     mapClickMissCount?: number;
     mapLastPickedStationId?: string;
@@ -97,6 +114,17 @@ function toText(v: unknown): string | null {
     if (v == null) return null;
     const text = String(v).trim();
     return text.length > 0 ? text : null;
+}
+
+function colorForBikesAvailabilityRatio(value: number | null): string {
+    if (value == null || Number.isNaN(value) || !Number.isFinite(value)) {
+        return NO_RATIO_COLOR;
+    }
+    for (let idx = BIKES_AVAILABILITY_BUCKET_COLORS.length - 1; idx >= 0; idx -= 1) {
+        const stop = BIKES_AVAILABILITY_BUCKET_COLORS[idx];
+        if (value >= stop.minRatio) return stop.color;
+    }
+    return LOWEST_BUCKET_COLOR;
 }
 
 export default function MapView(props: Props) {
@@ -151,6 +179,10 @@ export default function MapView(props: Props) {
             mapRefreshLastHttpStatus: current.mapRefreshLastHttpStatus ?? null,
             mapRefreshLastErrorHttpStatus: current.mapRefreshLastErrorHttpStatus ?? null,
             mapRefreshLastLatencyMs: current.mapRefreshLastLatencyMs ?? null,
+            mapZeroBikeColorHex: colorForBikesAvailabilityRatio(0),
+            mapHalfBikeColorHex: colorForBikesAvailabilityRatio(0.55),
+            mapNinetyBikeColorHex: colorForBikesAvailabilityRatio(0.95),
+            mapAvailabilityBucketCounts: current.mapAvailabilityBucketCounts ?? {},
             mapStationPickCount: current.mapStationPickCount ?? 0,
             mapClickMissCount: current.mapClickMissCount ?? 0,
             mapLastPickedStationId: current.mapLastPickedStationId ?? "",
@@ -215,20 +247,12 @@ export default function MapView(props: Props) {
                     // simple “bad if empty/full else good” — replace with severity later
                     "circle-color": [
                         "case",
-                        ["!", ["has", "bikes_availability_ratio"]], "#7f8c8d",
+                        ["!", ["has", "bikes_availability_ratio"]], NO_RATIO_COLOR,
                         [
                             "step",
                             ["coalesce", ["get", "bikes_availability_ratio"], -1],
-                            "#ef4444",
-                            0.1, "#f97316",
-                            0.2, "#fb923c",
-                            0.3, "#fdba74",
-                            0.4, "#facc15",
-                            0.5, "#fde047",
-                            0.6, "#d9f99d",
-                            0.7, "#86efac",
-                            0.8, "#4ade80",
-                            0.9, "#22c55e",
+                            LOWEST_BUCKET_COLOR,
+                            ...BIKES_AVAILABILITY_BUCKET_COLORS.flatMap((stop) => [stop.minRatio, stop.color]),
                         ],
                     ],
 
@@ -340,6 +364,15 @@ export default function MapView(props: Props) {
                         .filter((station: StationPick | null): station is StationPick => station !== null);
                     onStationsData(stations);
                 }
+                const availabilityBucketCounts: Record<string, number> = {};
+                for (const feature of json.features as Array<{ properties?: Record<string, unknown> }>) {
+                    const props = feature.properties ?? {};
+                    const ratio = toNum(props.bikes_availability_ratio);
+                    if (ratio == null) continue;
+                    const bucket = Math.max(0, Math.min(10, Math.floor(ratio * 10)));
+                    const key = `${bucket * 10}`;
+                    availabilityBucketCounts[key] = (availabilityBucketCounts[key] ?? 0) + 1;
+                }
                 updateUfE2E((current) => ({
                     ...current,
                     mapRefreshSuccess: (current.mapRefreshSuccess ?? 0) + 1,
@@ -350,6 +383,8 @@ export default function MapView(props: Props) {
                     mapRefreshLastHttpStatus: httpStatus,
                     mapRefreshLastErrorHttpStatus: null,
                     mapRefreshLastLatencyMs: latencyMs,
+                    mapZeroBikeColorHex: colorForBikesAvailabilityRatio(0),
+                    mapAvailabilityBucketCounts: availabilityBucketCounts,
                 }));
                 console.debug("[MapView] source_updated", {
                     sourceId: SOURCE_ID,
