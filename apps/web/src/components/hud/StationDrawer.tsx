@@ -32,6 +32,8 @@ type UfE2EState = {
     tier2LastRequestedAt?: string;
     tier2LastSuccessAt?: string;
     tier2LastErrorAt?: string;
+    tier2LastAbortAt?: string;
+    tier2LastDebounceScheduledAt?: string;
     tier2UiStatus?: Tier2State["status"];
     tier2UiMessage?: string;
     tier2UiBundleBytes?: number;
@@ -120,6 +122,7 @@ export default function StationDrawer(props: {
             updateUfE2E((current) => ({
                 ...current,
                 tier2AbortCount: (current.tier2AbortCount ?? 0) + 1,
+                tier2LastAbortAt: new Date().toISOString(),
                 tier2InFlight: false,
             }));
         }
@@ -151,6 +154,7 @@ export default function StationDrawer(props: {
             updateUfE2E((current) => ({
                 ...current,
                 tier2DebounceScheduledCount: (current.tier2DebounceScheduledCount ?? 0) + 1,
+                tier2LastDebounceScheduledAt: new Date().toISOString(),
             }));
             const ctrl = new AbortController();
             abortRef.current = ctrl;
