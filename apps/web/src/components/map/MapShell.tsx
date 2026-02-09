@@ -85,10 +85,15 @@ export default function MapShell() {
 
     // “Inspect lock” v0: freeze live GBFS updates while drawer open
     const inspectOpen = !!selected;
+    const timelineWindowMs = 24 * 60 * 60 * 1000;
+    const timelineStartRef = useRef(Date.UTC(2026, 0, 1, 0, 0, 0));
+    const timelineDisplayTimeMs = Math.round(timelineStartRef.current + hud.progress * timelineWindowMs);
+    const systemId = process.env.NEXT_PUBLIC_SYSTEM_ID ?? "citibike-nyc";
+
     const mock = useHudMockAdapter({
         layers: hud.layers,
         inspectLocked: inspectOpen,
-        playing: hud.playing,
+        mode: "replay",
     });
     const progressLabel = `Progress ${Math.round(hud.progress * 100)}%`;
     const timelineBucket = Math.round(hud.progress * 100);
@@ -135,6 +140,23 @@ export default function MapShell() {
             inspectLastClosedStationId: selected.station_id,
         }));
     }, [hud, selected]);
+
+    const handleSearchPick = useCallback(
+        (result: { stationKey: string; name: string }) => {
+            openInspect({
+                station_id: result.stationKey,
+                name: result.name,
+                capacity: null,
+                bikes: null,
+                docks: null,
+                bucket_quality: null,
+                t_bucket: new Date(timelineDisplayTimeMs).toISOString(),
+                gbfs_last_updated: Math.floor(Date.now() / 1000),
+                gbfs_ttl: 60,
+            });
+        },
+        [openInspect, timelineDisplayTimeMs]
+    );
 
     useEffect(() => {
         console.info("[MapShell] mounted");
@@ -407,6 +429,7 @@ export default function MapShell() {
                             sv={mock.clock.sv}
                             delayed={mock.clock.delayed}
                             inspectLocked={mock.clock.inspectLocked}
+                            displayTimeMs={timelineDisplayTimeMs}
                         />
                     </section>
                 </div>
@@ -434,6 +457,7 @@ export default function MapShell() {
                         <CommandStack
                             playing={hud.playing}
                             inspectLocked={hud.inspectLocked}
+                            systemId={systemId}
                             compareMode={hud.compareMode}
                             splitView={hud.splitView}
                             compareOffsetBuckets={hud.compareOffsetBuckets}
@@ -444,6 +468,7 @@ export default function MapShell() {
                             onToggleSplitView={hud.toggleSplitView}
                             onCompareOffsetDown={hud.compareOffsetDown}
                             onCompareOffsetUp={hud.compareOffsetUp}
+                            onSearchPick={handleSearchPick}
                         />
                     </nav>
                 </div>

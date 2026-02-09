@@ -1,7 +1,6 @@
 "use client";
 
 import HUDCard from "./HUDCard";
-import { useNowClock } from "@/lib/useNowClock";
 import { useHasMounted } from "@/lib/useHasMounted";
 
 function formatDate(d: Date) {
@@ -25,6 +24,7 @@ type Props = {
     sv: string;
     delayed: boolean;
     inspectLocked: boolean;
+    displayTimeMs?: number;
 };
 
 function compactSv(sv: string): string {
@@ -32,16 +32,14 @@ function compactSv(sv: string): string {
     return `${sv.slice(0, 10)}...${sv.slice(-7)}`;
 }
 
-export default function ClockChip({ mode, sv, delayed, inspectLocked }: Props) {
+export default function ClockChip({ mode, sv, delayed, inspectLocked, displayTimeMs }: Props) {
     const mounted = useHasMounted();
+    const now = typeof displayTimeMs === "number" ? new Date(displayTimeMs) : null;
 
-    // Don’t render real time/date until after mount (prevents hydration mismatch)
-    const now = useNowClock(250);
-
-    const dateText = mounted ? formatDate(now) : "—";
-    const timeText = mounted ? formatTime(now) : "—";
-    const dateIso = mounted ? now.toISOString().slice(0, 10) : undefined;
-    const timeIso = mounted ? now.toISOString() : undefined;
+    const dateText = mounted && now ? formatDate(now) : "—";
+    const timeText = mounted && now ? formatTime(now) : "—";
+    const dateIso = mounted && now ? now.toISOString().slice(0, 10) : undefined;
+    const timeIso = mounted && now ? now.toISOString() : undefined;
     const statusSummary = [
         mode === "live" ? "Live mode" : "Replay mode",
         inspectLocked ? "Inspect lock active" : "Inspect lock inactive",

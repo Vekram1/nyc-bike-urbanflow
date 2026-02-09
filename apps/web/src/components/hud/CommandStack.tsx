@@ -1,6 +1,8 @@
 // apps/web/src/components/hud/CommandStack.tsx
 "use client";
 
+import { useEffect, useMemo, useState, type KeyboardEventHandler } from "react";
+
 import HUDCard from "./HUDCard";
 import Keycap from "./Keycap";
 import type { LayerToggles } from "@/lib/hudTypes";
@@ -8,6 +10,7 @@ import type { LayerToggles } from "@/lib/hudTypes";
 type Props = {
     playing: boolean;
     inspectLocked: boolean;
+    systemId: string;
     compareMode: boolean;
     splitView: boolean;
     compareOffsetBuckets: number;
@@ -18,11 +21,18 @@ type Props = {
     onToggleSplitView: () => void;
     onCompareOffsetDown: () => void;
     onCompareOffsetUp: () => void;
+    onSearchPick: (station: { stationKey: string; name: string }) => void;
+};
+
+type SearchResult = {
+    station_key: string;
+    name: string;
 };
 
 export default function CommandStack({
     playing,
     inspectLocked,
+    systemId,
     compareMode,
     splitView,
     compareOffsetBuckets,
@@ -33,12 +43,119 @@ export default function CommandStack({
     onToggleSplitView,
     onCompareOffsetDown,
     onCompareOffsetUp,
+    onSearchPick,
 }: Props) {
+    const [query, setQuery] = useState("");
+    const [results, setResults] = useState<SearchResult[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const trimmedQuery = query.trim();
+    const canSearch = trimmedQuery.length >= 2;
+
+    useEffect(() => {
+        if (!canSearch) {
+            setResults([]);
+            setLoading(false);
+            setError(null);
+            return;
+        }
+
+        const abort = new AbortController();
+        const timer = window.setTimeout(async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const url = new URL("/api/search", window.location.origin);
+                url.searchParams.set("system_id", systemId);
+                url.searchParams.set("q", trimmedQuery);
+                url.searchParams.set("limit", "8");
+                const res = await fetch(url.toString(), {
+                    method: "GET",
+                    cache: "no-store",
+                    signal: abort.signal,
+                });
+                const body = (await res.json()) as { results?: SearchResult[]; error?: { message?: string } };
+                if (!res.ok) {
+                    setResults([]);
+                    setError(body.error?.message ?? "Search failed");
+                    return;
+                }
+                setResults(Array.isArray(body.results) ? body.results : []);
+            } catch (err) {
+                if ((err as { name?: string })?.name === "AbortError") return;
+                setResults([]);
+                setError("Search request failed");
+            } finally {
+                setLoading(false);
+            }
+        }, 180);
+
+        return () => {
+            window.clearTimeout(timer);
+            abort.abort();
+        };
+    }, [canSearch, systemId, trimmedQuery]);
+
+    const searchHint = useMemo(() => {
+        if (!canSearch) return "Type at least 2 chars";
+        if (loading) return "Searching...";
+        if (error) return error;
+        if (results.length === 0) return "No matches";
+        return `${results.length} result${results.length === 1 ? "" : "s"}`;
+    }, [canSearch, error, loading, results.length]);
+
+    const handlePick = (item: SearchResult) => {
+        onSearchPick({
+            stationKey: item.station_key,
+            name: item.name,
+        });
+        setQuery("");
+        setResults([]);
+        setError(null);
+    };
+
+    const onSearchKeyDown: KeyboardEventHandler<HTMLInputElement> = (event) => {
+        if (event.key !== "Enter" || results.length === 0) return;
+        event.preventDefault();
+        handlePick(results[0]);
+    };
+
     return (
         <>
             <HUDCard>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <Row label="Search" hint=" / " />
+                    <input
+                        type="search"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        onKeyDown={onSearchKeyDown}
+                        placeholder="Station name or key"
+                        aria-label="Search stations"
+                        data-uf-id="search-input"
+                        style={searchInputStyle}
+                    />
+                    <div
+                        style={{ fontSize: 11, opacity: 0.7, minHeight: 14 }}
+                        data-uf-id="search-status"
+                    >
+                        {searchHint}
+                    </div>
+                    {results.length > 0 ? (
+                        <div style={searchResultsStyle} data-uf-id="search-results">
+                            {results.map((item) => (
+                                <button
+                                    key={item.station_key}
+                                    type="button"
+                                    onClick={() => handlePick(item)}
+                                    style={searchResultButtonStyle}
+                                    data-uf-id={`search-result-${item.station_key}`}
+                                >
+                                    {item.name}
+                                </button>
+                            ))}
+                        </div>
+                    ) : null}
                     <button
                         type="button"
                         style={rowBtnStyle}
@@ -204,6 +321,35 @@ const smallBtnStyle: React.CSSProperties = {
     color: "rgba(230,237,243,0.92)",
     borderRadius: 8,
     padding: "2px 8px",
+    cursor: "pointer",
+    fontSize: 12,
+};
+
+const searchInputStyle: React.CSSProperties = {
+    width: "100%",
+    border: "1px solid rgba(255,255,255,0.16)",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(230,237,243,0.95)",
+    borderRadius: 8,
+    padding: "6px 8px",
+    fontSize: 12,
+};
+
+const searchResultsStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    maxHeight: 160,
+    overflowY: "auto",
+};
+
+const searchResultButtonStyle: React.CSSProperties = {
+    textAlign: "left",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(230,237,243,0.92)",
+    borderRadius: 8,
+    padding: "6px 8px",
     cursor: "pointer",
     fontSize: 12,
 };

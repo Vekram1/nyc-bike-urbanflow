@@ -8,11 +8,11 @@ import type { LayerToggles } from "@/lib/hudTypes";
 export function useHudMockAdapter({
     layers,
     inspectLocked,
-    playing,
+    mode,
 }: {
     layers: LayerToggles;
     inspectLocked: boolean;
-    playing: boolean;
+    mode: "live" | "replay";
 }) {
     const fps = useFps();
     const { p95, spark, pushSample } = useRollingP95({ windowMs: 15_000 });
@@ -26,7 +26,7 @@ export function useHudMockAdapter({
 
     return {
         clock: {
-            mode: (playing ? "live" : "replay") as "live" | "replay",
+            mode,
             sv: "sv:mock-frontend",
             delayed: false,
             inspectLocked,
@@ -41,4 +41,3 @@ export function useHudMockAdapter({
         },
     };
 }
-
