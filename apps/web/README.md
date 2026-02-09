@@ -90,6 +90,7 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.tileRequestKey`
   - `window.__UF_E2E.tileRequestKeyHistory` (bounded last 40 entries)
   - `window.__UF_E2E.invariantViolations` (bounded last 20 entries)
+  - `window.__UF_E2E.blockedActions` (per-action counters while inspect lock blocks controls)
 - Stable selector hooks for browser tests:
   - `data-uf-id="app-root"`
   - `data-uf-id="map-shell"`
