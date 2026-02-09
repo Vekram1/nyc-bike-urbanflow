@@ -946,6 +946,17 @@ describe("control-plane e2e", () => {
     const invalidBucketBody = await invalidBucketRes.json();
     expect(invalidBucketBody.error.code).toBe("invalid_t_bucket");
     expect(invalidBucketRes.headers.get("Cache-Control")).toBe("no-store");
+
+    const drawerMethodRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/drawer?v=1&sv=${encodeURIComponent(sv)}&T_bucket=1738872000&range=6h&severity_version=sev.v1&tile_schema=tile.v1`,
+        { method: "POST" }
+      )
+    );
+    expect(drawerMethodRes.status).toBe(405);
+    expect(drawerMethodRes.headers.get("Cache-Control")).toBe("no-store");
+    const drawerMethodBody = await drawerMethodRes.json();
+    expect(drawerMethodBody.error.code).toBe("method_not_allowed");
   });
 
   it("serves station detail and series endpoints with sv-bound params", async () => {
@@ -1127,6 +1138,27 @@ describe("control-plane e2e", () => {
     expect(seriesOk?.details.sv).toBe(sv);
     expect(Number(detailOk?.details.payload_bytes)).toBeGreaterThan(0);
     expect(Number(seriesOk?.details.payload_bytes)).toBeGreaterThan(0);
+
+    const detailMethodRes = await handler(
+      new Request(`https://example.test/api/stations/STA-001?sv=${encodeURIComponent(sv)}`, {
+        method: "POST",
+      })
+    );
+    expect(detailMethodRes.status).toBe(405);
+    expect(detailMethodRes.headers.get("Cache-Control")).toBe("no-store");
+    const detailMethodBody = await detailMethodRes.json();
+    expect(detailMethodBody.error.code).toBe("method_not_allowed");
+
+    const seriesMethodRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(sv)}&from=1738872000&to=1738875600&bucket=300`,
+        { method: "POST" }
+      )
+    );
+    expect(seriesMethodRes.status).toBe(405);
+    expect(seriesMethodRes.headers.get("Cache-Control")).toBe("no-store");
+    const seriesMethodBody = await seriesMethodRes.json();
+    expect(seriesMethodBody.error.code).toBe("method_not_allowed");
   });
 
   it("rejects unknown query params on admin endpoints with 400 + no-store", async () => {
