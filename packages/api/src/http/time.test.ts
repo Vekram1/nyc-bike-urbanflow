@@ -54,6 +54,27 @@ describe("createTimeRouteHandler", () => {
     expect(body.error.code).toBe("missing_system_id");
   });
 
+  it("returns 400 for unknown query params", async () => {
+    const handler = createTimeRouteHandler({
+      servingViews: {
+        async mintLiveToken() {
+          throw new Error("should not mint");
+        },
+      },
+      viewStore: {
+        async listWatermarks() {
+          return [];
+        },
+      },
+      config: baseConfig,
+    });
+
+    const res = await handler(new Request("https://example.test/api/time?system_id=citibike-nyc&foo=bar", { method: "GET" }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unknown_param");
+  });
+
   it("returns 200 with recommended_live_sv", async () => {
     const handler = createTimeRouteHandler({
       servingViews: {

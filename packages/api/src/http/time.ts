@@ -59,6 +59,7 @@ type JsonErr = {
     message: string;
   };
 };
+const TIME_ALLOWED_QUERY_PARAMS = new Set(["system_id"]);
 
 function json(body: unknown, status: number, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -77,6 +78,15 @@ function methodNotAllowed(): Response {
     405,
     { Allow: "GET" }
   );
+}
+
+function hasUnknownQueryParam(searchParams: URLSearchParams, allowed: Set<string>): string | null {
+  for (const key of searchParams.keys()) {
+    if (!allowed.has(key)) {
+      return key;
+    }
+  }
+  return null;
 }
 
 function clampDegradeLevel(value: number): number {
@@ -124,6 +134,10 @@ export function createTimeRouteHandler(deps: TimeRouteDeps): (request: Request) 
     const url = new URL(request.url);
     if (url.pathname !== "/api/time") {
       return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+    }
+    const unknown = hasUnknownQueryParam(url.searchParams, TIME_ALLOWED_QUERY_PARAMS);
+    if (unknown) {
+      return json({ error: { code: "unknown_param", message: `Unknown query parameter: ${unknown}` } }, 400);
     }
 
     const systemId = url.searchParams.get("system_id")?.trim() ?? "";

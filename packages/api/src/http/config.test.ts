@@ -39,6 +39,14 @@ describe("createConfigRouteHandler", () => {
     expect(body.error.code).toBe("unsupported_version");
   });
 
+  it("returns 400 for unknown query params", async () => {
+    const handler = createConfigRouteHandler(config);
+    const res = await handler(new Request("https://example.test/api/config?v=1&foo=bar", { method: "GET" }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unknown_param");
+  });
+
   it("returns 405 for non-GET", async () => {
     const handler = createConfigRouteHandler(config);
     const res = await handler(new Request("https://example.test/api/config?v=1", { method: "POST" }));

@@ -33,6 +33,7 @@ export type ConfigRouteConfig = {
     }) => Promise<string[]>;
   };
 };
+const CONFIG_ALLOWED_QUERY_PARAMS = new Set(["v"]);
 
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -44,6 +45,15 @@ function json(body: unknown, status: number): Response {
   });
 }
 
+function hasUnknownQueryParam(searchParams: URLSearchParams, allowed: Set<string>): string | null {
+  for (const key of searchParams.keys()) {
+    if (!allowed.has(key)) {
+      return key;
+    }
+  }
+  return null;
+}
+
 export function createConfigRouteHandler(config: ConfigRouteConfig): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
     if (request.method !== "GET") {
@@ -53,6 +63,10 @@ export function createConfigRouteHandler(config: ConfigRouteConfig): (request: R
     const url = new URL(request.url);
     if (url.pathname !== "/api/config") {
       return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+    }
+    const unknown = hasUnknownQueryParam(url.searchParams, CONFIG_ALLOWED_QUERY_PARAMS);
+    if (unknown) {
+      return json({ error: { code: "unknown_param", message: `Unknown query parameter: ${unknown}` } }, 400);
     }
 
     const v = url.searchParams.get("v");

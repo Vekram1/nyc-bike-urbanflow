@@ -369,6 +369,13 @@ describe("control-plane e2e", () => {
     const timeRes = await handler(new Request("https://example.test/api/time?system_id=citibike-nyc"));
     expect(timeRes.status).toBe(200);
     expect(timeRes.headers.get("Cache-Control")).toBe("no-store");
+    const timeUnknownParamRes = await handler(
+      new Request("https://example.test/api/time?system_id=citibike-nyc&foo=bar")
+    );
+    expect(timeUnknownParamRes.status).toBe(400);
+    expect(timeUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const timeUnknownParamBody = await timeUnknownParamRes.json();
+    expect(timeUnknownParamBody.error.code).toBe("unknown_param");
     const timeBody = await timeRes.json();
     expect(typeof timeBody.recommended_live_sv).toBe("string");
     expect(timeBody.network.active_station_count).toBe(100);
@@ -380,6 +387,11 @@ describe("control-plane e2e", () => {
     const configRes = await handler(new Request("https://example.test/api/config?v=1"));
     expect(configRes.status).toBe(200);
     expect(configRes.headers.get("Cache-Control")).toBe("no-store");
+    const configUnknownParamRes = await handler(new Request("https://example.test/api/config?v=1&foo=bar"));
+    expect(configUnknownParamRes.status).toBe(400);
+    expect(configUnknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const configUnknownParamBody = await configUnknownParamRes.json();
+    expect(configUnknownParamBody.error.code).toBe("unknown_param");
 
     const timelineRes = await handler(
       new Request(`https://example.test/api/timeline?v=1&sv=${encodeURIComponent(sv)}`)
