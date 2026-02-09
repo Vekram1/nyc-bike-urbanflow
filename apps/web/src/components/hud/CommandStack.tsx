@@ -112,8 +112,9 @@ export default function CommandStack({
                         disabled={inspectLocked}
                         aria-label="Toggle compare mode"
                         data-uf-id="compare-mode-toggle"
+                        data-uf-enabled={compareMode ? "true" : "false"}
                     >
-                        <span style={{ fontSize: 12, opacity: 0.92 }}>
+                        <span style={{ fontSize: 12, opacity: 0.92 }} data-uf-id="compare-mode-state">
                             {compareMode ? "Compare On" : "Compare Off"}
                         </span>
                     </button>
@@ -124,8 +125,9 @@ export default function CommandStack({
                         disabled={inspectLocked || !compareMode}
                         aria-label="Toggle split view"
                         data-uf-id="compare-split-toggle"
+                        data-uf-enabled={splitView ? "true" : "false"}
                     >
-                        <span style={{ fontSize: 12, opacity: 0.92 }}>
+                        <span style={{ fontSize: 12, opacity: 0.92 }} data-uf-id="compare-split-state">
                             {splitView ? "Split On" : "Split Off"}
                         </span>
                     </button>
@@ -140,7 +142,11 @@ export default function CommandStack({
                         >
                             -
                         </button>
-                        <div style={{ fontSize: 12, opacity: 0.9, alignSelf: "center" }}>
+                        <div
+                            style={{ fontSize: 12, opacity: 0.9, alignSelf: "center" }}
+                            data-uf-id="compare-offset-value"
+                            data-uf-offset-buckets={String(compareOffsetBuckets)}
+                        >
                             Offset {compareOffsetBuckets} buckets
                         </div>
                         <button

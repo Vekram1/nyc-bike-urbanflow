@@ -211,6 +211,9 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `data-uf-id="layer-toggle-capacity"`
 - `data-uf-id="layer-toggle-labels"`
 - `data-uf-id="compare-mode-toggle"`
+- `data-uf-id="compare-mode-state"`
 - `data-uf-id="compare-split-toggle"`
+- `data-uf-id="compare-split-state"`
 - `data-uf-id="compare-offset-down"`
 - `data-uf-id="compare-offset-up"`
+- `data-uf-id="compare-offset-value"` with `data-uf-offset-buckets="<n>"`
