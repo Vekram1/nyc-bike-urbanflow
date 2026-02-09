@@ -191,11 +191,17 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `data-uf-id="drawer-tier2-button"`
 - `data-uf-id="drawer-close-button"`
 - `data-uf-id="drawer-row-station-key"`
+- `data-uf-id="drawer-value-station-key"`
 - `data-uf-id="drawer-row-capacity"`
+- `data-uf-id="drawer-value-capacity"`
 - `data-uf-id="drawer-row-bikes"`
+- `data-uf-id="drawer-value-bikes"`
 - `data-uf-id="drawer-row-docks"`
+- `data-uf-id="drawer-value-docks"`
 - `data-uf-id="drawer-row-bucket-quality"`
+- `data-uf-id="drawer-value-bucket-quality"`
 - `data-uf-id="drawer-row-t-bucket"`
+- `data-uf-id="drawer-value-t-bucket"`
 - `data-uf-id="drawer-station-title"`
 - `data-uf-id="drawer-updated-text"`
 - `data-uf-id="drawer-tier1-note"`
