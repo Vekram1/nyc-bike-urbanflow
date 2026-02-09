@@ -80,6 +80,10 @@ function json(body: unknown, status: number, headers?: Record<string, string>): 
   });
 }
 
+function jsonByteSize(body: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(body)).length;
+}
+
 function parseBucket(value: string | null, fallback: number): number | null {
   if (!value || value.trim().length === 0) {
     return fallback;
@@ -132,6 +136,7 @@ export function createStationsRouteHandler(deps: StationsRouteDeps): (request: R
 
     const url = new URL(request.url);
     const route = extractStationPath(url.pathname);
+    const svToken = url.searchParams.get("sv") ?? null;
     if (!route) {
       return json({ error: { code: "not_found", message: "Route not found" } }, 404);
     }
@@ -161,14 +166,18 @@ export function createStationsRouteHandler(deps: StationsRouteDeps): (request: R
         logger.warn("stations.detail.not_found", {
           system_id: sv.system_id,
           station_key: route.station_key,
+          sv: svToken,
           view_id: sv.view_id,
         });
         return json({ error: { code: "station_not_found", message: "Station not found" } }, 404);
       }
+      const payloadBytes = jsonByteSize(detail);
       logger.info("stations.detail.ok", {
         system_id: sv.system_id,
         station_key: route.station_key,
+        sv: svToken,
         view_id: sv.view_id,
+        payload_bytes: payloadBytes,
       });
       return json(detail, 200);
     }
@@ -237,25 +246,25 @@ export function createStationsRouteHandler(deps: StationsRouteDeps): (request: R
       bucket_seconds: bucket,
       limit: deps.max_series_points,
     });
+    const responseBody = {
+      station_key: route.station_key,
+      from_epoch_s: fromEpoch,
+      to_epoch_s: toEpoch,
+      bucket_seconds: bucket,
+      points: series,
+    };
     logger.info("stations.series.ok", {
       system_id: sv.system_id,
       station_key: route.station_key,
+      sv: svToken,
       view_id: sv.view_id,
       from_epoch_s: fromEpoch,
       to_epoch_s: toEpoch,
       bucket_seconds: bucket,
       points_returned: series.length,
+      payload_bytes: jsonByteSize(responseBody),
     });
 
-    return json(
-      {
-        station_key: route.station_key,
-        from_epoch_s: fromEpoch,
-        to_epoch_s: toEpoch,
-        bucket_seconds: bucket,
-        points: series,
-      },
-      200
-    );
+    return json(responseBody, 200);
   };
 }

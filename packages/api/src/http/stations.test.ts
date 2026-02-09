@@ -13,6 +13,7 @@ const validSv = {
 
 describe("createStationsRouteHandler", () => {
   it("returns station detail for /api/stations/{station_key}", async () => {
+    const infoEvents: Array<{ event: string; details: Record<string, unknown> }> = [];
     const handler = createStationsRouteHandler({
       tokens: {
         async validate() {
@@ -37,6 +38,12 @@ describe("createStationsRouteHandler", () => {
       default_bucket_seconds: 300,
       max_series_window_s: 86400,
       max_series_points: 288,
+      logger: {
+        info(event, details) {
+          infoEvents.push({ event, details });
+        },
+        warn() {},
+      },
     });
 
     const res = await handler(new Request("https://example.test/api/stations/STA-001?sv=abc"));
@@ -44,6 +51,11 @@ describe("createStationsRouteHandler", () => {
     const body = await res.json();
     expect(body.station_key).toBe("STA-001");
     expect(body.capacity).toBe(40);
+    expect(infoEvents.length).toBe(1);
+    expect(infoEvents[0]?.event).toBe("stations.detail.ok");
+    expect(infoEvents[0]?.details.station_key).toBe("STA-001");
+    expect(infoEvents[0]?.details.sv).toBe("abc");
+    expect(Number(infoEvents[0]?.details.payload_bytes)).toBeGreaterThan(0);
   });
 
   it("returns 400 for invalid station_key", async () => {
@@ -73,6 +85,7 @@ describe("createStationsRouteHandler", () => {
   });
 
   it("returns bounded series response", async () => {
+    const infoEvents: Array<{ event: string; details: Record<string, unknown> }> = [];
     const handler = createStationsRouteHandler({
       tokens: {
         async validate() {
@@ -98,6 +111,12 @@ describe("createStationsRouteHandler", () => {
       default_bucket_seconds: 300,
       max_series_window_s: 86400,
       max_series_points: 288,
+      logger: {
+        info(event, details) {
+          infoEvents.push({ event, details });
+        },
+        warn() {},
+      },
     });
 
     const res = await handler(
@@ -109,6 +128,11 @@ describe("createStationsRouteHandler", () => {
     const body = await res.json();
     expect(body.points.length).toBe(1);
     expect(body.bucket_seconds).toBe(300);
+    expect(infoEvents.length).toBe(1);
+    expect(infoEvents[0]?.event).toBe("stations.series.ok");
+    expect(infoEvents[0]?.details.station_key).toBe("STA-001");
+    expect(infoEvents[0]?.details.sv).toBe("abc");
+    expect(Number(infoEvents[0]?.details.payload_bytes)).toBeGreaterThan(0);
   });
 
   it("accepts start/end aliases for series ranges", async () => {
