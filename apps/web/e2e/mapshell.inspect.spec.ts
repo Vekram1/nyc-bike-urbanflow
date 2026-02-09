@@ -316,3 +316,41 @@ test("timeline bucket advances while playing and stays stable while paused", asy
         })
         .toBe(pausedBucket);
 });
+
+test("tier2 details request updates drawer status lifecycle", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-tier2");
+    });
+    const drawer = page.locator('[data-uf-id="station-drawer"]');
+    await expect(drawer).toBeVisible();
+
+    const tier2Button = page.locator('[data-uf-id="drawer-tier2-button"]');
+    await expect(tier2Button).toBeVisible();
+    await tier2Button.click();
+
+    await expect
+        .poll(
+            async () => (await drawer.getAttribute("data-uf-tier2-status")) ?? "",
+            { timeout: 2_000 }
+        )
+        .toBe("loading");
+
+    await expect
+        .poll(
+            async () => (await drawer.getAttribute("data-uf-tier2-status")) ?? "",
+            { timeout: 6_000 }
+        )
+        .toMatch(/^(success|error)$/);
+});
