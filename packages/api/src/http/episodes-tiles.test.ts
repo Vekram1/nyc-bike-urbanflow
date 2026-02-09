@@ -108,6 +108,36 @@ describe("createEpisodesTilesRouteHandler", () => {
     expect(body.error.code).toBe("unsupported_version");
   });
 
+  it("returns 403 when sv token is revoked", async () => {
+    const handler = createEpisodesTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return { ok: false as const, reason: "token_revoked" };
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      default_severity_version: "sev.v1",
+      tileStore: {
+        async fetchEpisodesTile() {
+          throw new Error("not used");
+        },
+      },
+      cache: { max_age_s: 30, s_maxage_s: 120, stale_while_revalidate_s: 15 },
+    });
+
+    const res = await handler(
+      new Request("https://example.test/api/tiles/episodes/12/1200/1530.mvt?v=1&sv=revoked&T_bucket=1738872000")
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("token_revoked");
+  });
+
   it("returns 200 and passes sv-bound severity version", async () => {
     let seen: Record<string, unknown> | null = null;
     const handler = createEpisodesTilesRouteHandler({
