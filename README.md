@@ -134,6 +134,20 @@ Optional refresh tuning flags:
 - `--severity-version <version>` (default `sev.v1`)
 - `--pressure-proxy-method <method>` (default `delta_cap.v1`)
 
+### 5) Retention workflow (keep storage light)
+
+Dry-run retention (safe default):
+
+```bash
+bun packages/ingest/src/cli.ts --system citibike-nyc --prune --retention-days 30 --max-archive-gb 10
+```
+
+Apply retention:
+
+```bash
+bun packages/ingest/src/cli.ts --system citibike-nyc --prune --retention-days 30 --max-archive-gb 10 --apply
+```
+
 Manual refresh (if you want explicit control):
 
 ```bash

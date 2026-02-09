@@ -43,6 +43,47 @@ That entrypoint wires `createControlPlaneHandler(...)` to DB-backed stores for:
 - API server process:
   - `bun packages/api/src/server.ts`
 
+## Retention policy (hot window + size cap)
+
+Keep data light with a retention run from ingest CLI:
+
+```bash
+# Dry-run (default): reports what would be pruned
+bun packages/ingest/src/cli.ts \
+  --system citibike-nyc \
+  --prune \
+  --retention-days 30 \
+  --max-archive-gb 10
+```
+
+```bash
+# Apply pruning (destructive): only run intentionally
+bun packages/ingest/src/cli.ts \
+  --system citibike-nyc \
+  --prune \
+  --retention-days 30 \
+  --max-archive-gb 10 \
+  --apply
+```
+
+Behavior:
+- DB hot-window prune (system-scoped):
+  - `station_status_1m`
+  - `station_severity_5m`
+  - `station_pressure_now_5m`
+  - `episode_markers_15m`
+  - `logical_snapshots`
+  - `raw_manifests`
+  - `fetch_attempts`
+- Archive prune (`data/gbfs`):
+  - removes files older than `retention-days`
+  - then trims oldest files until total size is under `max-archive-gb`
+
+Safety flags:
+- Default is dry-run unless `--apply` is provided.
+- `--no-prune-db` to only prune archive files.
+- `--no-prune-archive` to only prune DB rows.
+
 ## API bootstrap env
 
 Required:

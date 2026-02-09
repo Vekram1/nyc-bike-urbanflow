@@ -6,6 +6,7 @@ import { collectGbfs } from "./gbfs/collector";
 import { loadGbfsManifest } from "./gbfs/loader";
 import { runGbfsPoller } from "./gbfs/poller";
 import { loadSystemRegistry, requireSystemById } from "./gbfs/registry";
+import { applyArchivePrune, planArchivePrune, pruneDbHotWindow } from "./retention";
 import type { GbfsManifest } from "./gbfs/types";
 import type { SqlExecutor, SqlQueryResult } from "./db/types";
 
@@ -13,7 +14,7 @@ type CliArgs = {
   system_id: string | null;
   feeds: string[];
   data_root: string;
-  mode: "once" | "poll" | "load";
+  mode: "once" | "poll" | "load" | "prune";
   min_ttl_s: number;
   max_ttl_s: number;
   jitter_s: number;
@@ -23,6 +24,11 @@ type CliArgs = {
   refresh_lookback_minutes: number;
   severity_version: string;
   pressure_proxy_method: string;
+  retention_days: number;
+  max_archive_gb: number | null;
+  apply_prune: boolean;
+  prune_db: boolean;
+  prune_archive: boolean;
 };
 
 function parseArgs(argv: string[]): CliArgs {
@@ -40,6 +46,13 @@ function parseArgs(argv: string[]): CliArgs {
     refresh_lookback_minutes: Number(process.env.REFRESH_LOOKBACK_MINUTES ?? 180),
     severity_version: process.env.SEVERITY_VERSION?.trim() || "sev.v1",
     pressure_proxy_method: process.env.PRESSURE_PROXY_METHOD?.trim() || "delta_cap.v1",
+    retention_days: Number(process.env.RETENTION_DAYS ?? 30),
+    max_archive_gb: process.env.RETENTION_MAX_ARCHIVE_GB
+      ? Number(process.env.RETENTION_MAX_ARCHIVE_GB)
+      : null,
+    apply_prune: false,
+    prune_db: true,
+    prune_archive: true,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -82,6 +95,20 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (token === "--pressure-proxy-method" && argv[i + 1]) {
       args.pressure_proxy_method = argv[i + 1] ?? args.pressure_proxy_method;
       i += 1;
+    } else if (token === "--prune") {
+      args.mode = "prune";
+    } else if (token === "--retention-days" && argv[i + 1]) {
+      args.retention_days = Number(argv[i + 1]);
+      i += 1;
+    } else if (token === "--max-archive-gb" && argv[i + 1]) {
+      args.max_archive_gb = Number(argv[i + 1]);
+      i += 1;
+    } else if (token === "--apply") {
+      args.apply_prune = true;
+    } else if (token === "--no-prune-db") {
+      args.prune_db = false;
+    } else if (token === "--no-prune-archive") {
+      args.prune_archive = false;
     }
   }
 
@@ -256,6 +283,76 @@ async function main(): Promise<void> {
   const system = requireSystemById(registry, args.system_id);
 
   const dataRoot = path.resolve(process.cwd(), args.data_root);
+  if (args.mode === "prune") {
+    if (!Number.isFinite(args.retention_days) || args.retention_days <= 0) {
+      throw new Error("Invalid --retention-days; must be positive");
+    }
+    const nowMs = Date.now();
+    const cutoffIso = new Date(nowMs - args.retention_days * 24 * 60 * 60 * 1000).toISOString();
+    const apply = args.apply_prune;
+
+    let dbResult: Awaited<ReturnType<typeof pruneDbHotWindow>> | null = null;
+    if (args.prune_db) {
+      if (!apply) {
+        console.info(
+          JSON.stringify({
+            level: "info",
+            event: "gbfs_retention_db_dry_run",
+            ts: new Date().toISOString(),
+            system_id: system.system_id,
+            cutoff_iso: cutoffIso,
+          })
+        );
+      } else {
+        const db = makeDbExecutor();
+        dbResult = await pruneDbHotWindow({
+          db,
+          system_id: system.system_id,
+          cutoff_iso: cutoffIso,
+        });
+      }
+    }
+
+    let archivePlan: Awaited<ReturnType<typeof planArchivePrune>> | null = null;
+    let archiveApply: Awaited<ReturnType<typeof applyArchivePrune>> | null = null;
+    if (args.prune_archive) {
+      archivePlan = await planArchivePrune({
+        data_root: dataRoot,
+        retention_days: args.retention_days,
+        max_archive_gb: args.max_archive_gb,
+      });
+      if (apply && archivePlan.delete_candidates.length > 0) {
+        archiveApply = await applyArchivePrune(archivePlan);
+      }
+    }
+
+    console.info(
+      JSON.stringify({
+        level: "info",
+        event: "gbfs_retention_summary",
+        ts: new Date().toISOString(),
+        system_id: system.system_id,
+        mode: apply ? "apply" : "dry_run",
+        retention_days: args.retention_days,
+        max_archive_gb: args.max_archive_gb,
+        cutoff_iso: cutoffIso,
+        db: dbResult ?? { skipped: !args.prune_db, dry_run: args.prune_db && !apply },
+        archive: archivePlan
+          ? {
+              total_files_before: archivePlan.total_files_before,
+              total_bytes_before: archivePlan.total_bytes_before,
+              delete_candidates: archivePlan.delete_candidates.length,
+              delete_bytes: archivePlan.delete_candidates.reduce((acc, file) => acc + file.bytes, 0),
+              total_files_after: archivePlan.total_files_after,
+              total_bytes_after: archivePlan.total_bytes_after,
+              applied: archiveApply ?? { deleted_files: 0, deleted_bytes: 0 },
+            }
+          : { skipped: !args.prune_archive },
+      })
+    );
+    return;
+  }
+
   if (args.mode === "load") {
     const db = makeDbExecutor();
     const manifestPaths =
