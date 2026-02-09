@@ -53,6 +53,8 @@ type UfE2EState = {
     mapRefreshLastSuccessTs?: string;
     mapRefreshLastSkipReason?: string;
     mapRefreshLastErrorMessage?: string;
+    mapRefreshLastHttpStatus?: number | null;
+    mapRefreshLastErrorHttpStatus?: number | null;
     mapStationPickCount?: number;
     mapClickMissCount?: number;
     mapLastPickedStationId?: string;
@@ -105,6 +107,8 @@ export default function MapView(props: Props) {
             mapRefreshLastSuccessTs: current.mapRefreshLastSuccessTs ?? "",
             mapRefreshLastSkipReason: current.mapRefreshLastSkipReason ?? "",
             mapRefreshLastErrorMessage: current.mapRefreshLastErrorMessage ?? "",
+            mapRefreshLastHttpStatus: current.mapRefreshLastHttpStatus ?? null,
+            mapRefreshLastErrorHttpStatus: current.mapRefreshLastErrorHttpStatus ?? null,
             mapStationPickCount: current.mapStationPickCount ?? 0,
             mapClickMissCount: current.mapClickMissCount ?? 0,
             mapLastPickedStationId: current.mapLastPickedStationId ?? "",
@@ -236,6 +240,7 @@ export default function MapView(props: Props) {
 
         try {
             const res = await fetch("/api/gbfs/stations", { cache: "no-store" });
+            const httpStatus = res.status;
             const json = await res.json();
 
             if (json?.type === "FeatureCollection") {
@@ -248,6 +253,8 @@ export default function MapView(props: Props) {
                     mapRefreshLastSuccessTs: new Date().toISOString(),
                     mapRefreshLastSkipReason: "",
                     mapRefreshLastErrorMessage: "",
+                    mapRefreshLastHttpStatus: httpStatus,
+                    mapRefreshLastErrorHttpStatus: null,
                 }));
                 console.debug("[MapView] source_updated", {
                     sourceId: SOURCE_ID,
@@ -260,6 +267,8 @@ export default function MapView(props: Props) {
                     mapRefreshBadPayload: (current.mapRefreshBadPayload ?? 0) + 1,
                     mapRefreshFailureCount: (current.mapRefreshFailureCount ?? 0) + 1,
                     mapRefreshLastErrorMessage: "bad_payload",
+                    mapRefreshLastHttpStatus: httpStatus,
+                    mapRefreshLastErrorHttpStatus: httpStatus,
                 }));
                 console.warn("Unexpected GBFS response:", json);
             }
@@ -269,6 +278,7 @@ export default function MapView(props: Props) {
                 ...current,
                 mapRefreshFailureCount: (current.mapRefreshFailureCount ?? 0) + 1,
                 mapRefreshLastErrorMessage: message,
+                mapRefreshLastErrorHttpStatus: null,
             }));
             console.error("[MapView] refresh_failed", { error: message });
         }
