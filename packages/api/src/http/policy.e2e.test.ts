@@ -10,6 +10,8 @@ type MutableState = {
 describe("policy e2e via control-plane", () => {
   it("covers pending -> ready for run/moves and policy-moves tile response", async () => {
     const state: MutableState = { runReady: false, runId: 71 };
+    let policyTokenFailure: null | "token_expired" | "token_revoked" | "signature_invalid" = null;
+    let policyTileTokenFailure: null | "token_expired" | "token_revoked" | "signature_invalid" = null;
     const queued: Array<{ type: string; dedupe_key?: string; payload: unknown }> = [];
     const events: Array<{ event: string; details: Record<string, unknown> }> = [];
 
@@ -101,6 +103,9 @@ describe("policy e2e via control-plane", () => {
       policy: {
         tokens: {
           async validate() {
+            if (policyTokenFailure) {
+              return { ok: false as const, reason: policyTokenFailure };
+            }
             return {
               ok: true as const,
               payload: {
@@ -180,6 +185,9 @@ describe("policy e2e via control-plane", () => {
       policyTiles: {
         tokens: {
           async validate() {
+            if (policyTileTokenFailure) {
+              return { ok: false as const, reason: policyTileTokenFailure };
+            }
             return {
               ok: true as const,
               payload: {
@@ -282,6 +290,40 @@ describe("policy e2e via control-plane", () => {
     expect(events.some((e) => e.event === "policy.run.pending")).toBe(true);
     expect(events.some((e) => e.event === "policy.run.ok")).toBe(true);
     expect(events.some((e) => e.event === "policy.moves.ok")).toBe(true);
+
+    policyTokenFailure = "token_expired";
+    const expiredRun = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(expiredRun.status).toBe(401);
+    expect(expiredRun.headers.get("Cache-Control")).toBe("no-store");
+    const expiredRunBody = await expiredRun.json();
+    expect(expiredRunBody.error.code).toBe("token_expired");
+
+    policyTokenFailure = "token_revoked";
+    const revokedMoves = await handler(
+      new Request(
+        "https://example.test/api/policy/moves?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000&top_n=1"
+      )
+    );
+    expect(revokedMoves.status).toBe(403);
+    expect(revokedMoves.headers.get("Cache-Control")).toBe("no-store");
+    const revokedMovesBody = await revokedMoves.json();
+    expect(revokedMovesBody.error.code).toBe("token_revoked");
+
+    policyTokenFailure = null;
+    policyTileTokenFailure = "signature_invalid";
+    const invalidTile = await handler(
+      new Request(
+        "https://example.test/api/tiles/policy_moves/12/1200/1530.mvt?v=1&sv=sv-live&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(invalidTile.status).toBe(401);
+    expect(invalidTile.headers.get("Cache-Control")).toBe("no-store");
+    const invalidTileBody = await invalidTile.json();
+    expect(invalidTileBody.error.code).toBe("signature_invalid");
   });
 
   it("enforces bounded query params on policy routes", async () => {
