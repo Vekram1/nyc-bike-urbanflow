@@ -180,6 +180,50 @@ describe("createStationDrawerRouteHandler", () => {
     expect(body.error.code).toBe("unknown_param");
   });
 
+  it("returns 400 for unsupported version", async () => {
+    const handler = createStationDrawerRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      stationsStore: {
+        async getStationDrawer() {
+          return null;
+        },
+      },
+      defaults: {
+        severity_version: "sev.v1",
+        tile_schema: "tile.v1",
+        range_s: 21600,
+        bucket_seconds: 300,
+      },
+      limits: {
+        max_range_s: 172800,
+        max_series_points: 360,
+        max_episodes: 50,
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request("https://example.test/api/stations/STA-001/drawer?v=2&sv=abc&T_bucket=1738872000&range=6h")
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("unsupported_version");
+  });
+
   it("returns 400 for invalid T_bucket", async () => {
     const handler = createStationDrawerRouteHandler({
       tokens: {
