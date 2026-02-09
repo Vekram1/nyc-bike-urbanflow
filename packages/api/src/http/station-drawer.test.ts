@@ -266,4 +266,50 @@ describe("createStationDrawerRouteHandler", () => {
     const body = await res.json();
     expect(body.error.code).toBe("invalid_t_bucket");
   });
+
+  it("returns 405 for non-GET requests", async () => {
+    const handler = createStationDrawerRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      stationsStore: {
+        async getStationDrawer() {
+          return null;
+        },
+      },
+      defaults: {
+        severity_version: "sev.v1",
+        tile_schema: "tile.v1",
+        range_s: 21600,
+        bucket_seconds: 300,
+      },
+      limits: {
+        max_range_s: 172800,
+        max_series_points: 360,
+        max_episodes: 50,
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request("https://example.test/api/stations/STA-001/drawer?v=1&sv=abc&T_bucket=1738872000&range=6h", {
+        method: "POST",
+      })
+    );
+    expect(res.status).toBe(405);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("method_not_allowed");
+  });
 });
