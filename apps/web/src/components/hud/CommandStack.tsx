@@ -66,7 +66,22 @@ export default function CommandStack({
             })
             .slice(0, 8);
     }, [canSearch, searchStations, trimmedQuery]);
-    const results = remoteResults ?? localResults;
+    const results = useMemo(() => {
+        const merged: SearchResult[] = [];
+        const seen = new Set<string>();
+        const remote = remoteResults ?? [];
+        for (const item of remote) {
+            if (seen.has(item.stationKey)) continue;
+            seen.add(item.stationKey);
+            merged.push(item);
+        }
+        for (const item of localResults) {
+            if (seen.has(item.stationKey)) continue;
+            seen.add(item.stationKey);
+            merged.push(item);
+        }
+        return merged;
+    }, [localResults, remoteResults]);
 
     useEffect(() => {
         if (!canSearch) {
@@ -119,8 +134,16 @@ export default function CommandStack({
         if (loading) return "Searching...";
         if (remoteError) return `${remoteError} (showing local matches)`;
         if (results.length === 0) return "No matches";
+        const localOnly =
+            remoteResults != null &&
+            remoteResults.length === 0 &&
+            localResults.length > 0 &&
+            !remoteError;
+        if (localOnly) {
+            return `${results.length} local result${results.length === 1 ? "" : "s"}`;
+        }
         return `${results.length} result${results.length === 1 ? "" : "s"}`;
-    }, [canSearch, loading, remoteError, results.length]);
+    }, [canSearch, loading, localResults.length, remoteError, remoteResults, results.length]);
 
     const handlePick = (item: SearchResult) => {
         onSearchPick({
@@ -170,6 +193,9 @@ export default function CommandStack({
                                     data-uf-id={`search-result-${item.stationKey}`}
                                 >
                                     {item.name}
+                                    <span style={{ opacity: 0.6, marginLeft: 6 }}>
+                                        {item.stationKey}
+                                    </span>
                                 </button>
                             ))}
                         </div>

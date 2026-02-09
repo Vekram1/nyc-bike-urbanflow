@@ -1067,3 +1067,44 @@ test("tier1 click freshness fields are populated from current bucket context", a
     await expect(page.locator('[data-uf-id="drawer-value-docks"]')).not.toHaveText("");
     await expect(page.locator('[data-uf-id="drawer-updated-text"]')).toHaveCount(0);
 });
+
+test("search result selection opens Tier-1 drawer for selected station", async ({ page }) => {
+    await page.route("**/api/search?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                results: [
+                    {
+                        stationKey: "station-e2e-search",
+                        name: "Station Search",
+                    },
+                ],
+            }),
+        });
+    });
+
+    await page.goto("/");
+
+    const searchInput = page.locator('[data-uf-id="search-input"]');
+    const searchResults = page.locator('[data-uf-id="search-results"] button');
+    await expect(searchInput).toBeVisible();
+
+    await searchInput.fill("sea");
+
+    await expect
+        .poll(async () => searchResults.count(), { timeout: 8_000 })
+        .toBeGreaterThan(0);
+
+    const firstResult = searchResults.first();
+    const resultId = (await firstResult.getAttribute("data-uf-id")) ?? "";
+    const stationKey = resultId.replace(/^search-result-/, "");
+    expect(stationKey.length).toBeGreaterThan(0);
+    await firstResult.click();
+
+    const drawer = page.locator('[data-uf-id="station-drawer"]');
+    await expect(drawer).toBeVisible();
+    await expect
+        .poll(async () => (await readState(page)).selectedStationId ?? "")
+        .toBe("station-e2e-search");
+});
