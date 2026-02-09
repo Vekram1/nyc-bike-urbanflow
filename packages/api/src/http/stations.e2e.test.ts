@@ -275,5 +275,13 @@ describe("station endpoints e2e", () => {
     expect(mismatchRes.status).toBe(400);
     const mismatchBody = await mismatchRes.json();
     expect(mismatchBody.error.code).toBe("system_id_mismatch");
+
+    const unknownParamRes = await handler(
+      new Request(`https://example.test/api/stations/STA-001?sv=${encodeURIComponent(issuedSv)}&foo=bar`)
+    );
+    expect(unknownParamRes.status).toBe(400);
+    expect(unknownParamRes.headers.get("Cache-Control")).toBe("no-store");
+    const unknownParamBody = await unknownParamRes.json();
+    expect(unknownParamBody.error.code).toBe("unknown_param");
   });
 });

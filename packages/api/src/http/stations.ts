@@ -68,6 +68,8 @@ export type StationsRouteDeps = {
 };
 
 const stationKeyRe = /^[A-Za-z0-9._:-]{1,80}$/;
+const DETAIL_ALLOWED_QUERY_PARAMS = new Set(["sv"]);
+const SERIES_ALLOWED_QUERY_PARAMS = new Set(["sv", "bucket", "from", "to", "start", "end"]);
 
 function json(body: unknown, status: number, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -127,6 +129,15 @@ function extractStationPath(pathname: string): { station_key: string; is_series:
   return null;
 }
 
+function hasUnknownQueryParam(searchParams: URLSearchParams, allowed: Set<string>): string | null {
+  for (const key of searchParams.keys()) {
+    if (!allowed.has(key)) {
+      return key;
+    }
+  }
+  return null;
+}
+
 export function createStationsRouteHandler(deps: StationsRouteDeps): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
     const logger = deps.logger ?? defaultLogger;
@@ -139,6 +150,13 @@ export function createStationsRouteHandler(deps: StationsRouteDeps): (request: R
     const svToken = url.searchParams.get("sv") ?? null;
     if (!route) {
       return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+    }
+    const unknown = hasUnknownQueryParam(
+      url.searchParams,
+      route.is_series ? SERIES_ALLOWED_QUERY_PARAMS : DETAIL_ALLOWED_QUERY_PARAMS
+    );
+    if (unknown) {
+      return json({ error: { code: "unknown_param", message: `Unknown query parameter: ${unknown}` } }, 400);
     }
 
     if (!stationKeyRe.test(route.station_key)) {

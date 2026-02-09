@@ -84,6 +84,32 @@ describe("createStationsRouteHandler", () => {
     expect(body.error.code).toBe("invalid_station_key");
   });
 
+  it("returns 400 for unknown query params on detail route", async () => {
+    const handler = createStationsRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      stationsStore: {
+        async getStationDetail() {
+          return null;
+        },
+        async getStationSeries() {
+          return [];
+        },
+      },
+      default_bucket_seconds: 300,
+      max_series_window_s: 86400,
+      max_series_points: 288,
+    });
+
+    const res = await handler(new Request("https://example.test/api/stations/STA-001?sv=abc&foo=bar"));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unknown_param");
+  });
+
   it("returns bounded series response", async () => {
     const infoEvents: Array<{ event: string; details: Record<string, unknown> }> = [];
     const handler = createStationsRouteHandler({
@@ -194,5 +220,35 @@ describe("createStationsRouteHandler", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe("range_too_large");
+  });
+
+  it("returns 400 for unknown query params on series route", async () => {
+    const handler = createStationsRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      stationsStore: {
+        async getStationDetail() {
+          return null;
+        },
+        async getStationSeries() {
+          return [];
+        },
+      },
+      default_bucket_seconds: 300,
+      max_series_window_s: 86400,
+      max_series_points: 288,
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/stations/STA-001/series?sv=abc&from=1738872000&to=1738875600&bucket=300&foo=bar"
+      )
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unknown_param");
   });
 });
