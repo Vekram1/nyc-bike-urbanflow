@@ -97,6 +97,37 @@ From repo root:
 bun packages/ingest/src/cli.ts --system citibike-nyc --poll
 ```
 
+### 4) DB-backed polling/load workflow (recommended for replay)
+
+`packages/ingest/src/cli.ts` now supports loading manifests into Postgres.
+
+Load all existing manifests from `data/gbfs`:
+
+```bash
+export DATABASE_URL='postgres://...'
+bun packages/ingest/src/cli.ts --system citibike-nyc --load
+```
+
+Collect once, then load that batch to DB:
+
+```bash
+export DATABASE_URL='postgres://...'
+bun packages/ingest/src/cli.ts --system citibike-nyc --load-db
+```
+
+Continuous polling with per-cycle DB load:
+
+```bash
+export DATABASE_URL='postgres://...'
+bun packages/ingest/src/cli.ts --system citibike-nyc --poll --load-db
+```
+
+Then refresh serving aggregates:
+
+```bash
+psql "$DATABASE_URL" -v system_id='citibike-nyc' -v from_ts='2026-02-09T00:00:00Z' -v to_ts='2026-02-09T23:59:59Z' -f scripts/rebuild_serving_aggregates.sql
+```
+
 ## Testing
 
 ### Frontend
@@ -139,6 +170,7 @@ More backend validation examples are documented in `packages/api/README.md`.
 - Replay/live behavior is controlled by control-plane endpoints (`/api/time`, `/api/timeline`).
 - The data plane is `/api/tiles/*`; keep keyspace bounded via allowlists and versioned dimensions.
 - Frontend inspect behavior should not mutate timeline/tile request keys while drawer lock is active.
+- For deep historical scrub/replay, keep DB loader + aggregate refresh running (raw polling alone is not enough).
 
 ## Optimization Algorithms
 

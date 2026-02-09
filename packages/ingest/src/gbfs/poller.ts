@@ -1,6 +1,8 @@
 import type { GbfsFeedName } from "./types";
 import { collectGbfs } from "./collector";
 
+type PollCycleResult = Awaited<ReturnType<typeof collectGbfs>>;
+
 type PollerOptions = {
   system_id: string;
   discovery_url: string;
@@ -11,6 +13,7 @@ type PollerOptions = {
   max_ttl_s?: number;
   jitter_s?: number;
   stop_after_cycles?: number;
+  on_cycle_complete?: (result: PollCycleResult) => Promise<void> | void;
 };
 
 function logEvent(
@@ -66,6 +69,18 @@ export async function runGbfsPoller(options: PollerOptions): Promise<void> {
         loader_schema_version: options.loader_schema_version,
       });
 
+      if (options.on_cycle_complete) {
+        try {
+          await options.on_cycle_complete(result);
+        } catch (error) {
+          logEvent("error", "gbfs_poll_cycle_callback_failed", {
+            system_id: options.system_id,
+            cycle,
+            message: (error as Error).message ?? "unknown_error",
+          });
+        }
+      }
+
       const ttl = result.discovery.ttl;
       if (ttl == null) {
         logEvent("warn", "gbfs_ttl_missing", {
@@ -100,4 +115,3 @@ export async function runGbfsPoller(options: PollerOptions): Promise<void> {
     }
   }
 }
-
