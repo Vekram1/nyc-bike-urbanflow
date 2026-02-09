@@ -28,6 +28,71 @@ Current optimization support:
 - PostgreSQL with PostGIS
 - Mapbox token for frontend map rendering (`NEXT_PUBLIC_MAPBOX_TOKEN`)
 
+## Docker DB Quickstart (PostGIS)
+
+If you want to run today without cloud setup, this is the fastest path.
+
+Start Postgres + PostGIS in Docker:
+
+```bash
+docker run -d \
+  --name urbanflow-postgis \
+  -e POSTGRES_USER=urbanflow \
+  -e POSTGRES_PASSWORD=urbanflow \
+  -e POSTGRES_DB=urbanflow \
+  -p 5432:5432 \
+  -v urbanflow-pgdata:/var/lib/postgresql/data \
+  postgis/postgis:16-3.4
+```
+
+Set DB URL:
+
+```bash
+export DATABASE_URL='postgres://urbanflow:urbanflow@127.0.0.1:5432/urbanflow'
+```
+
+Apply all migrations in order:
+
+```bash
+for f in sql/migrations/*.sql; do
+  echo "Applying $f"
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+done
+```
+
+Seed `systems` row (required by FK constraints before ingest):
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+INSERT INTO systems (
+  system_id,
+  gbfs_entrypoint_url,
+  default_map_bounds,
+  default_center,
+  timezone,
+  provider_name,
+  provider_region
+)
+VALUES (
+  'citibike-nyc',
+  'https://gbfs.citibikenyc.com/gbfs/gbfs.json',
+  ARRAY[-74.25909, 40.477399, -73.700272, 40.917577]::double precision[],
+  ARRAY[-73.98513, 40.758896]::double precision[],
+  'America/New_York',
+  'Citi Bike',
+  'NYC'
+)
+ON CONFLICT (system_id) DO UPDATE SET
+  gbfs_entrypoint_url = EXCLUDED.gbfs_entrypoint_url,
+  default_map_bounds = EXCLUDED.default_map_bounds,
+  default_center = EXCLUDED.default_center,
+  timezone = EXCLUDED.timezone,
+  provider_name = EXCLUDED.provider_name,
+  provider_region = EXCLUDED.provider_region,
+  updated_at = NOW();
+SQL
+```
+
 ## Install
 
 From repo root:
@@ -147,6 +212,23 @@ Apply retention:
 ```bash
 bun packages/ingest/src/cli.ts --system citibike-nyc --prune --retention-days 30 --max-archive-gb 10 --apply
 ```
+
+What this currently prunes:
+- DB rows older than cutoff from hot/derived and ingest-tracking tables:
+  - `station_pressure_now_5m`
+  - `station_severity_5m`
+  - `station_status_1m`
+  - `episode_markers_15m`
+  - `logical_snapshots`
+  - `raw_manifests`
+  - `fetch_attempts`
+- Archive files under `data/gbfs`:
+  - first by age (`retention-days`)
+  - then oldest-first until under `max-archive-gb`
+
+Retention implementation notes:
+- Archive pruning uses manifest logical timestamps when available (`publisher_last_updated` then `collected_at`), with filename/`mtime` fallback.
+- DB prune executes as one atomic SQL statement (single CTE-based delete plan).
 
 Manual refresh (if you want explicit control):
 
