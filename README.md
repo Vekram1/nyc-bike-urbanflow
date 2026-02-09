@@ -27,6 +27,7 @@ Current optimization support:
 - Bun `>=1.3`
 - PostgreSQL with PostGIS
 - Mapbox token for frontend map rendering (`NEXT_PUBLIC_MAPBOX_TOKEN`)
+- Docker (recommended for local DB)
 
 ## Docker DB Quickstart (PostGIS)
 
@@ -49,6 +50,33 @@ Set DB URL:
 
 ```bash
 export DATABASE_URL='postgres://urbanflow:urbanflow@127.0.0.1:5432/urbanflow'
+```
+
+Sanity check PostGIS:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT PostGIS_Version();"
+```
+
+Optional `docker compose` equivalent:
+
+```yaml
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: urbanflow-postgis
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: urbanflow
+      POSTGRES_PASSWORD: urbanflow
+      POSTGRES_DB: urbanflow
+    volumes:
+      - urbanflow-pgdata:/var/lib/postgresql/data
+
+volumes:
+  urbanflow-pgdata:
 ```
 
 Apply all migrations in order:
@@ -103,6 +131,14 @@ bun install
 
 ## Environment
 
+Create `.env.local` files from examples:
+
+```bash
+cp .env.example .env.local
+cp apps/web/.env.example apps/web/.env.local
+cp packages/api/.env.example packages/api/.env.local
+```
+
 ### Backend (`packages/api`)
 
 Minimum required:
@@ -128,9 +164,32 @@ Recommended:
 export NEXT_PUBLIC_MAPBOX_TOKEN='...'
 export URBANFLOW_API_ORIGIN='http://127.0.0.1:3000'
 export SYSTEM_ID='citibike-nyc'
+export NEXT_PUBLIC_SYSTEM_ID='citibike-nyc'
 ```
 
+Env naming notes:
+- Query params to API should always use `system_id`.
+- `NEXT_PUBLIC_SYSTEM_ID` is consumed by browser-side control-plane helpers.
+- `SYSTEM_ID` is consumed by Next API proxy routes in `apps/web/src/app/api/*`.
+- Set both to the same value to avoid split behavior.
+
 ## Run The Stack
+
+## Quickstart: Fastest Visual Win (dots + inspect)
+
+This is the fastest path to see real station dots and click-through inventory.
+
+1. Start Docker PostGIS and apply migrations.
+2. Start backend API (`bun packages/api/src/server.ts`).
+3. Start frontend (`bun run dev:web`).
+4. Start ingest with DB load (`bun packages/ingest/src/cli.ts --system citibike-nyc --poll --load-db --refresh-serving`).
+5. Open `http://localhost:3001` and confirm:
+   - stations render as dots
+   - clicking a station opens Tier1 inventory
+
+Note:
+- A true no-DB mode is not part of the current contract-first stack.
+- Current map dots are served through `/api/gbfs/stations` (web proxy route) backed by API control-plane + station endpoints.
 
 ### 1) Start backend API
 
@@ -227,8 +286,13 @@ What this currently prunes:
   - then oldest-first until under `max-archive-gb`
 
 Retention implementation notes:
-- Archive pruning uses manifest logical timestamps when available (`publisher_last_updated` then `collected_at`), with filename/`mtime` fallback.
-- DB prune executes as one atomic SQL statement (single CTE-based delete plan).
+- Archive pruning currently uses filesystem `mtime` ordering.
+- DB prune currently executes as sequential delete statements (not a single explicit transaction).
+
+Retention invariants:
+- Prune order is derived/hot tables first, then ingest tracking tables.
+- `logical_snapshots` deletes cascade to snapshot tables via FK `ON DELETE CASCADE`.
+- If one DB delete statement fails, later statements are not executed.
 
 Manual refresh (if you want explicit control):
 
@@ -274,11 +338,13 @@ More backend validation examples are documented in `packages/api/README.md`.
 
 ## Operational Notes
 
-- Public clients use server-issued `sv` serving-view tokens.
+- `sv` is a serving-view token: opaque and signed, pinning upstream watermarks + versions so replay is reproducible and tile keyspace stays bounded.
+- Public clients use server-issued `sv` tokens (not raw `as_of`).
 - Replay/live behavior is controlled by control-plane endpoints (`/api/time`, `/api/timeline`).
 - The data plane is `/api/tiles/*`; keep keyspace bounded via allowlists and versioned dimensions.
 - Frontend inspect behavior should not mutate timeline/tile request keys while drawer lock is active.
 - For deep historical scrub/replay, keep DB loader + aggregate refresh running (raw polling alone is not enough).
+- Profile A runs correctly on a single Bun API + Postgres/PostGIS instance; optional scale components are not required for correctness.
 
 ## Optimization Algorithms
 
@@ -298,6 +364,7 @@ Long-term goal:
   - confirm `NEXT_PUBLIC_MAPBOX_TOKEN` is set.
 - Frontend cannot reach backend:
   - confirm API is running on `URBANFLOW_API_ORIGIN` (default `http://127.0.0.1:3000`).
+  - if unset, Next proxy routes fall back to `http://127.0.0.1:3000`.
 - E2E fails to start server:
   - run `bun run build` in `apps/web` before Playwright.
 - `bd` reports out-of-sync database/jsonl:
