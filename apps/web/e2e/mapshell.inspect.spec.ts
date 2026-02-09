@@ -911,6 +911,49 @@ test("go-live button switches replay back to live time progression", async ({ pa
         .toBeGreaterThan(beforeLive);
 });
 
+test("manual seek enters replay-paused and clamps to non-future time", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                mode: state.mode ?? "",
+                playing: Boolean(state.playing),
+            };
+        })
+        .toEqual({
+            mode: "live",
+            playing: true,
+        });
+
+    await page.keyboard.press("End");
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                mode: state.mode ?? "",
+                playing: Boolean(state.playing),
+                playbackTsMs: state.playbackTsMs ?? 0,
+            };
+        })
+        .toEqual({
+            mode: "replay",
+            playing: false,
+            playbackTsMs: expect.any(Number),
+        });
+
+    const timing = await page.evaluate(() => {
+        const state = (window as { __UF_E2E?: UfE2EState }).__UF_E2E;
+        return {
+            playbackTsMs: state?.playbackTsMs ?? 0,
+            nowMs: Date.now(),
+        };
+    });
+    expect(timing.playbackTsMs).toBeLessThanOrEqual(timing.nowMs + 1500);
+});
+
 test("tier1 drawer shows simplified capacity/bikes/docks labels", async ({ page }) => {
     await page.goto("/");
 
@@ -937,4 +980,28 @@ test("tier1 drawer shows simplified capacity/bikes/docks labels", async ({ page 
     await expect(page.locator('[data-uf-id="drawer-row-capacity"]')).toContainText("Total Capacity");
     await expect(page.locator('[data-uf-id="drawer-row-bikes"]')).toContainText("Bikes Available");
     await expect(page.locator('[data-uf-id="drawer-row-docks"]')).toContainText("Empty Docks");
+});
+
+test("tier1 click freshness fields are populated from current bucket context", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-freshness");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+
+    await expect(page.locator('[data-uf-id="drawer-value-capacity"]')).not.toHaveText("");
+    await expect(page.locator('[data-uf-id="drawer-value-bikes"]')).not.toHaveText("");
+    await expect(page.locator('[data-uf-id="drawer-value-docks"]')).not.toHaveText("");
+    await expect(page.locator('[data-uf-id="drawer-updated-text"]')).not.toHaveText("");
 });
