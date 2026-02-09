@@ -1262,6 +1262,14 @@ describe("control-plane e2e", () => {
     const detailUnknownParamBody = await detailUnknownParamRes.json();
     expect(detailUnknownParamBody.error.code).toBe("unknown_param");
 
+    const detailMissingSvRes = await handler(
+      new Request("https://example.test/api/stations/STA-001")
+    );
+    expect(detailMissingSvRes.status).toBe(401);
+    expect(detailMissingSvRes.headers.get("Cache-Control")).toBe("no-store");
+    const detailMissingSvBody = await detailMissingSvRes.json();
+    expect(detailMissingSvBody.error.code).toBe("sv_missing");
+
     const seriesUnknownParamRes = await handler(
       new Request(
         `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(sv)}&from=1738872000&to=1738875600&bucket=300&foo=bar`
