@@ -28,6 +28,9 @@ type UfE2EState = {
     tier2LastRequestedBucket?: number;
     tier2LastRequestedRange?: string;
     tier2LastErrorMessage?: string;
+    tier2LastRequestedAt?: string;
+    tier2LastSuccessAt?: string;
+    tier2LastErrorAt?: string;
     tier2UiStatus?: Tier2State["status"];
     tier2UiMessage?: string;
     tier2UiBundleBytes?: number;
@@ -127,6 +130,7 @@ export default function StationDrawer(props: {
             tier2InFlight: true,
             tier2LastRequestedBucket: fallbackBucketEpochS,
             tier2LastRequestedRange: TIER2_DEFAULT_RANGE,
+            tier2LastRequestedAt: new Date().toISOString(),
         }));
         console.info("[StationDrawer] tier2_requested", {
             station_key: stationId,
@@ -176,6 +180,7 @@ export default function StationDrawer(props: {
                     tier2LastStationKey: stationId,
                     tier2InFlight: false,
                     tier2LastErrorMessage: "",
+                    tier2LastSuccessAt: new Date().toISOString(),
                 }));
                 setTier2({
                     status: "success",
@@ -198,6 +203,7 @@ export default function StationDrawer(props: {
                     tier2LastStationKey: stationId,
                     tier2InFlight: false,
                     tier2LastErrorMessage: message,
+                    tier2LastErrorAt: new Date().toISOString(),
                 }));
                 setTier2({
                     status: "error",
