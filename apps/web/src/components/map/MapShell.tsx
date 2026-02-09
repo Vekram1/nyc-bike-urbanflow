@@ -29,6 +29,9 @@ type UfE2EState = {
     inspectOpenCount?: number;
     inspectCloseCount?: number;
     inspectCloseReasons?: Record<string, number>;
+    inspectOpenedAt?: string;
+    inspectClosedAt?: string;
+    inspectLastCloseReason?: string;
     hotkeyHandledCount?: number;
     hotkeyIgnoredCount?: number;
     hotkeyLastCode?: string;
@@ -85,6 +88,7 @@ export default function MapShell() {
             updateUfE2E((current) => ({
                 ...current,
                 inspectOpenCount: (current.inspectOpenCount ?? 0) + 1,
+                inspectOpenedAt: new Date().toISOString(),
             }));
         }
         setSelected(station);
@@ -101,6 +105,8 @@ export default function MapShell() {
                 ...(current.inspectCloseReasons ?? {}),
                 [reason]: ((current.inspectCloseReasons ?? {})[reason] ?? 0) + 1,
             },
+            inspectClosedAt: new Date().toISOString(),
+            inspectLastCloseReason: reason,
         }));
     }, [hud, selected]);
 
@@ -238,6 +244,9 @@ export default function MapShell() {
             inspectOpenCount: current.inspectOpenCount ?? 0,
             inspectCloseCount: current.inspectCloseCount ?? 0,
             inspectCloseReasons: current.inspectCloseReasons ?? {},
+            inspectOpenedAt: current.inspectOpenedAt ?? "",
+            inspectClosedAt: current.inspectClosedAt ?? "",
+            inspectLastCloseReason: current.inspectLastCloseReason ?? "",
             hotkeyHandledCount: current.hotkeyHandledCount ?? 0,
             hotkeyIgnoredCount: current.hotkeyIgnoredCount ?? 0,
             hotkeyLastCode: current.hotkeyLastCode ?? "",
