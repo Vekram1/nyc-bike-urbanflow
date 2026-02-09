@@ -23,6 +23,7 @@ type UfE2EState = {
     blockedActions?: Record<string, number>;
     hudActionCounts?: Record<string, number>;
     hudLastAction?: string;
+    hudLastActionAt?: string;
     hudLastBlockedAction?: string;
     hudLastBlockedReason?: string;
     hudLastBlockedAt?: string;
@@ -62,6 +63,7 @@ function markHudAction(action: string): void {
         ...current,
         hudActionCounts,
         hudLastAction: action,
+        hudLastActionAt: new Date().toISOString(),
     };
 }
 

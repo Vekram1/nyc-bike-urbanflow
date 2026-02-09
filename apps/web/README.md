@@ -121,6 +121,7 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.playing`
   - `window.__UF_E2E.hudActionCounts`
   - `window.__UF_E2E.hudLastAction`
+  - `window.__UF_E2E.hudLastActionAt`
   - `window.__UF_E2E.blockedActions` (per-action counters while inspect lock blocks controls)
   - `window.__UF_E2E.hudLastBlockedAction`
   - `window.__UF_E2E.hudLastBlockedReason` (`inspect_lock` | `compare_mode_disabled`)
