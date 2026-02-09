@@ -23,6 +23,9 @@ type UfE2EState = {
     blockedActions?: Record<string, number>;
     hudActionCounts?: Record<string, number>;
     hudLastAction?: string;
+    hudLastBlockedAction?: string;
+    hudLastBlockedReason?: string;
+    hudLastBlockedAt?: string;
 };
 
 function readPersistedHud(): PersistedHud | null {
@@ -36,7 +39,7 @@ function readPersistedHud(): PersistedHud | null {
     }
 }
 
-function markBlockedAction(action: string): void {
+function markBlockedAction(action: string, reason: string): void {
     if (typeof window === "undefined") return;
     const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
     const blockedActions = { ...(current.blockedActions ?? {}) };
@@ -44,6 +47,9 @@ function markBlockedAction(action: string): void {
     (window as { __UF_E2E?: UfE2EState }).__UF_E2E = {
         ...current,
         blockedActions,
+        hudLastBlockedAction: action,
+        hudLastBlockedReason: reason,
+        hudLastBlockedAt: new Date().toISOString(),
     };
 }
 
@@ -150,7 +156,7 @@ export function useHudControls() {
     const seekTo = (next: number) => {
         if (inspectLocked) {
             console.info("[HudControls] seek_blocked_inspect_lock");
-            markBlockedAction("seek");
+            markBlockedAction("seek", "inspect_lock");
             return;
         }
         const clamped = Math.min(1, Math.max(0, next));
@@ -162,7 +168,7 @@ export function useHudControls() {
     const togglePlay = () => {
         if (inspectLocked) {
             console.info("[HudControls] toggle_play_blocked_inspect_lock");
-            markBlockedAction("togglePlay");
+            markBlockedAction("togglePlay", "inspect_lock");
             return;
         }
         markHudAction("togglePlay");
@@ -171,7 +177,7 @@ export function useHudControls() {
     const speedDown = () => {
         if (inspectLocked) {
             console.info("[HudControls] speed_down_blocked_inspect_lock");
-            markBlockedAction("speedDown");
+            markBlockedAction("speedDown", "inspect_lock");
             return;
         }
         setSpeedIdx((i) => {
@@ -189,7 +195,7 @@ export function useHudControls() {
     const speedUp = () => {
         if (inspectLocked) {
             console.info("[HudControls] speed_up_blocked_inspect_lock");
-            markBlockedAction("speedUp");
+            markBlockedAction("speedUp", "inspect_lock");
             return;
         }
         setSpeedIdx((i) => {
@@ -207,7 +213,7 @@ export function useHudControls() {
     const stepBack = () => {
         if (inspectLocked) {
             console.info("[HudControls] step_back_blocked_inspect_lock");
-            markBlockedAction("stepBack");
+            markBlockedAction("stepBack", "inspect_lock");
             return;
         }
         setProgress((p) => {
@@ -220,7 +226,7 @@ export function useHudControls() {
     const stepForward = () => {
         if (inspectLocked) {
             console.info("[HudControls] step_forward_blocked_inspect_lock");
-            markBlockedAction("stepForward");
+            markBlockedAction("stepForward", "inspect_lock");
             return;
         }
         setProgress((p) => {
@@ -238,7 +244,7 @@ export function useHudControls() {
     const toggleCompareMode = () => {
         if (inspectLocked) {
             console.info("[HudControls] compare_mode_toggle_blocked_inspect_lock");
-            markBlockedAction("toggleCompareMode");
+            markBlockedAction("toggleCompareMode", "inspect_lock");
             return;
         }
         setCompareMode((curr) => {
@@ -255,11 +261,12 @@ export function useHudControls() {
     const toggleSplitView = () => {
         if (inspectLocked) {
             console.info("[HudControls] split_view_toggle_blocked_inspect_lock");
-            markBlockedAction("toggleSplitView");
+            markBlockedAction("toggleSplitView", "inspect_lock");
             return;
         }
         if (!compareMode) {
             console.info("[HudControls] split_view_toggle_blocked_compare_disabled");
+            markBlockedAction("toggleSplitView", "compare_mode_disabled");
             return;
         }
         setSplitView((curr) => {
@@ -273,7 +280,7 @@ export function useHudControls() {
     const compareOffsetDown = () => {
         if (inspectLocked) {
             console.info("[HudControls] compare_offset_down_blocked_inspect_lock");
-            markBlockedAction("compareOffsetDown");
+            markBlockedAction("compareOffsetDown", "inspect_lock");
             return;
         }
         setCompareOffsetBuckets((curr) => {
@@ -289,7 +296,7 @@ export function useHudControls() {
     const compareOffsetUp = () => {
         if (inspectLocked) {
             console.info("[HudControls] compare_offset_up_blocked_inspect_lock");
-            markBlockedAction("compareOffsetUp");
+            markBlockedAction("compareOffsetUp", "inspect_lock");
             return;
         }
         setCompareOffsetBuckets((curr) => {
