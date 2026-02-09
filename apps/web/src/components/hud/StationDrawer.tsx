@@ -68,13 +68,7 @@ export default function StationDrawer(props: {
         tier2BucketEpochS ??
         (timelineBucket > 1_000_000_000 ? timelineBucket : Math.floor(Date.now() / 1000));
 
-    const updated =
-        station?.gbfs_last_updated != null
-            ? new Date(station.gbfs_last_updated * 1000).toLocaleString()
-            : "—";
     const titleId = `uf-drawer-title-${stationId ?? "none"}`;
-    const descId = `uf-drawer-desc-${stationId ?? "none"}`;
-    const tierId = `uf-drawer-tier-${stationId ?? "none"}`;
 
     useEffect(() => {
         updateUfE2E((current) => ({
@@ -243,36 +237,17 @@ export default function StationDrawer(props: {
             data-uf-tier2-last-error={tier2LastErrorText}
             role="dialog"
             aria-labelledby={titleId}
-            aria-describedby={`${descId} ${tierId}`}
         >
             <div style={{ padding: 14 }}>
                 <div style={{ fontSize: 12, opacity: 0.8 }}>Station</div>
                 <div id={titleId} style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }} data-uf-id="drawer-station-title">
                     {station.name}
                 </div>
-
-                <div id={descId} style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }} data-uf-id="drawer-updated-text">
-                    Updated: {updated}
-                </div>
-                <div id={tierId} style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }} data-uf-id="drawer-tier1-note">
-                    Tier1 view: tile payload only (no detail fetch).
-                </div>
                 <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
                     <Row label="Total Capacity" value={fmtNum(station.capacity)} rowId="drawer-row-capacity" valueId="drawer-value-capacity" />
                     <Row label="Bikes Available" value={fmtNum(station.bikes)} rowId="drawer-row-bikes" valueId="drawer-value-bikes" />
                     <Row label="Empty Docks" value={fmtNum(station.docks)} rowId="drawer-row-docks" valueId="drawer-value-docks" />
                 </div>
-                <details style={{ marginTop: 12 }} data-uf-id="drawer-advanced">
-                    <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.78 }}>
-                        Advanced station details
-                    </summary>
-                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                        <Row label="Docks disabled" value={fmtNum(station.docks_disabled)} rowId="drawer-row-docks-disabled" valueId="drawer-value-docks-disabled" />
-                        <Row label="Station key" value={station.station_id} rowId="drawer-row-station-key" valueId="drawer-value-station-key" />
-                        <Row label="Bucket quality" value={fmtText(station.bucket_quality)} rowId="drawer-row-bucket-quality" valueId="drawer-value-bucket-quality" />
-                        <Row label="T_bucket" value={fmtText(station.t_bucket)} rowId="drawer-row-t-bucket" valueId="drawer-value-t-bucket" />
-                    </div>
-                </details>
 
                 <div style={{ marginTop: 14 }}>
                     <button
@@ -345,10 +320,6 @@ function Row({
 
 function fmtNum(x: number | null) {
     return x == null || Number.isNaN(x) ? "—" : String(x);
-}
-
-function fmtText(x: string | null) {
-    return x == null || x.length === 0 ? "—" : x;
 }
 
 const primaryBtnStyle: React.CSSProperties = {

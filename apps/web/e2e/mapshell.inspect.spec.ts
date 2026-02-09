@@ -1038,6 +1038,10 @@ test("tier1 drawer shows simplified capacity/bikes/docks labels", async ({ page 
     await expect(page.locator('[data-uf-id="drawer-row-capacity"]')).toContainText("Total Capacity");
     await expect(page.locator('[data-uf-id="drawer-row-bikes"]')).toContainText("Bikes Available");
     await expect(page.locator('[data-uf-id="drawer-row-docks"]')).toContainText("Empty Docks");
+    await expect(page.locator('[data-uf-id="drawer-advanced"]')).toHaveCount(0);
+    await expect(page.locator('[data-uf-id="drawer-row-station-key"]')).toHaveCount(0);
+    await expect(page.locator('[data-uf-id="drawer-row-bucket-quality"]')).toHaveCount(0);
+    await expect(page.locator('[data-uf-id="drawer-row-t-bucket"]')).toHaveCount(0);
 });
 
 test("tier1 click freshness fields are populated from current bucket context", async ({ page }) => {
@@ -1061,5 +1065,5 @@ test("tier1 click freshness fields are populated from current bucket context", a
     await expect(page.locator('[data-uf-id="drawer-value-capacity"]')).not.toHaveText("");
     await expect(page.locator('[data-uf-id="drawer-value-bikes"]')).not.toHaveText("");
     await expect(page.locator('[data-uf-id="drawer-value-docks"]')).not.toHaveText("");
-    await expect(page.locator('[data-uf-id="drawer-updated-text"]')).not.toHaveText("");
+    await expect(page.locator('[data-uf-id="drawer-updated-text"]')).toHaveCount(0);
 });
