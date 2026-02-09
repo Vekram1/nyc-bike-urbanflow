@@ -826,3 +826,38 @@ test("scrubber controls are disabled during inspect lock and re-enabled after cl
     await expect(stepForward).toBeEnabled();
     await expect(track).toBeEnabled();
 });
+
+test("compare buttons reflect disabled states for compare-off and inspect-lock", async ({ page }) => {
+    await page.goto("/");
+
+    const compareModeToggle = page.locator('[data-uf-id="compare-mode-toggle"]');
+    const splitToggle = page.locator('[data-uf-id="compare-split-toggle"]');
+
+    await expect(compareModeToggle).toBeEnabled();
+    await expect(splitToggle).toBeDisabled();
+
+    await compareModeToggle.click();
+    await expect(splitToggle).toBeEnabled();
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-compare-disabled-state");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+
+    await expect(compareModeToggle).toBeDisabled();
+    await expect(splitToggle).toBeDisabled();
+
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toHaveCount(0);
+    await expect(compareModeToggle).toBeEnabled();
+    await expect(splitToggle).toBeEnabled();
+});
