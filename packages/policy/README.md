@@ -26,5 +26,9 @@ This package implements deterministic greedy rebalancing for decision buckets.
 - Primary fixture regression:
   - `fixtures/policy/greedy_v1_input.json`
   - `fixtures/policy/greedy_v1_expected.json`
+  - `fixtures/policy/greedy_v1_tiebreak_input.json`
+  - `fixtures/policy/greedy_v1_tiebreak_expected.json`
+  - `fixtures/policy/greedy_v1.manifest.json` (SHA-256 checksums)
 - Run:
   - `bun test packages/policy/src/greedy_v1.test.ts`
+  - `bun test packages/policy/src/fixtures_contract.test.ts`

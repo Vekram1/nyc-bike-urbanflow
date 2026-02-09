@@ -4,6 +4,8 @@ import { createControlPlaneHandler } from "./control-plane";
 
 describe("station endpoints e2e", () => {
   it("mints sv via /api/time and serves /api/stations detail + drawer with bounded responses", async () => {
+    const stationInfoEvents: Array<{ event: string; details: Record<string, unknown> }> = [];
+    const drawerInfoEvents: Array<{ event: string; details: Record<string, unknown> }> = [];
     const issuedSv = "sv-live-e2e-token";
     const validateSv = async (token: string) => {
       if (token !== issuedSv) {
@@ -109,12 +111,35 @@ describe("station endpoints e2e", () => {
             };
           },
           async getStationSeries() {
-            return [];
+            return [
+              {
+                bucket_ts: "2026-02-06T19:55:00Z",
+                bikes_available: 11,
+                docks_available: 29,
+                bucket_quality: "ok",
+                severity: 0.1,
+                pressure_score: 0.2,
+              },
+              {
+                bucket_ts: "2026-02-06T20:00:00Z",
+                bikes_available: 12,
+                docks_available: 28,
+                bucket_quality: "ok",
+                severity: 0.2,
+                pressure_score: 0.4,
+              },
+            ];
           },
         },
         default_bucket_seconds: 300,
         max_series_window_s: 172800,
         max_series_points: 360,
+        logger: {
+          info(event, details) {
+            stationInfoEvents.push({ event, details });
+          },
+          warn() {},
+        },
       },
       stationDrawer: {
         tokens: { validate: validateSv },
@@ -179,6 +204,12 @@ describe("station endpoints e2e", () => {
           s_maxage_s: 120,
           stale_while_revalidate_s: 15,
         },
+        logger: {
+          info(event, details) {
+            drawerInfoEvents.push({ event, details });
+          },
+          warn() {},
+        },
       },
     });
 
@@ -195,6 +226,28 @@ describe("station endpoints e2e", () => {
     const detailBody = await detailRes.json();
     expect(detailBody.station_key).toBe("STA-001");
     expect(detailBody.bucket_quality).toBe("ok");
+    const detailLog = stationInfoEvents.find((evt) => evt.event === "stations.detail.ok");
+    expect(detailLog).toBeTruthy();
+    expect(detailLog?.details.station_key).toBe("STA-001");
+    expect(detailLog?.details.sv).toBe(issuedSv);
+    expect(Number(detailLog?.details.payload_bytes)).toBeGreaterThan(0);
+
+    const seriesRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(issuedSv)}&from=1738871700&to=1738872000&bucket=300`
+      )
+    );
+    expect(seriesRes.status).toBe(200);
+    expect(seriesRes.headers.get("Cache-Control")).toBe("no-store");
+    const seriesBody = await seriesRes.json();
+    expect(seriesBody.station_key).toBe("STA-001");
+    expect(seriesBody.points.length).toBe(2);
+    expect(seriesBody.points[0]?.bucket_quality).toBe("ok");
+    const seriesLog = stationInfoEvents.find((evt) => evt.event === "stations.series.ok");
+    expect(seriesLog).toBeTruthy();
+    expect(seriesLog?.details.station_key).toBe("STA-001");
+    expect(seriesLog?.details.sv).toBe(issuedSv);
+    expect(Number(seriesLog?.details.payload_bytes)).toBeGreaterThan(0);
 
     const drawerRes = await handler(
       new Request(
@@ -208,6 +261,11 @@ describe("station endpoints e2e", () => {
     expect(drawerBody.point_in_time.bucket_quality).toBe("ok");
     expect(drawerBody.series.points.length).toBe(2);
     expect(drawerBody.range_s).toBe(21600);
+    const drawerLog = drawerInfoEvents.find((evt) => evt.event === "stations.drawer.ok");
+    expect(drawerLog).toBeTruthy();
+    expect(drawerLog?.details.station_key).toBe("STA-001");
+    expect(drawerLog?.details.sv).toBe(issuedSv);
+    expect(Number(drawerLog?.details.payload_bytes)).toBeGreaterThan(0);
 
     const mismatchRes = await handler(
       new Request(

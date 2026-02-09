@@ -7,6 +7,14 @@
     {
       "filename": "fixtures/policy/greedy_v1_expected.json",
       "checksum_sha256": "b592abead8f40aa4ebd1abcb01e566ca7af0897b8394dc74baa54a636c02bd01"
+    },
+    {
+      "filename": "fixtures/policy/greedy_v1_tiebreak_input.json",
+      "checksum_sha256": "de79a808d535a8ec2c436e75548413196537a35694b31ce84b75b0d5c59fa9d0"
+    },
+    {
+      "filename": "fixtures/policy/greedy_v1_tiebreak_expected.json",
+      "checksum_sha256": "e81c336d4cbd460a4d596faedc56d72c99222003c0cb410ff334b94c2cfa7b63"
     }
   ]
 }
