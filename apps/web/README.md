@@ -82,6 +82,10 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `tier1_drawer_closed`
 - E2E runtime snapshot for browser-driven checks:
   - `window.__UF_E2E.mapShellMounted`
+  - `window.__UF_E2E.mapShellMountCount`
+  - `window.__UF_E2E.mapShellUnmountCount`
+  - `window.__UF_E2E.mapShellLastMountTs`
+  - `window.__UF_E2E.mapShellLastUnmountTs`
   - `window.__UF_E2E.mapViewMountCount`
   - `window.__UF_E2E.inspectOpen`
   - `window.__UF_E2E.selectedStationId`

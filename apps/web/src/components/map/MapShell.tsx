@@ -15,6 +15,10 @@ import { useHudMockAdapter } from "@/lib/useHudMockAdapter";
 
 type UfE2EState = {
     mapShellMounted?: boolean;
+    mapShellMountCount?: number;
+    mapShellUnmountCount?: number;
+    mapShellLastMountTs?: string;
+    mapShellLastUnmountTs?: string;
     inspectOpen?: boolean;
     selectedStationId?: string | null;
     timelineBucket?: number;
@@ -102,8 +106,18 @@ export default function MapShell() {
 
     useEffect(() => {
         console.info("[MapShell] mounted");
+        updateUfE2E((current) => ({
+            ...current,
+            mapShellMountCount: (current.mapShellMountCount ?? 0) + 1,
+            mapShellLastMountTs: new Date().toISOString(),
+        }));
         return () => {
             console.info("[MapShell] unmounted");
+            updateUfE2E((current) => ({
+                ...current,
+                mapShellUnmountCount: (current.mapShellUnmountCount ?? 0) + 1,
+                mapShellLastUnmountTs: new Date().toISOString(),
+            }));
         };
     }, []);
 
@@ -211,6 +225,10 @@ export default function MapShell() {
         updateUfE2E((current) => ({
             ...current,
             mapShellMounted: true,
+            mapShellMountCount: current.mapShellMountCount ?? 0,
+            mapShellUnmountCount: current.mapShellUnmountCount ?? 0,
+            mapShellLastMountTs: current.mapShellLastMountTs ?? "",
+            mapShellLastUnmountTs: current.mapShellLastUnmountTs ?? "",
             inspectOpen,
             selectedStationId: selected?.station_id ?? null,
             timelineBucket,
