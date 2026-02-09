@@ -216,3 +216,48 @@ test("closing inspect keeps playback paused when it was paused before open", asy
             inspectLastCloseReason: "drawer_close_button",
         });
 });
+
+test("hud and inspect interactions keep MapShell/MapView single-mounted", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                mapShellMountCount: state.mapShellMountCount ?? 0,
+                mapViewMountCount: state.mapViewMountCount ?? 0,
+            };
+        })
+        .toEqual({
+            mapShellMountCount: 1,
+            mapViewMountCount: 1,
+        });
+
+    await page.locator('[data-uf-id="scrubber-speed-up"]').click();
+    await page.locator('[data-uf-id="scrubber-speed-down"]').click();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowLeft");
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-single-mount");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toHaveCount(0);
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                mapShellMountCount: state.mapShellMountCount ?? 0,
+                mapViewMountCount: state.mapViewMountCount ?? 0,
+                mapShellUnmountCount: state.mapShellUnmountCount ?? 0,
+            };
+        })
+        .toEqual({
+            mapShellMountCount: 1,
+            mapViewMountCount: 1,
+            mapShellUnmountCount: 0,
+        });
+});
