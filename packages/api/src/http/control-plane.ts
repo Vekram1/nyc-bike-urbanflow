@@ -1,3 +1,4 @@
+import { createAdminRouteHandler, type AdminRouteDeps } from "./admin";
 import { createConfigRouteHandler, type ConfigRouteConfig } from "./config";
 import { createEpisodesTilesRouteHandler, type EpisodesTilesRouteDeps } from "./episodes-tiles";
 import { createPolicyRouteHandler, type PolicyRouteDeps } from "./policy";
@@ -18,6 +19,7 @@ export type ControlPlaneDeps = {
   tiles?: CompositeTilesRouteDeps;
   policyTiles?: PolicyMovesTilesRouteDeps;
   episodesTiles?: EpisodesTilesRouteDeps;
+  admin?: AdminRouteDeps;
 };
 
 function json(body: unknown, status: number): Response {
@@ -40,9 +42,16 @@ export function createControlPlaneHandler(deps: ControlPlaneDeps): (request: Req
   const handleTiles = deps.tiles ? createCompositeTilesRouteHandler(deps.tiles) : null;
   const handlePolicyTiles = deps.policyTiles ? createPolicyMovesTilesRouteHandler(deps.policyTiles) : null;
   const handleEpisodesTiles = deps.episodesTiles ? createEpisodesTilesRouteHandler(deps.episodesTiles) : null;
+  const handleAdmin = deps.admin ? createAdminRouteHandler(deps.admin) : null;
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
+    if (url.pathname === "/admin/ops" || url.pathname.startsWith("/api/admin/") || url.pathname === "/api/pipeline_state") {
+      if (!handleAdmin) {
+        return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+      }
+      return handleAdmin(request);
+    }
     if (url.pathname.startsWith("/api/stations/")) {
       if (!handleStations) {
         return json({ error: { code: "not_found", message: "Route not found" } }, 404);

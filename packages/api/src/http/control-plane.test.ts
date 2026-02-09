@@ -130,6 +130,43 @@ describe("createControlPlaneHandler", () => {
     expect(Array.isArray(body.results)).toBe(true);
   });
 
+  it("dispatches /api/pipeline_state when admin deps are configured", async () => {
+    const handler = createControlPlaneHandler({
+      ...deps,
+      admin: {
+        auth: {
+          admin_token: "secret",
+          allowed_origins: [],
+        },
+        config: {
+          default_system_id: "citibike-nyc",
+        },
+        store: {
+          async getPipelineState() {
+            return {
+              queue_depth: 0,
+              dlq_depth: 0,
+              feeds: [],
+              degrade_history: [],
+            };
+          },
+          async listDlq() {
+            return [];
+          },
+          async resolveDlq() {
+            return true;
+          },
+        },
+      },
+    });
+    const res = await handler(
+      new Request("https://example.test/api/pipeline_state?v=1", {
+        headers: { "X-Admin-Token": "secret" },
+      })
+    );
+    expect(res.status).toBe(200);
+  });
+
   it("dispatches /api/tiles/composite when tile deps are configured", async () => {
     const handler = createControlPlaneHandler({
       ...deps,

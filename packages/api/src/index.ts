@@ -19,6 +19,7 @@ export * from "./jobs/types";
 export * from "./jobs/queue";
 export * from "./http/config";
 export * from "./http/control-plane";
+export * from "./http/admin";
 export * from "./http/policy";
 export * from "./http/policy-tiles";
 export * from "./http/search";

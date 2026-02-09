@@ -81,6 +81,8 @@ Optional with defaults:
 - `POLICY_BUDGET_PRESETS_JSON` default `[]`
 - `NETWORK_DEGRADE_LEVEL` default unset (when set to `0..3`, overrides `/api/time.network.degrade_level`)
 - `REPLAY_TILE_CACHE_DIR` default unset (when set, enables replay tile write-through cache on local disk)
+- `ADMIN_TOKEN` default unset (required to enable admin endpoints)
+- `ADMIN_ALLOWED_ORIGINS` default empty (comma-separated strict CORS allowlist for admin APIs)
 
 ## Running the API
 
@@ -96,6 +98,18 @@ Health check examples:
 
 ```bash
 curl 'http://127.0.0.1:3000/api/time?system_id=citibike-nyc&tile_schema=tile.v1&severity_version=sev.v1'
+```
+
+Admin ops examples:
+
+```bash
+export ADMIN_TOKEN='replace-me'
+export ADMIN_ALLOWED_ORIGINS='https://ops.example.com'
+curl -H "X-Admin-Token: $ADMIN_TOKEN" 'http://127.0.0.1:3000/api/pipeline_state?v=1'
+curl -H "X-Admin-Token: $ADMIN_TOKEN" 'http://127.0.0.1:3000/api/admin/dlq?v=1&limit=20'
+curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"dlq_id":1,"resolution_note":"investigated"}' \
+  'http://127.0.0.1:3000/api/admin/dlq/resolve?v=1'
 ```
 
 ## DB setup and refresh

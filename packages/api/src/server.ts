@@ -46,6 +46,8 @@ type EnvConfig = {
   key_material_json: string;
   network_degrade_level: number | null;
   replay_tile_cache_dir: string | null;
+  admin_token: string | null;
+  admin_allowed_origins: string[];
 };
 
 function parseIntEnv(name: string, fallback: number): number {
@@ -119,6 +121,8 @@ function loadConfig(): EnvConfig {
     key_material_json: process.env.SV_KEY_MATERIAL_JSON?.trim() || "{}",
     network_degrade_level: parseOptionalIntEnv("NETWORK_DEGRADE_LEVEL"),
     replay_tile_cache_dir: process.env.REPLAY_TILE_CACHE_DIR?.trim() || null,
+    admin_token: process.env.ADMIN_TOKEN?.trim() || null,
+    admin_allowed_origins: parseCsv(process.env.ADMIN_ALLOWED_ORIGINS, []),
   };
 }
 
@@ -402,6 +406,178 @@ function buildNetworkHealthStore(db: SqlExecutor, degradeLevelOverride: number |
   };
 }
 
+function deriveDegradeLevelFromSummary(summary: {
+  active_station_count: number;
+  empty_station_count: number;
+  full_station_count: number;
+  pct_serving_grade: number;
+}): number {
+  if (summary.active_station_count <= 0) {
+    return 3;
+  }
+  const serving = Math.max(0, Math.min(1, summary.pct_serving_grade));
+  const pressure = Math.max(
+    0,
+    Math.min(1, (summary.empty_station_count + summary.full_station_count) / summary.active_station_count)
+  );
+  if (serving < 0.5 || pressure > 0.7) {
+    return 3;
+  }
+  if (serving < 0.7 || pressure > 0.5) {
+    return 2;
+  }
+  if (serving < 0.85 || pressure > 0.35) {
+    return 1;
+  }
+  return 0;
+}
+
+function buildAdminOpsStore(db: SqlExecutor, degradeLevelOverride: number | null) {
+  return {
+    async getPipelineState(args: { system_id: string }) {
+      const queue = await db.query<{
+        queue_depth: number | string;
+        dlq_depth: number | string;
+      }>(
+        `WITH q AS (
+           SELECT COUNT(*) AS queue_depth FROM job_queue
+         ),
+         d AS (
+           SELECT COUNT(*) AS dlq_depth
+           FROM job_dlq d
+           LEFT JOIN job_dlq_resolution r ON r.dlq_id = d.dlq_id
+           WHERE r.dlq_id IS NULL
+         )
+         SELECT q.queue_depth, d.dlq_depth
+         FROM q, d`,
+        []
+      );
+      const feeds = await db.query<{ dataset_id: string; last_success_at: string }>(
+        `SELECT dataset_id, MAX(updated_at)::text AS last_success_at
+         FROM dataset_watermarks
+         WHERE system_id = $1
+         GROUP BY dataset_id
+         ORDER BY dataset_id`,
+        [args.system_id]
+      );
+      const history = await db.query<{
+        bucket_ts: string;
+        active_station_count: number | string;
+        empty_station_count: number | string;
+        full_station_count: number | string;
+        pct_serving_grade: number | string;
+      }>(
+        `SELECT
+           date_bin('5 minutes'::interval, s.bucket_ts, TIMESTAMPTZ '1970-01-01 00:00:00+00')::text AS bucket_ts,
+           COUNT(*) AS active_station_count,
+           COUNT(*) FILTER (WHERE s.bikes_available = 0) AS empty_station_count,
+           COUNT(*) FILTER (WHERE s.docks_available = 0) AS full_station_count,
+           AVG(CASE WHEN s.is_serving_grade THEN 1.0 ELSE 0.0 END) AS pct_serving_grade
+         FROM station_status_1m s
+         WHERE s.system_id = $1
+           AND s.bucket_ts >= NOW() - INTERVAL '1 hour'
+         GROUP BY 1
+         ORDER BY 1`,
+        [args.system_id]
+      );
+      return {
+        queue_depth: Number(queue.rows[0]?.queue_depth ?? 0),
+        dlq_depth: Number(queue.rows[0]?.dlq_depth ?? 0),
+        feeds: feeds.rows.map((row) => ({
+          dataset_id: row.dataset_id,
+          last_success_at: row.last_success_at,
+        })),
+        degrade_history: history.rows.map((row) => {
+          const summary = {
+            active_station_count: Number(row.active_station_count),
+            empty_station_count: Number(row.empty_station_count),
+            full_station_count: Number(row.full_station_count),
+            pct_serving_grade: Number(row.pct_serving_grade),
+          };
+          const degradeLevel =
+            degradeLevelOverride === null ? deriveDegradeLevelFromSummary(summary) : degradeLevelOverride;
+          return {
+            bucket_ts: row.bucket_ts,
+            degrade_level: degradeLevel,
+            client_should_throttle: degradeLevel >= 1,
+          };
+        }),
+      };
+    },
+
+    async listDlq(args: { limit: number; include_resolved: boolean }) {
+      const out = await db.query<{
+        dlq_id: number;
+        job_id: number;
+        type: string;
+        reason_code: string;
+        failed_at: string;
+        attempts: number | string;
+        max_attempts: number | string;
+        payload_json: unknown;
+        resolved_at: string | null;
+        resolution_note: string | null;
+        resolved_by: string | null;
+      }>(
+        `SELECT
+           d.dlq_id,
+           d.job_id,
+           d.type,
+           d.reason_code,
+           d.failed_at::text,
+           d.attempts,
+           d.max_attempts,
+           d.payload_json,
+           r.resolved_at::text AS resolved_at,
+           r.resolution_note,
+           r.resolved_by
+         FROM job_dlq d
+         LEFT JOIN job_dlq_resolution r ON r.dlq_id = d.dlq_id
+         WHERE ($1::boolean = true OR r.dlq_id IS NULL)
+         ORDER BY d.failed_at DESC
+         LIMIT $2`,
+        [args.include_resolved, args.limit]
+      );
+      return out.rows.map((row) => ({
+        dlq_id: row.dlq_id,
+        job_id: row.job_id,
+        type: row.type,
+        reason_code: row.reason_code,
+        failed_at: row.failed_at,
+        attempts: Number(row.attempts),
+        max_attempts: Number(row.max_attempts),
+        payload_summary: JSON.stringify(row.payload_json),
+        resolved_at: row.resolved_at,
+        resolution_note: row.resolution_note,
+        resolved_by: row.resolved_by,
+      }));
+    },
+
+    async resolveDlq(args: { dlq_id: number; resolution_note: string; resolved_by?: string | null }) {
+      const exists = await db.query<{ dlq_id: number }>(
+        `SELECT dlq_id
+         FROM job_dlq
+         WHERE dlq_id = $1
+         LIMIT 1`,
+        [args.dlq_id]
+      );
+      if (!exists.rows[0]) {
+        return false;
+      }
+      await db.query(
+        `INSERT INTO job_dlq_resolution (dlq_id, resolution_note, resolved_by, resolved_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (dlq_id) DO UPDATE
+           SET resolution_note = EXCLUDED.resolution_note,
+               resolved_by = EXCLUDED.resolved_by,
+               resolved_at = NOW()`,
+        [args.dlq_id, args.resolution_note, args.resolved_by ?? null]
+      );
+      return true;
+    },
+  };
+}
+
 function parseBudgetPresets(jsonRaw: string | undefined) {
   if (!jsonRaw || jsonRaw.trim().length === 0) {
     return [];
@@ -436,6 +612,7 @@ async function main(): Promise<void> {
   const timelineStore = buildTimelineStore(db);
   const searchStore = buildSearchStore(db);
   const networkStore = buildNetworkHealthStore(db, cfg.network_degrade_level);
+  const adminStore = buildAdminOpsStore(db, cfg.network_degrade_level);
   const stationsStore = new PgStationsStore(db);
   const policyStore = new PgPolicyReadStore(db);
   const queue = new PgJobQueue(db);
@@ -557,6 +734,18 @@ async function main(): Promise<void> {
         budget_presets: parseBudgetPresets(process.env.POLICY_BUDGET_PRESETS_JSON),
       },
     },
+    admin: cfg.admin_token
+      ? {
+          auth: {
+            admin_token: cfg.admin_token,
+            allowed_origins: cfg.admin_allowed_origins,
+          },
+          store: adminStore,
+          config: {
+            default_system_id: cfg.system_id,
+          },
+        }
+      : undefined,
   });
 
   Bun.serve({
