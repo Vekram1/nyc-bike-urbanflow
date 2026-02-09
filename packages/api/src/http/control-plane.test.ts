@@ -334,6 +334,25 @@ describe("createControlPlaneHandler", () => {
     expect(unknownSeriesParamRes.headers.get("Cache-Control")).toBe("no-store");
     const unknownSeriesParamBody = await unknownSeriesParamRes.json();
     expect(unknownSeriesParamBody.error.code).toBe("unknown_param");
+
+    const methodNotAllowedRes = await handler(
+      new Request("https://example.test/api/stations/STA-001?sv=abc", { method: "POST" })
+    );
+    expect(methodNotAllowedRes.status).toBe(405);
+    expect(methodNotAllowedRes.headers.get("Cache-Control")).toBe("no-store");
+    const methodNotAllowedBody = await methodNotAllowedRes.json();
+    expect(methodNotAllowedBody.error.code).toBe("method_not_allowed");
+
+    const seriesMethodNotAllowedRes = await handler(
+      new Request(
+        "https://example.test/api/stations/STA-001/series?sv=abc&from=1738872000&to=1738875600&bucket=300",
+        { method: "POST" }
+      )
+    );
+    expect(seriesMethodNotAllowedRes.status).toBe(405);
+    expect(seriesMethodNotAllowedRes.headers.get("Cache-Control")).toBe("no-store");
+    const seriesMethodNotAllowedBody = await seriesMethodNotAllowedRes.json();
+    expect(seriesMethodNotAllowedBody.error.code).toBe("method_not_allowed");
   });
 
   it("dispatches /api/stations/{station_key}/drawer when drawer deps are configured", async () => {
@@ -418,6 +437,16 @@ describe("createControlPlaneHandler", () => {
     expect(unknownParamRes.headers.get("Cache-Control")).toBe("no-store");
     const unknownParamBody = await unknownParamRes.json();
     expect(unknownParamBody.error.code).toBe("unknown_param");
+
+    const methodNotAllowedRes = await handler(
+      new Request("https://example.test/api/stations/STA-001/drawer?v=1&sv=abc&T_bucket=1738872000", {
+        method: "POST",
+      })
+    );
+    expect(methodNotAllowedRes.status).toBe(405);
+    expect(methodNotAllowedRes.headers.get("Cache-Control")).toBe("no-store");
+    const methodNotAllowedBody = await methodNotAllowedRes.json();
+    expect(methodNotAllowedBody.error.code).toBe("method_not_allowed");
   });
 
   it("dispatches /api/policy/run when policy deps are configured", async () => {
