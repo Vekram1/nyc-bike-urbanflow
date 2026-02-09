@@ -37,6 +37,10 @@ The map is full-bleed and mounted once per session. All controls render as overl
 - Station drawer Tier1 uses map feature payload only (no fetch on open):
   - `station_id`, `name`, `capacity`, `bikes`, `docks`
   - optional `bucket_quality`, `t_bucket` when provided by source props
+- Station drawer Tier2 is explicit user action (`Details` button), not automatic on open.
+  - Fetch is debounced by `350ms` to avoid request thrash from rapid clicks.
+  - Frontend logs bundle size in bytes after successful load (`tier2_loaded`).
+  - If the endpoint is unavailable, Tier1 remains usable and Tier2 reports a bounded error message.
 
 ## TimeController State Rules
 
