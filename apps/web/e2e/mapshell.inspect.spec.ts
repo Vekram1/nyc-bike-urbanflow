@@ -1113,6 +1113,70 @@ test("search result selection opens Tier-1 drawer for selected station", async (
         .toBe("station-e2e-search");
 });
 
+test("search keyboard navigation selects active result with Enter", async ({ page }) => {
+    await page.route("**/api/search?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                results: [
+                    {
+                        stationKey: "station-e2e-search-a",
+                        name: "Station Search A",
+                    },
+                    {
+                        stationKey: "station-e2e-search-b",
+                        name: "Station Search B",
+                    },
+                ],
+            }),
+        });
+    });
+
+    await page.goto("/");
+    const searchInput = page.locator('[data-uf-id="search-input"]');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill("sea");
+
+    const resultA = page.locator('[data-uf-id="search-result-station-e2e-search-a"]');
+    const resultB = page.locator('[data-uf-id="search-result-station-e2e-search-b"]');
+    await expect(resultA).toBeVisible();
+    await expect(resultB).toBeVisible();
+
+    await expect(resultA).toHaveAttribute("data-uf-active", "true");
+    await searchInput.press("ArrowDown");
+    await expect(resultB).toHaveAttribute("data-uf-active", "true");
+    await searchInput.press("Enter");
+
+    await expect
+        .poll(async () => (await readState(page)).selectedStationId ?? "")
+        .toBe("station-e2e-search-b");
+});
+
+test("search shows backend-unavailable fallback indicator", async ({ page }) => {
+    await page.route("**/api/search?*", async (route) => {
+        await route.fulfill({
+            status: 502,
+            contentType: "application/json",
+            body: JSON.stringify({
+                error: {
+                    message: "Search unavailable",
+                },
+            }),
+        });
+    });
+
+    await page.goto("/");
+    const searchInput = page.locator('[data-uf-id="search-input"]');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill("sea");
+
+    await expect(page.locator('[data-uf-id="search-fallback-badge"]')).toBeVisible();
+    await expect(page.locator('[data-uf-id="search-fallback-badge"]')).toContainText(
+        "Backend unavailable"
+    );
+});
+
 test("map color ramp telemetry maps threshold buckets deterministically", async ({ page }) => {
     await page.route("**/api/gbfs/stations?*", async (route) => {
         await route.fulfill({

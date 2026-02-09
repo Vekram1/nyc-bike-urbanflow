@@ -50,6 +50,7 @@ export default function CommandStack({
     onSearchPick,
 }: Props) {
     const [query, setQuery] = useState("");
+    const [activeResultIdx, setActiveResultIdx] = useState(0);
     const [remoteResults, setRemoteResults] = useState<SearchResult[] | null>(null);
     const [loading, setLoading] = useState(false);
     const [remoteError, setRemoteError] = useState<string | null>(null);
@@ -129,6 +130,14 @@ export default function CommandStack({
         };
     }, [canSearch, trimmedQuery]);
 
+    useEffect(() => {
+        if (!canSearch || results.length === 0) {
+            setActiveResultIdx(0);
+            return;
+        }
+        setActiveResultIdx((current) => Math.max(0, Math.min(results.length - 1, current)));
+    }, [canSearch, results.length]);
+
     const searchHint = useMemo(() => {
         if (!canSearch) return "Type at least 2 chars";
         if (loading) return "Searching...";
@@ -156,9 +165,21 @@ export default function CommandStack({
     };
 
     const onSearchKeyDown: KeyboardEventHandler<HTMLInputElement> = (event) => {
-        if (event.key !== "Enter" || results.length === 0) return;
-        event.preventDefault();
-        handlePick(results[0]);
+        if (results.length === 0) return;
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setActiveResultIdx((current) => Math.min(results.length - 1, current + 1));
+            return;
+        }
+        if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setActiveResultIdx((current) => Math.max(0, current - 1));
+            return;
+        }
+        if (event.key === "Enter") {
+            event.preventDefault();
+            handlePick(results[Math.max(0, Math.min(results.length - 1, activeResultIdx))]);
+        }
     };
 
     return (
@@ -182,15 +203,41 @@ export default function CommandStack({
                     >
                         {searchHint}
                     </div>
+                    {remoteError ? (
+                        <div
+                            style={{
+                                fontSize: 10,
+                                opacity: 0.9,
+                                border: "1px solid rgba(251,191,36,0.45)",
+                                borderRadius: 999,
+                                padding: "2px 8px",
+                                display: "inline-flex",
+                                width: "fit-content",
+                            }}
+                            data-uf-id="search-fallback-badge"
+                        >
+                            Backend unavailable; using local fallback
+                        </div>
+                    ) : null}
                     {results.length > 0 ? (
                         <div style={searchResultsStyle} data-uf-id="search-results">
-                            {results.map((item) => (
+                            {results.map((item, idx) => (
                                 <button
                                     key={item.stationKey}
                                     type="button"
                                     onClick={() => handlePick(item)}
-                                    style={searchResultButtonStyle}
+                                    onMouseEnter={() => setActiveResultIdx(idx)}
+                                    style={
+                                        idx === activeResultIdx
+                                            ? {
+                                                  ...searchResultButtonStyle,
+                                                  border: "1px solid rgba(255,255,255,0.35)",
+                                                  background: "rgba(255,255,255,0.12)",
+                                              }
+                                            : searchResultButtonStyle
+                                    }
                                     data-uf-id={`search-result-${item.stationKey}`}
+                                    data-uf-active={idx === activeResultIdx ? "true" : "false"}
                                 >
                                     {item.name}
                                     <span style={{ opacity: 0.6, marginLeft: 6 }}>
