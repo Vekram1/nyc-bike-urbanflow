@@ -21,6 +21,10 @@ type UfE2EState = {
     tier2LastBundleBytes?: number;
     tier2LastHttpStatus?: number | null;
     tier2LastStationKey?: string;
+    tier2InFlight?: boolean;
+    tier2LastRequestedBucket?: number;
+    tier2LastRequestedRange?: string;
+    tier2LastErrorMessage?: string;
 };
 
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
@@ -93,6 +97,9 @@ export default function StationDrawer(props: {
             tier2RequestedCount: (current.tier2RequestedCount ?? 0) + 1,
             tier2LoadingCount: (current.tier2LoadingCount ?? 0) + 1,
             tier2LastStationKey: stationId,
+            tier2InFlight: true,
+            tier2LastRequestedBucket: fallbackBucketEpochS,
+            tier2LastRequestedRange: TIER2_DEFAULT_RANGE,
         }));
         console.info("[StationDrawer] tier2_requested", {
             station_key: stationId,
@@ -136,6 +143,8 @@ export default function StationDrawer(props: {
                     tier2LastBundleBytes: bundleBytes,
                     tier2LastHttpStatus: res.status,
                     tier2LastStationKey: stationId,
+                    tier2InFlight: false,
+                    tier2LastErrorMessage: "",
                 }));
                 setTier2({
                     status: "success",
@@ -156,6 +165,8 @@ export default function StationDrawer(props: {
                     tier2ErrorCount: (current.tier2ErrorCount ?? 0) + 1,
                     tier2LastHttpStatus: null,
                     tier2LastStationKey: stationId,
+                    tier2InFlight: false,
+                    tier2LastErrorMessage: message,
                 }));
                 setTier2({
                     status: "error",

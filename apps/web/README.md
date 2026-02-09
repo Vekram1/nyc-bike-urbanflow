@@ -125,6 +125,10 @@ Map/HUD state transitions that affect request behavior are logged in the browser
   - `window.__UF_E2E.tier2LastBundleBytes`
   - `window.__UF_E2E.tier2LastHttpStatus`
   - `window.__UF_E2E.tier2LastStationKey`
+  - `window.__UF_E2E.tier2InFlight`
+  - `window.__UF_E2E.tier2LastRequestedBucket`
+  - `window.__UF_E2E.tier2LastRequestedRange`
+  - `window.__UF_E2E.tier2LastErrorMessage`
 - Stable selector hooks for browser tests:
   - `data-uf-id="app-root"`
   - `data-uf-id="map-shell"`
