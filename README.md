@@ -122,7 +122,19 @@ export DATABASE_URL='postgres://...'
 bun packages/ingest/src/cli.ts --system citibike-nyc --poll --load-db
 ```
 
-Then refresh serving aggregates:
+Continuous polling with per-cycle DB load + serving refresh:
+
+```bash
+export DATABASE_URL='postgres://...'
+bun packages/ingest/src/cli.ts --system citibike-nyc --poll --load-db --refresh-serving
+```
+
+Optional refresh tuning flags:
+- `--refresh-lookback-minutes <N>` (default `180`)
+- `--severity-version <version>` (default `sev.v1`)
+- `--pressure-proxy-method <method>` (default `delta_cap.v1`)
+
+Manual refresh (if you want explicit control):
 
 ```bash
 psql "$DATABASE_URL" -v system_id='citibike-nyc' -v from_ts='2026-02-09T00:00:00Z' -v to_ts='2026-02-09T23:59:59Z' -f scripts/rebuild_serving_aggregates.sql
