@@ -221,12 +221,12 @@ export default function StationDrawer(props: {
                 </div>
 
                 <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                    <Row label="Station key" value={station.station_id} />
-                    <Row label="Capacity" value={fmtNum(station.capacity)} />
-                    <Row label="Bikes" value={fmtNum(station.bikes)} />
-                    <Row label="Docks" value={fmtNum(station.docks)} />
-                    <Row label="Bucket quality" value={fmtText(station.bucket_quality)} />
-                    <Row label="T_bucket" value={fmtText(station.t_bucket)} />
+                    <Row label="Station key" value={station.station_id} rowId="drawer-row-station-key" />
+                    <Row label="Capacity" value={fmtNum(station.capacity)} rowId="drawer-row-capacity" />
+                    <Row label="Bikes" value={fmtNum(station.bikes)} rowId="drawer-row-bikes" />
+                    <Row label="Docks" value={fmtNum(station.docks)} rowId="drawer-row-docks" />
+                    <Row label="Bucket quality" value={fmtText(station.bucket_quality)} rowId="drawer-row-bucket-quality" />
+                    <Row label="T_bucket" value={fmtText(station.t_bucket)} rowId="drawer-row-t-bucket" />
                 </div>
 
                 <div style={{ marginTop: 14 }}>
@@ -279,9 +279,9 @@ function deriveTier2BucketEpochS(station: StationPick | null): number | null {
     return null;
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, rowId }: { label: string; value: string; rowId: string }) {
     return (
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }} data-uf-id={rowId}>
             <span style={{ fontSize: 12, opacity: 0.85 }}>{label}</span>
             <span style={{ fontSize: 12, fontWeight: 600 }}>{value}</span>
         </div>

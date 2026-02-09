@@ -147,6 +147,12 @@ Map/HUD state transitions that affect request behavior are logged in the browser
 - `data-uf-tier2-t-bucket="<epoch_seconds>"`
 - `data-uf-id="drawer-tier2-button"`
 - `data-uf-id="drawer-close-button"`
+- `data-uf-id="drawer-row-station-key"`
+- `data-uf-id="drawer-row-capacity"`
+- `data-uf-id="drawer-row-bikes"`
+- `data-uf-id="drawer-row-docks"`
+- `data-uf-id="drawer-row-bucket-quality"`
+- `data-uf-id="drawer-row-t-bucket"`
 - `data-uf-id="scrubber-play-toggle"`
 - `data-uf-id="scrubber-speed-down"`
 - `data-uf-id="scrubber-speed-up"`
