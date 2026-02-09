@@ -13,6 +13,7 @@ type Props = {
     speed: number;
     progress: number;
     progressLabel: string;
+    densityMarks?: Array<{ pct: number; intensity: number }>;
     onTogglePlay: () => void;
     onSpeedDown: () => void;
     onSpeedUp: () => void;
@@ -29,6 +30,7 @@ export default function ScrubberBar({
     speed,
     progress,
     progressLabel,
+    densityMarks = [],
     onTogglePlay,
     onSpeedDown,
     onSpeedUp,
@@ -153,26 +155,27 @@ export default function ScrubberBar({
                             background: "rgba(230,237,243,0.9)",
                         }}
                     />
-                    <div
-                        style={{
-                            position: "absolute",
-                            left: "22%",
-                            top: 7,
-                            height: 8,
-                            width: 2,
-                            background: "rgba(255,80,80,0.7)",
-                        }}
-                    />
-                    <div
-                        style={{
-                            position: "absolute",
-                            left: "40%",
-                            top: 7,
-                            height: 8,
-                            width: 2,
-                            background: "rgba(255,80,80,0.7)",
-                        }}
-                    />
+                    {densityMarks.map((mark, idx) => {
+                        const clampedPct = Math.max(0, Math.min(1, mark.pct));
+                        const intensity = Math.max(0, Math.min(1, mark.intensity));
+                        const height = 4 + Math.round(intensity * 8);
+                        const alpha = 0.2 + intensity * 0.65;
+                        const hue = 120 - intensity * 120;
+                        return (
+                            <div
+                                key={`density-${idx}-${clampedPct.toFixed(4)}`}
+                                style={{
+                                    position: "absolute",
+                                    left: `${(clampedPct * 100).toFixed(2)}%`,
+                                    top: 11 - height / 2,
+                                    height,
+                                    width: 2,
+                                    borderRadius: 1,
+                                    background: `hsla(${hue.toFixed(0)}, 95%, 55%, ${alpha.toFixed(3)})`,
+                                }}
+                            />
+                        );
+                    })}
                 </button>
 
                 <div style={{ display: "flex", gap: 8 }}>

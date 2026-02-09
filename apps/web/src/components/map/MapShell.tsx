@@ -13,7 +13,7 @@ import MapView, { StationPick } from "@/components/map/MapView";
 import { useHudControls } from "@/lib/useHudControls";
 import { useFps } from "@/lib/useFps";
 import { useRollingP95 } from "@/lib/useRollingP95";
-import { DEFAULT_SYSTEM_ID } from "@/lib/controlPlane";
+import { DEFAULT_SYSTEM_ID, fetchTimelineDensity } from "@/lib/controlPlane";
 
 type UfE2EState = {
     mapShellMounted?: boolean;
@@ -83,6 +83,10 @@ function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
 export default function MapShell() {
     const [selected, setSelected] = useState<StationPick | null>(null);
     const [stationIndex, setStationIndex] = useState<StationPick[]>([]);
+    const [densityResponse, setDensityResponse] = useState<{
+        sv: string;
+        points: Array<{ pct: number; intensity: number }>;
+    } | null>(null);
     const lastDrawerStationRef = useRef<string | null>(null);
     const hud = useHudControls();
     const fps = useFps();
@@ -125,6 +129,62 @@ export default function MapShell() {
             full,
         };
     }, [stationIndex]);
+
+    useEffect(() => {
+        if (!hud.sv || hud.sv.startsWith("sv:local-")) return;
+
+        let cancelled = false;
+
+        const loadDensity = async () => {
+            try {
+                const out = await fetchTimelineDensity({ sv: hud.sv, bucketSeconds: 300 });
+                if (cancelled) return;
+
+                const rangeStart = hud.rangeMinMs;
+                const rangeEnd = Math.max(hud.rangeMinMs + 1, hud.rangeMaxMs);
+                const span = Math.max(1, rangeEnd - rangeStart);
+                const next = out.points
+                    .map((point): { pct: number; intensity: number } | null => {
+                        const pointMs = Date.parse(point.bucket_ts);
+                        if (!Number.isFinite(pointMs)) return null;
+                        const pctRaw = (pointMs - rangeStart) / span;
+                        if (pctRaw < 0 || pctRaw > 1) return null;
+                        const risk = Math.max(0, Math.min(1, 1 - point.pct_serving_grade));
+                        const pressure = Math.max(point.empty_rate, point.full_rate);
+                        const intensity = Math.max(0, Math.min(1, risk * 0.6 + pressure * 0.4));
+                        return { pct: pctRaw, intensity };
+                    })
+                    .filter((mark): mark is { pct: number; intensity: number } => mark !== null)
+                    .sort((a, b) => a.pct - b.pct);
+
+                if (next.length > 120) {
+                    const step = Math.ceil(next.length / 120);
+                    setDensityResponse({
+                        sv: hud.sv,
+                        points: next.filter((_, idx) => idx % step === 0),
+                    });
+                    return;
+                }
+                setDensityResponse({ sv: hud.sv, points: next });
+            } catch {
+                if (cancelled) return;
+                setDensityResponse({ sv: hud.sv, points: [] });
+            }
+        };
+
+        loadDensity();
+        const timer = window.setInterval(loadDensity, 60000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(timer);
+        };
+    }, [hud.rangeMaxMs, hud.rangeMinMs, hud.sv]);
+    const densityMarks = useMemo(() => {
+        if (!hud.sv || hud.sv.startsWith("sv:local-")) return [];
+        if (!densityResponse || densityResponse.sv !== hud.sv) return [];
+        return densityResponse.points;
+    }, [densityResponse, hud.sv]);
     const tileRequestKey = JSON.stringify({
         layers: hud.layers,
         bucket: timelineBucket,
@@ -491,6 +551,7 @@ export default function MapShell() {
                             speed={hud.speed}
                             progress={hud.progress}
                             progressLabel={progressLabel}
+                            densityMarks={densityMarks}
                             onTogglePlay={hud.togglePlay}
                             onSpeedDown={hud.speedDown}
                             onSpeedUp={hud.speedUp}

@@ -16,6 +16,19 @@ export type TimelineResponse = {
     live_edge_ts: string;
 };
 
+export type TimelineDensityPoint = {
+    bucket_ts: string;
+    pct_serving_grade: number;
+    empty_rate: number;
+    full_rate: number;
+    severity_p95?: number;
+};
+
+export type TimelineDensityResponse = {
+    bucket_size_seconds: number;
+    points: TimelineDensityPoint[];
+};
+
 function parseJson<T>(value: unknown): T | null {
     if (!value || typeof value !== "object") return null;
     return value as T;
@@ -55,6 +68,30 @@ export async function fetchTimeline(args: {
     );
     if (!res.ok || !body) {
         throw new Error(body?.error?.message ?? "timeline_unavailable");
+    }
+    return body;
+}
+
+export async function fetchTimelineDensity(args: {
+    sv: string;
+    bucketSeconds?: number;
+    signal?: AbortSignal;
+}): Promise<TimelineDensityResponse> {
+    const bucketSeconds = args.bucketSeconds ?? 300;
+    const params = new URLSearchParams({
+        v: "1",
+        sv: args.sv,
+        bucket: String(bucketSeconds),
+    });
+    const res = await fetch(`/api/timeline/density?${params.toString()}`, {
+        cache: "no-store",
+        signal: args.signal,
+    });
+    const body = parseJson<TimelineDensityResponse & { error?: { message?: string } }>(
+        await res.json().catch(() => null)
+    );
+    if (!res.ok || !body) {
+        throw new Error(body?.error?.message ?? "timeline_density_unavailable");
     }
     return body;
 }

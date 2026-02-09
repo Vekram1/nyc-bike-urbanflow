@@ -591,6 +591,8 @@ export function useHudControls() {
         playing,
         speed,
         progress,
+        rangeMinMs,
+        rangeMaxMs,
         playbackTsMs,
         layers,
         inspectLocked,
