@@ -72,6 +72,22 @@ export default function StationDrawer(props: {
         station?.gbfs_last_updated != null
             ? new Date(station.gbfs_last_updated * 1000).toLocaleString()
             : "—";
+    const inventoryKnown =
+        (station?.bikes ?? 0) + (station?.docks ?? 0) + (station?.docks_disabled ?? 0);
+    const inventoryDelta =
+        station?.capacity != null ? inventoryKnown - station.capacity : null;
+    const inventoryIntegrityLabel =
+        inventoryDelta == null
+            ? "No capacity baseline"
+            : Math.abs(inventoryDelta) <= 1
+                ? "Capacity check: approx match"
+                : "Capacity check: mismatch";
+    const inventoryIntegrityTone =
+        inventoryDelta == null
+            ? "rgba(230,237,243,0.72)"
+            : Math.abs(inventoryDelta) <= 1
+                ? "rgba(134,239,172,0.95)"
+                : "rgba(252,165,165,0.95)";
     const titleId = `uf-drawer-title-${stationId ?? "none"}`;
     const descId = `uf-drawer-desc-${stationId ?? "none"}`;
     const tierId = `uf-drawer-tier-${stationId ?? "none"}`;
@@ -257,15 +273,42 @@ export default function StationDrawer(props: {
                 <div id={tierId} style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }} data-uf-id="drawer-tier1-note">
                     Tier1 view: tile payload only (no detail fetch).
                 </div>
+                <div
+                    style={{ fontSize: 12, marginTop: 8, color: inventoryIntegrityTone }}
+                    data-uf-id="drawer-capacity-check"
+                >
+                    {inventoryIntegrityLabel}
+                    {inventoryDelta == null ? "" : ` (delta ${inventoryDelta >= 0 ? "+" : ""}${inventoryDelta})`}
+                </div>
 
                 <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                    <Row label="Station key" value={station.station_id} rowId="drawer-row-station-key" valueId="drawer-value-station-key" />
-                    <Row label="Capacity" value={fmtNum(station.capacity)} rowId="drawer-row-capacity" valueId="drawer-value-capacity" />
                     <Row label="Bikes" value={fmtNum(station.bikes)} rowId="drawer-row-bikes" valueId="drawer-value-bikes" />
                     <Row label="Docks" value={fmtNum(station.docks)} rowId="drawer-row-docks" valueId="drawer-value-docks" />
-                    <Row label="Bucket quality" value={fmtText(station.bucket_quality)} rowId="drawer-row-bucket-quality" valueId="drawer-value-bucket-quality" />
-                    <Row label="T_bucket" value={fmtText(station.t_bucket)} rowId="drawer-row-t-bucket" valueId="drawer-value-t-bucket" />
                 </div>
+                <details style={{ marginTop: 12 }} data-uf-id="drawer-advanced">
+                    <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.78 }}>
+                        Advanced station details
+                    </summary>
+                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                        <Row label="Capacity" value={fmtNum(station.capacity)} rowId="drawer-row-capacity" valueId="drawer-value-capacity" />
+                        <Row label="Docks disabled" value={fmtNum(station.docks_disabled)} rowId="drawer-row-docks-disabled" valueId="drawer-value-docks-disabled" />
+                        <Row
+                            label="Bikes + docks + docks_disabled"
+                            value={fmtNum(station.inventory_slots_known ?? inventoryKnown)}
+                            rowId="drawer-row-inventory-known"
+                            valueId="drawer-value-inventory-known"
+                        />
+                        <Row
+                            label="Capacity delta"
+                            value={inventoryDelta == null ? "—" : `${inventoryDelta >= 0 ? "+" : ""}${inventoryDelta}`}
+                            rowId="drawer-row-capacity-delta"
+                            valueId="drawer-value-capacity-delta"
+                        />
+                        <Row label="Station key" value={station.station_id} rowId="drawer-row-station-key" valueId="drawer-value-station-key" />
+                        <Row label="Bucket quality" value={fmtText(station.bucket_quality)} rowId="drawer-row-bucket-quality" valueId="drawer-value-bucket-quality" />
+                        <Row label="T_bucket" value={fmtText(station.t_bucket)} rowId="drawer-row-t-bucket" valueId="drawer-value-t-bucket" />
+                    </div>
+                </details>
 
                 <div style={{ marginTop: 14 }}>
                     <button

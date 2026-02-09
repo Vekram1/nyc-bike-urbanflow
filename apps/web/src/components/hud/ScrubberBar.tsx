@@ -7,6 +7,7 @@ import HUDCard from "./HUDCard";
 import Keycap from "./Keycap";
 
 type Props = {
+    mode: "live" | "replay";
     playing: boolean;
     inspectLocked: boolean;
     speed: number;
@@ -18,9 +19,11 @@ type Props = {
     onStepBack: () => void;
     onStepForward: () => void;
     onSeek: (next: number) => void;
+    onGoLive: () => void;
 };
 
 export default function ScrubberBar({
+    mode,
     playing,
     inspectLocked,
     speed,
@@ -32,6 +35,7 @@ export default function ScrubberBar({
     onStepBack,
     onStepForward,
     onSeek,
+    onGoLive,
 }: Props) {
     const scrubberLabelId = useId();
     const scrubberValueId = useId();
@@ -54,7 +58,7 @@ export default function ScrubberBar({
             <div
                 style={{
                     display: "grid",
-                    gridTemplateColumns: "auto auto 1fr auto",
+                    gridTemplateColumns: "auto auto auto 1fr auto",
                     gap: 12,
                     alignItems: "center",
                 }}
@@ -69,6 +73,18 @@ export default function ScrubberBar({
                     data-uf-id="scrubber-play-toggle"
                 >
                     {playing ? "Pause" : "Play"} <Keycap k="Space" />
+                </button>
+                <button
+                    type="button"
+                    style={btnStyle}
+                    onClick={onGoLive}
+                    title="Jump to current live time"
+                    aria-label="Jump to current live time"
+                    disabled={inspectLocked}
+                    data-uf-id="scrubber-go-live"
+                    data-uf-mode={mode}
+                >
+                    {mode === "live" ? "Live" : "Go Live"} <Keycap k="L" />
                 </button>
 
                 <div style={{ display: "flex", gap: 8 }}>

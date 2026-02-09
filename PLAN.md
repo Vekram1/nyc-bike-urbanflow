@@ -109,12 +109,53 @@ Station Inspect contract (required):
   - If the app was already paused, it remains paused.
 - Esc closes the drawer and resumes per the rule above.
 - Map: dots at station locations; dot radius ~ capacity (clamped + zoom-scaled)
-- Color: severity (0..1) mapped to green -> yellow -> red with a deterministic definition
+- Color: severity (0..1) mapped to a deterministic multi-stop scale:
+  - low: green
+  - medium-low: yellow
+  - medium-high: orange
+  - high: red
+  - unknown/missing severity: neutral gray
 - Clock (top middle):
   - Live mode: app time == real time (with server time sync + dataset watermark)
 - Replay mode: app time advances at speed factor (e.g., 10x, 60x) pinned to a chosen serving view sv
 - Time scrubber:
 - Scrub selects a target timestamp T (observation time), while sv pins which data publication watermark set is used
+
+Frontend interaction reliability (required):
+- Live jump control:
+  - A visible `Live` (or `Go Live`) control must exist in HUD.
+  - Clicking it immediately sets current time to real now and resumes playback if paused.
+  - While in live mode, the control reflects active live state.
+- Pause/replay semantics:
+  - `Pause` must stop timeline time advancement (visible clock + timeline position).
+  - `Play` must resume advancement from the exact paused timestamp.
+  - Any manual seek/step action transitions timeline intent to replay mode.
+- Search behavior:
+  - Search must return usable station results without relying on unimplemented endpoints.
+  - Enter on focused search input picks the top result.
+  - Picking a result opens Tier1 inspect for that station immediately.
+- Tier1 inventory clarity:
+  - Tier1 must explicitly show `capacity`, `bikes_available`, `docks_available`, and `docks_disabled`.
+  - Tier1 must show a reconciliation line:
+    `capacity_delta = (bikes_available + docks_available + docks_disabled) - capacity`.
+  - Tier1 must display whether reconciliation is approximately matched (`|delta| <= 1`) or mismatched.
+
+Frontend UX simplification and timeline safety (required):
+- Tier1 station drawer (default view) must prioritize:
+  - `num_bikes_available`
+  - `num_docks_available`
+- Tier1 station drawer (default view) must de-emphasize or hide advanced technical fields:
+  - `station_key`
+  - `T_bucket`
+  - `bucket_quality`
+  - compare/bucket-offset internals
+- Timeline future bound:
+  - Users must not be able to scrub, step, or otherwise move app time into the future beyond server-now.
+  - Any attempted future seek must clamp to current server-now.
+- Scrub-to-past playback rule:
+  - When a user scrubs or steps into the past, playback must not auto-accelerate or auto-resume.
+  - Entering past replay should transition to paused replay unless user explicitly presses Play.
+  - Playback may resume automatically only on explicit `Go Live` (or equivalent live-jump action).
 
 Severity definition (must be explicit, stable):
 - Severity(T) is a weighted score in [0,1] derived from:

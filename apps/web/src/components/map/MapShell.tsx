@@ -59,6 +59,8 @@ type UfE2EState = {
     compareOffsetBuckets?: number;
     playbackSpeed?: number;
     playing?: boolean;
+    mode?: "live" | "replay";
+    playbackTsMs?: number;
 };
 
 type UfE2EActions = {
@@ -78,6 +80,7 @@ function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
 
 export default function MapShell() {
     const [selected, setSelected] = useState<StationPick | null>(null);
+    const [stationIndex, setStationIndex] = useState<StationPick[]>([]);
     const lastDrawerStationRef = useRef<string | null>(null);
     const hud = useHudControls();
     const inspectAnchorTileKeyRef = useRef<string | null>(null);
@@ -85,21 +88,22 @@ export default function MapShell() {
 
     // “Inspect lock” v0: freeze live GBFS updates while drawer open
     const inspectOpen = !!selected;
-    const timelineWindowMs = 24 * 60 * 60 * 1000;
-    const timelineStartRef = useRef(Date.UTC(2026, 0, 1, 0, 0, 0));
-    const timelineDisplayTimeMs = Math.round(timelineStartRef.current + hud.progress * timelineWindowMs);
-    const systemId = process.env.NEXT_PUBLIC_SYSTEM_ID ?? "citibike-nyc";
+    const timelineDisplayTimeMs = hud.playbackTsMs;
+    const timelineBucket = Math.floor(timelineDisplayTimeMs / 1000);
+    const compareBucket = hud.compareMode
+        ? Math.max(0, timelineBucket - hud.compareOffsetBuckets * 300)
+        : null;
+    const progressLabel = `${hud.mode === "live" ? "Live" : "Replay"} ${Math.round(hud.progress * 100)}%`;
+    const searchStations = stationIndex.map((station) => ({
+        stationKey: station.station_id,
+        name: station.name,
+    }));
 
     const mock = useHudMockAdapter({
         layers: hud.layers,
         inspectLocked: inspectOpen,
-        mode: "replay",
+        mode: hud.mode,
     });
-    const progressLabel = `Progress ${Math.round(hud.progress * 100)}%`;
-    const timelineBucket = Math.round(hud.progress * 100);
-    const compareBucket = hud.compareMode
-        ? Math.max(0, timelineBucket - hud.compareOffsetBuckets)
-        : null;
     const tileRequestKey = JSON.stringify({
         layers: hud.layers,
         bucket: timelineBucket,
@@ -143,19 +147,27 @@ export default function MapShell() {
 
     const handleSearchPick = useCallback(
         (result: { stationKey: string; name: string }) => {
+            const fromMap =
+                stationIndex.find((station) => station.station_id === result.stationKey) ?? null;
             openInspect({
                 station_id: result.stationKey,
                 name: result.name,
-                capacity: null,
-                bikes: null,
-                docks: null,
-                bucket_quality: null,
+                capacity: fromMap?.capacity ?? null,
+                bikes: fromMap?.bikes ?? null,
+                docks: fromMap?.docks ?? null,
+                docks_disabled: fromMap?.docks_disabled ?? null,
+                bikes_disabled: fromMap?.bikes_disabled ?? null,
+                inventory_slots_known: fromMap?.inventory_slots_known ?? null,
+                inventory_delta: fromMap?.inventory_delta ?? null,
+                occupancy_ratio: fromMap?.occupancy_ratio ?? null,
+                severity_score: fromMap?.severity_score ?? null,
+                bucket_quality: fromMap?.bucket_quality ?? null,
                 t_bucket: new Date(timelineDisplayTimeMs).toISOString(),
-                gbfs_last_updated: Math.floor(Date.now() / 1000),
-                gbfs_ttl: 60,
+                gbfs_last_updated: fromMap?.gbfs_last_updated ?? null,
+                gbfs_ttl: fromMap?.gbfs_ttl ?? null,
             });
         },
-        [openInspect, timelineDisplayTimeMs]
+        [openInspect, stationIndex, timelineDisplayTimeMs]
     );
 
     useEffect(() => {
@@ -333,6 +345,8 @@ export default function MapShell() {
                 compareOffsetBuckets: hud.compareOffsetBuckets,
                 playbackSpeed: hud.speed,
                 playing: hud.playing,
+                mode: hud.mode,
+                playbackTsMs: hud.playbackTsMs,
             };
         });
     }, [
@@ -343,6 +357,8 @@ export default function MapShell() {
         hud.layers.capacity,
         hud.layers.labels,
         hud.layers.severity,
+        hud.mode,
+        hud.playbackTsMs,
         hud.playing,
         hud.speed,
         hud.splitView,
@@ -384,6 +400,12 @@ export default function MapShell() {
                     capacity: 40,
                     bikes: 12,
                     docks: 28,
+                    docks_disabled: 0,
+                    bikes_disabled: 0,
+                    inventory_slots_known: 40,
+                    inventory_delta: 0,
+                    occupancy_ratio: 0.3,
+                    severity_score: 0.4,
                     bucket_quality: "ok",
                     t_bucket: new Date().toISOString(),
                     gbfs_last_updated: Math.floor(Date.now() / 1000),
@@ -415,6 +437,7 @@ export default function MapShell() {
             <div className="uf-map" aria-label="Map" data-uf-id="map-shell">
                 <MapView
                     onStationPick={openInspect}
+                    onStationsData={setStationIndex}
                     selectedStationId={selected?.station_id ?? null}
                     freeze={inspectOpen}
                 />
@@ -437,6 +460,7 @@ export default function MapShell() {
                 <div className="uf-bottom" data-uf-id="hud-timeline">
                     <section role="region" aria-label="Timeline playback controls">
                         <ScrubberBar
+                            mode={hud.mode}
                             playing={hud.playing}
                             inspectLocked={hud.inspectLocked}
                             speed={hud.speed}
@@ -448,6 +472,7 @@ export default function MapShell() {
                             onStepBack={hud.stepBack}
                             onStepForward={hud.stepForward}
                             onSeek={hud.seekTo}
+                            onGoLive={hud.goLive}
                         />
                     </section>
                 </div>
@@ -457,12 +482,14 @@ export default function MapShell() {
                         <CommandStack
                             playing={hud.playing}
                             inspectLocked={hud.inspectLocked}
-                            systemId={systemId}
                             compareMode={hud.compareMode}
                             splitView={hud.splitView}
                             compareOffsetBuckets={hud.compareOffsetBuckets}
+                            mode={hud.mode}
                             layers={hud.layers}
+                            searchStations={searchStations}
                             onTogglePlay={hud.togglePlay}
+                            onGoLive={hud.goLive}
                             onToggleLayer={hud.toggleLayer}
                             onToggleCompareMode={hud.toggleCompareMode}
                             onToggleSplitView={hud.toggleSplitView}

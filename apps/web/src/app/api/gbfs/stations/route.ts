@@ -59,6 +59,22 @@ export async function GET() {
 
         const features = infoJson.data.stations.map((s) => {
             const st = statusById.get(s.station_id);
+            const bikes = st?.num_bikes_available ?? null;
+            const docks = st?.num_docks_available ?? null;
+            const docksDisabled = st?.num_docks_disabled ?? null;
+            const capacity = s.capacity ?? null;
+            const totalKnownSlots =
+                (bikes ?? 0) + (docks ?? 0) + (docksDisabled ?? 0);
+            const inventoryDelta =
+                capacity != null ? totalKnownSlots - capacity : null;
+            const occupancyRatio =
+                capacity != null && bikes != null && capacity > 0
+                    ? Math.min(1, Math.max(0, bikes / capacity))
+                    : null;
+            const severityScore =
+                occupancyRatio == null
+                    ? null
+                    : Math.min(1, Math.max(0, Math.abs(occupancyRatio - 0.5) * 2));
 
             return {
                 type: "Feature" as const,
@@ -70,10 +86,16 @@ export async function GET() {
                 properties: {
                     station_id: s.station_id,
                     name: s.name,
-                    capacity: s.capacity ?? null,
+                    capacity,
 
-                    bikes: st?.num_bikes_available ?? null,
-                    docks: st?.num_docks_available ?? null,
+                    bikes,
+                    docks,
+                    bikes_disabled: st?.num_bikes_disabled ?? null,
+                    docks_disabled: docksDisabled,
+                    inventory_slots_known: totalKnownSlots,
+                    inventory_delta: inventoryDelta,
+                    occupancy_ratio: occupancyRatio,
+                    severity_score: severityScore,
 
                     is_renting: st?.is_renting ?? null,
                     is_returning: st?.is_returning ?? null,

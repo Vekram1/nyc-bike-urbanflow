@@ -1,7 +1,7 @@
 // apps/web/src/components/hud/CommandStack.tsx
 "use client";
 
-import { useEffect, useMemo, useState, type KeyboardEventHandler } from "react";
+import { useMemo, useState, type KeyboardEventHandler } from "react";
 
 import HUDCard from "./HUDCard";
 import Keycap from "./Keycap";
@@ -10,12 +10,14 @@ import type { LayerToggles } from "@/lib/hudTypes";
 type Props = {
     playing: boolean;
     inspectLocked: boolean;
-    systemId: string;
     compareMode: boolean;
     splitView: boolean;
     compareOffsetBuckets: number;
+    mode: "live" | "replay";
     layers: LayerToggles;
+    searchStations: Array<{ stationKey: string; name: string }>;
     onTogglePlay: () => void;
+    onGoLive: () => void;
     onToggleLayer: (key: keyof LayerToggles) => void;
     onToggleCompareMode: () => void;
     onToggleSplitView: () => void;
@@ -25,19 +27,21 @@ type Props = {
 };
 
 type SearchResult = {
-    station_key: string;
+    stationKey: string;
     name: string;
 };
 
 export default function CommandStack({
     playing,
     inspectLocked,
-    systemId,
     compareMode,
     splitView,
     compareOffsetBuckets,
+    mode,
     layers,
+    searchStations,
     onTogglePlay,
+    onGoLive,
     onToggleLayer,
     onToggleCompareMode,
     onToggleSplitView,
@@ -46,72 +50,32 @@ export default function CommandStack({
     onSearchPick,
 }: Props) {
     const [query, setQuery] = useState("");
-    const [results, setResults] = useState<SearchResult[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
     const trimmedQuery = query.trim();
     const canSearch = trimmedQuery.length >= 2;
-
-    useEffect(() => {
-        if (!canSearch) {
-            setResults([]);
-            setLoading(false);
-            setError(null);
-            return;
-        }
-
-        const abort = new AbortController();
-        const timer = window.setTimeout(async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const url = new URL("/api/search", window.location.origin);
-                url.searchParams.set("system_id", systemId);
-                url.searchParams.set("q", trimmedQuery);
-                url.searchParams.set("limit", "8");
-                const res = await fetch(url.toString(), {
-                    method: "GET",
-                    cache: "no-store",
-                    signal: abort.signal,
-                });
-                const body = (await res.json()) as { results?: SearchResult[]; error?: { message?: string } };
-                if (!res.ok) {
-                    setResults([]);
-                    setError(body.error?.message ?? "Search failed");
-                    return;
-                }
-                setResults(Array.isArray(body.results) ? body.results : []);
-            } catch (err) {
-                if ((err as { name?: string })?.name === "AbortError") return;
-                setResults([]);
-                setError("Search request failed");
-            } finally {
-                setLoading(false);
-            }
-        }, 180);
-
-        return () => {
-            window.clearTimeout(timer);
-            abort.abort();
-        };
-    }, [canSearch, systemId, trimmedQuery]);
+    const results = useMemo(() => {
+        if (!canSearch) return [];
+        const q = trimmedQuery.toLowerCase();
+        return searchStations
+            .filter((item) => {
+                const stationKey = item.stationKey.toLowerCase();
+                const stationName = item.name.toLowerCase();
+                return stationName.includes(q) || stationKey.includes(q);
+            })
+            .slice(0, 8);
+    }, [canSearch, searchStations, trimmedQuery]);
 
     const searchHint = useMemo(() => {
         if (!canSearch) return "Type at least 2 chars";
-        if (loading) return "Searching...";
-        if (error) return error;
         if (results.length === 0) return "No matches";
         return `${results.length} result${results.length === 1 ? "" : "s"}`;
-    }, [canSearch, error, loading, results.length]);
+    }, [canSearch, results.length]);
 
     const handlePick = (item: SearchResult) => {
         onSearchPick({
-            stationKey: item.station_key,
+            stationKey: item.stationKey,
             name: item.name,
         });
         setQuery("");
-        setResults([]);
-        setError(null);
     };
 
     const onSearchKeyDown: KeyboardEventHandler<HTMLInputElement> = (event) => {
@@ -145,11 +109,11 @@ export default function CommandStack({
                         <div style={searchResultsStyle} data-uf-id="search-results">
                             {results.map((item) => (
                                 <button
-                                    key={item.station_key}
+                                    key={item.stationKey}
                                     type="button"
                                     onClick={() => handlePick(item)}
                                     style={searchResultButtonStyle}
-                                    data-uf-id={`search-result-${item.station_key}`}
+                                    data-uf-id={`search-result-${item.stationKey}`}
                                 >
                                     {item.name}
                                 </button>
@@ -170,6 +134,23 @@ export default function CommandStack({
                         </span>
                         <span>
                             <Keycap k="Space" />
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        style={rowBtnStyle}
+                        onClick={onGoLive}
+                        aria-label="Jump to live time"
+                        title="Jump to live time"
+                        disabled={inspectLocked}
+                        data-uf-id="command-go-live"
+                        data-uf-mode={mode}
+                    >
+                        <span style={{ fontSize: 12, opacity: 0.92 }}>
+                            {mode === "live" ? "Live Now" : "Go Live"}
+                        </span>
+                        <span>
+                            <Keycap k="L" />
                         </span>
                     </button>
                     <Row label="Step" hint="← / →" />

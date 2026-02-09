@@ -23,6 +23,12 @@ export type StationPick = {
     capacity: number | null;
     bikes: number | null;
     docks: number | null;
+    docks_disabled: number | null;
+    bikes_disabled: number | null;
+    inventory_slots_known: number | null;
+    inventory_delta: number | null;
+    occupancy_ratio: number | null;
+    severity_score: number | null;
     bucket_quality: string | null;
     t_bucket: string | null;
     gbfs_last_updated: number | null;
@@ -31,6 +37,7 @@ export type StationPick = {
 
 type Props = {
     onStationPick?: (s: StationPick) => void;
+    onStationsData?: (stations: StationPick[]) => void;
     selectedStationId?: string | null;
     freeze?: boolean; // when true, stop refreshing GBFS + keep view deterministic
 };
@@ -88,7 +95,7 @@ function toText(v: unknown): string | null {
 }
 
 export default function MapView(props: Props) {
-    const { onStationPick, selectedStationId, freeze } = props;
+    const { onStationPick, onStationsData, selectedStationId, freeze } = props;
 
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const mapRef = useRef<MapRef | null>(null);
@@ -178,9 +185,13 @@ export default function MapView(props: Props) {
                     // simple “bad if empty/full else good” — replace with severity later
                     "circle-color": [
                         "case",
-                        ["==", ["get", "bikes"], 0], "#ff4d4d",
-                        ["==", ["get", "docks"], 0], "#ff4d4d",
-                        "#3ddc84",
+                        ["!", ["has", "severity_score"]], "#7f8c8d",
+                        ["interpolate", ["linear"], ["coalesce", ["get", "severity_score"], 0],
+                            0, "#22c55e",
+                            0.35, "#facc15",
+                            0.65, "#f97316",
+                            1, "#ef4444",
+                        ],
                     ],
 
                     "circle-opacity": 0.85,
@@ -256,6 +267,33 @@ export default function MapView(props: Props) {
             if (json?.type === "FeatureCollection") {
                 (src as SourceWithSetData).setData(json);
                 const featureCount = Array.isArray(json.features) ? json.features.length : 0;
+                if (onStationsData && Array.isArray(json.features)) {
+                    const stations: StationPick[] = json.features
+                        .map((feature: { properties?: Record<string, unknown> }): StationPick | null => {
+                            const p = (feature.properties ?? {}) as Record<string, unknown>;
+                            const stationId = String(p.station_id ?? "");
+                            if (!stationId) return null;
+                            return {
+                                station_id: stationId,
+                                name: p.name ? String(p.name) : stationId,
+                                capacity: toNum(p.capacity),
+                                bikes: toNum(p.bikes),
+                                docks: toNum(p.docks),
+                                docks_disabled: toNum(p.docks_disabled),
+                                bikes_disabled: toNum(p.bikes_disabled),
+                                inventory_slots_known: toNum(p.inventory_slots_known),
+                                inventory_delta: toNum(p.inventory_delta),
+                                occupancy_ratio: toNum(p.occupancy_ratio),
+                                severity_score: toNum(p.severity_score),
+                                bucket_quality: toText(p.bucket_quality),
+                                t_bucket: toText(p.t_bucket),
+                                gbfs_last_updated: toNum(p.gbfs_last_updated),
+                                gbfs_ttl: toNum(p.gbfs_ttl),
+                            } satisfies StationPick;
+                        })
+                        .filter((station: StationPick | null): station is StationPick => station !== null);
+                    onStationsData(stations);
+                }
                 updateUfE2E((current) => ({
                     ...current,
                     mapRefreshSuccess: (current.mapRefreshSuccess ?? 0) + 1,
@@ -292,7 +330,7 @@ export default function MapView(props: Props) {
             }));
             console.error("[MapView] refresh_failed", { error: message });
         }
-    }, [freeze]);
+    }, [freeze, onStationsData]);
 
     // poll live GBFS (disabled when freeze=true)
     useEffect(() => {
@@ -419,6 +457,12 @@ export default function MapView(props: Props) {
                     capacity: toNum(p.capacity),
                     bikes: toNum(p.bikes),
                     docks: toNum(p.docks),
+                    docks_disabled: toNum(p.docks_disabled),
+                    bikes_disabled: toNum(p.bikes_disabled),
+                    inventory_slots_known: toNum(p.inventory_slots_known),
+                    inventory_delta: toNum(p.inventory_delta),
+                    occupancy_ratio: toNum(p.occupancy_ratio),
+                    severity_score: toNum(p.severity_score),
                     bucket_quality: toText(p.bucket_quality),
                     t_bucket: toText(p.t_bucket),
                     gbfs_last_updated: toNum(p.gbfs_last_updated),

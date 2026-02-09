@@ -19,6 +19,8 @@ type UfE2EState = {
     hudLastBlockedReason?: string;
     selectedStationId?: string | null;
     blockedActions?: Record<string, number>;
+    mode?: "live" | "replay";
+    playbackTsMs?: number;
 };
 
 type UfE2EActions = {
@@ -860,4 +862,77 @@ test("compare buttons reflect disabled states for compare-off and inspect-lock",
     await expect(page.locator('[data-uf-id="station-drawer"]')).toHaveCount(0);
     await expect(compareModeToggle).toBeEnabled();
     await expect(splitToggle).toBeEnabled();
+});
+
+test("go-live button switches replay back to live time progression", async ({ page }) => {
+    await page.goto("/");
+
+    const goLive = page.locator('[data-uf-id="scrubber-go-live"]');
+    const stepBack = page.locator('[data-uf-id="scrubber-step-back"]');
+    const playToggle = page.locator('[data-uf-id="scrubber-play-toggle"]');
+
+    await expect(goLive).toBeVisible();
+
+    await playToggle.click();
+    await expect
+        .poll(async () => Boolean((await readState(page)).playing))
+        .toBe(false);
+    await stepBack.click();
+
+    await expect
+        .poll(async () => (await readState(page)).mode ?? "")
+        .toBe("replay");
+
+    const beforeLive = (await readState(page)).playbackTsMs ?? 0;
+    await goLive.click();
+
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                mode: state.mode ?? "",
+                playing: Boolean(state.playing),
+                playbackTsMs: state.playbackTsMs ?? 0,
+            };
+        })
+        .toEqual({
+            mode: "live",
+            playing: true,
+            playbackTsMs: expect.any(Number),
+        });
+
+    await expect
+        .poll(async () => (await readState(page)).playbackTsMs ?? 0)
+        .toBeGreaterThan(beforeLive);
+});
+
+test("tier1 drawer shows explicit inventory reconciliation fields", async ({ page }) => {
+    await page.goto("/");
+
+    await expect
+        .poll(async () => {
+            return page.evaluate(() => {
+                const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+                return Boolean(actions);
+            });
+        })
+        .toBe(true);
+
+    await page.evaluate(() => {
+        const actions = (window as { __UF_E2E_ACTIONS?: UfE2EActions }).__UF_E2E_ACTIONS;
+        actions?.openInspect("station-e2e-tier1-check");
+    });
+    await expect(page.locator('[data-uf-id="station-drawer"]')).toBeVisible();
+
+    await expect(page.locator('[data-uf-id="drawer-row-bikes"]')).toBeVisible();
+    await expect(page.locator('[data-uf-id="drawer-row-docks"]')).toBeVisible();
+    await expect(page.locator('[data-uf-id="drawer-capacity-check"]')).toBeVisible();
+
+    const advanced = page.locator('[data-uf-id="drawer-advanced"]');
+    await expect(advanced).toBeVisible();
+    await advanced.locator("summary").click();
+
+    await expect(page.locator('[data-uf-id="drawer-row-docks-disabled"]')).toBeVisible();
+    await expect(page.locator('[data-uf-id="drawer-row-inventory-known"]')).toBeVisible();
+    await expect(page.locator('[data-uf-id="drawer-row-capacity-delta"]')).toBeVisible();
 });

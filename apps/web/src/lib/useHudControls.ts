@@ -4,12 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import type { LayerToggles } from "@/lib/hudTypes";
 
 const SPEED_STEPS = [0.25, 1, 4, 16];
+const LIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const REPLAY_STEP_MS = 5 * 60 * 1000;
 const STORAGE_KEY = "urbanflow.hud.controls.v1";
 const DEFAULT_LAYERS: LayerToggles = {
     severity: true,
     capacity: true,
     labels: false,
 };
+
+function dayStartMs(tsMs: number): number {
+    return Math.floor(tsMs / LIVE_WINDOW_MS) * LIVE_WINDOW_MS;
+}
 
 type PersistedHud = {
     speedIdx?: number;
@@ -123,7 +129,10 @@ export function useHudControls() {
         if (typeof persisted?.speedIdx !== "number") return 1;
         return Math.max(0, Math.min(SPEED_STEPS.length - 1, persisted.speedIdx));
     });
-    const [progress, setProgress] = useState(0.62);
+    const [mode, setMode] = useState<"live" | "replay">("live");
+    const [windowAnchorMs, setWindowAnchorMs] = useState(Date.UTC(2026, 0, 1, 0, 0, 0));
+    const [playbackTsMs, setPlaybackTsMs] = useState(Date.UTC(2026, 0, 1, 12, 0, 0));
+    const [serverNowMs, setServerNowMs] = useState(Date.UTC(2026, 0, 1, 12, 0, 0));
     const [layers, setLayers] = useState<LayerToggles>(() => ({
         severity:
             typeof persisted?.layers?.severity === "boolean"
@@ -155,6 +164,24 @@ export function useHudControls() {
     });
 
     const speed = SPEED_STEPS[speedIdx] ?? 1;
+    const progress = Math.min(
+        1,
+        Math.max(0, (playbackTsMs - windowAnchorMs) / LIVE_WINDOW_MS)
+    );
+
+    useEffect(() => {
+        const nowMs = Date.now();
+        setWindowAnchorMs(dayStartMs(nowMs));
+        setPlaybackTsMs(nowMs);
+        setServerNowMs(nowMs);
+    }, []);
+
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            setServerNowMs(Date.now());
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         const payload: PersistedHud = {
@@ -171,14 +198,29 @@ export function useHudControls() {
         if (!playing) return;
 
         const timer = window.setInterval(() => {
-            setProgress((curr) => {
-                const next = curr + 0.0025 * speed;
-                return next > 1 ? next - 1 : next;
+            if (mode === "live") {
+                const nowMs = Date.now();
+                const nextAnchor = dayStartMs(nowMs);
+                setWindowAnchorMs(nextAnchor);
+                setPlaybackTsMs(nowMs);
+                setServerNowMs(nowMs);
+                return;
+            }
+
+            const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
+            setPlaybackTsMs((curr) => {
+                const stepMs = Math.max(1, Math.round((REPLAY_STEP_MS / 4) * speed));
+                const next = Math.min(replayMax, curr + stepMs);
+                if (next >= replayMax) {
+                    setPlaying(false);
+                    return replayMax;
+                }
+                return next;
             });
         }, 250);
 
         return () => window.clearInterval(timer);
-    }, [playing, speed]);
+    }, [mode, playing, serverNowMs, speed, windowAnchorMs]);
 
     useEffect(() => {
         const onVisibilityChange = () => {
@@ -213,7 +255,11 @@ export function useHudControls() {
         const clamped = Math.min(1, Math.max(0, next));
         console.info("[HudControls] seek", { next: clamped });
         markHudAction("seek");
-        setProgress(clamped);
+        setMode("replay");
+        setPlaying(false);
+        const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
+        const requested = windowAnchorMs + Math.round(clamped * LIVE_WINDOW_MS);
+        setPlaybackTsMs(Math.min(replayMax, requested));
     };
 
     const togglePlay = () => {
@@ -267,9 +313,14 @@ export function useHudControls() {
             markBlockedAction("stepBack", "inspect_lock");
             return;
         }
-        setProgress((p) => {
-            const next = Math.max(0, p - 0.01);
-            console.info("[HudControls] step_back", { from: p, to: next });
+        setMode("replay");
+        setPlaying(false);
+        setPlaybackTsMs((curr) => {
+            const replayMin = windowAnchorMs;
+            const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
+            const bounded = Math.min(replayMax, curr);
+            const next = Math.max(replayMin, bounded - REPLAY_STEP_MS);
+            console.info("[HudControls] step_back", { from: curr, to: next });
             markHudAction("stepBack");
             markStepAction("stepBack");
             return next;
@@ -281,13 +332,30 @@ export function useHudControls() {
             markBlockedAction("stepForward", "inspect_lock");
             return;
         }
-        setProgress((p) => {
-            const next = Math.min(1, p + 0.01);
-            console.info("[HudControls] step_forward", { from: p, to: next });
+        setMode("replay");
+        setPlaying(false);
+        setPlaybackTsMs((curr) => {
+            const replayMax = Math.min(windowAnchorMs + LIVE_WINDOW_MS, serverNowMs);
+            const next = Math.min(replayMax, curr + REPLAY_STEP_MS);
+            console.info("[HudControls] step_forward", { from: curr, to: next });
             markHudAction("stepForward");
             markStepAction("stepForward");
             return next;
         });
+    };
+    const goLive = () => {
+        if (inspectLocked) {
+            console.info("[HudControls] go_live_blocked_inspect_lock");
+            markBlockedAction("goLive", "inspect_lock");
+            return;
+        }
+        const nowMs = Date.now();
+        setMode("live");
+        setWindowAnchorMs(dayStartMs(nowMs));
+        setPlaybackTsMs(nowMs);
+        setServerNowMs(nowMs);
+        setPlaying(true);
+        markHudAction("goLive");
     };
     const toggleLayer = (key: keyof LayerToggles) => {
         markHudAction(`toggleLayer:${key}`);
@@ -434,15 +502,21 @@ export function useHudControls() {
                 event.preventDefault();
                 speedUp();
                 return true;
+            case "KeyL":
+                event.preventDefault();
+                goLive();
+                return true;
             default:
                 return false;
         }
     };
 
     return {
+        mode,
         playing,
         speed,
         progress,
+        playbackTsMs,
         layers,
         inspectLocked,
         compareMode,
@@ -454,6 +528,7 @@ export function useHudControls() {
         speedUp,
         stepBack,
         stepForward,
+        goLive,
         toggleLayer,
         toggleCompareMode,
         toggleSplitView,
