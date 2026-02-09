@@ -1230,6 +1230,16 @@ describe("control-plane e2e", () => {
     const tooWideSeriesBody = await tooWideSeriesRes.json();
     expect(tooWideSeriesBody.error.code).toBe("range_too_large");
 
+    const tooManyPointsRes = await handler(
+      new Request(
+        `https://example.test/api/stations/STA-001/series?sv=${encodeURIComponent(sv)}&from=1738872000&to=1738932000&bucket=60`
+      )
+    );
+    expect(tooManyPointsRes.status).toBe(400);
+    expect(tooManyPointsRes.headers.get("Cache-Control")).toBe("no-store");
+    const tooManyPointsBody = await tooManyPointsRes.json();
+    expect(tooManyPointsBody.error.code).toBe("too_many_points");
+
     const invalidDetailKeyRes = await handler(
       new Request(`https://example.test/api/stations/%20bad?sv=${encodeURIComponent(sv)}`)
     );
