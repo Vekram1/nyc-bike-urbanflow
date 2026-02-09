@@ -188,6 +188,41 @@ describe("createPolicyMovesTilesRouteHandler", () => {
     expect(body.error.code).toBe("token_revoked");
   });
 
+  it("returns 401 when sv token is invalid", async () => {
+    const handler = createPolicyMovesTilesRouteHandler({
+      tokens: {
+        async validate() {
+          return { ok: false as const, reason: "token_invalid" };
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      tileStore: {
+        async fetchPolicyMovesTile() {
+          throw new Error("not used");
+        },
+      },
+      cache: {
+        max_age_s: 30,
+        s_maxage_s: 120,
+        stale_while_revalidate_s: 15,
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/tiles/policy_moves/12/1200/1530.mvt?v=1&sv=invalid&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("token_invalid");
+  });
+
   it("returns 200 and mvt headers on success", async () => {
     const handler = createPolicyMovesTilesRouteHandler({
       tokens: {
