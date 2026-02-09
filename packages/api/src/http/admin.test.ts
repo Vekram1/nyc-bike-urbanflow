@@ -222,4 +222,44 @@ describe("createAdminRouteHandler", () => {
     const resolveBody = await resolveRes.json();
     expect(resolveBody.error.code).toBe("unsupported_version");
   });
+
+  it("returns 405 with Allow headers for unsupported admin methods", async () => {
+    const handler = createAdminRouteHandler(deps);
+
+    const pipelineRes = await handler(
+      new Request("https://example.test/api/pipeline_state?v=1", {
+        method: "POST",
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(pipelineRes.status).toBe(405);
+    expect(pipelineRes.headers.get("Allow")).toBe("GET");
+    expect(pipelineRes.headers.get("Cache-Control")).toBe("no-store");
+    const pipelineBody = await pipelineRes.json();
+    expect(pipelineBody.error.code).toBe("method_not_allowed");
+
+    const dlqRes = await handler(
+      new Request("https://example.test/api/admin/dlq?v=1", {
+        method: "POST",
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(dlqRes.status).toBe(405);
+    expect(dlqRes.headers.get("Allow")).toBe("GET");
+    expect(dlqRes.headers.get("Cache-Control")).toBe("no-store");
+    const dlqBody = await dlqRes.json();
+    expect(dlqBody.error.code).toBe("method_not_allowed");
+
+    const resolveRes = await handler(
+      new Request("https://example.test/api/admin/dlq/resolve?v=1", {
+        method: "GET",
+        headers: { "X-Admin-Token": "secret-token" },
+      })
+    );
+    expect(resolveRes.status).toBe(405);
+    expect(resolveRes.headers.get("Allow")).toBe("POST");
+    expect(resolveRes.headers.get("Cache-Control")).toBe("no-store");
+    const resolveBody = await resolveRes.json();
+    expect(resolveBody.error.code).toBe("method_not_allowed");
+  });
 });
