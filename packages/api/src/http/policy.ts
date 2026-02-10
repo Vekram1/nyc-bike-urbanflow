@@ -135,6 +135,8 @@ function pendingResponse(params: {
   t_bucket: number;
   horizon_steps: number;
   retry_after_ms: number;
+  view_snapshot_id: string | null;
+  view_snapshot_sha256: string | null;
 }): Response {
   const cacheKey =
     `${params.system_id}:${params.policy_version}:${params.sv}:${params.t_bucket}:${params.horizon_steps}`;
@@ -143,6 +145,17 @@ function pendingResponse(params: {
       status: "pending",
       retry_after_ms: params.retry_after_ms,
       cache_key: cacheKey,
+      computed_at: new Date().toISOString(),
+      run_key: {
+        system_id: params.system_id,
+        sv: params.sv,
+        decision_bucket_epoch_s: params.t_bucket,
+        policy_version: params.policy_version,
+        policy_spec_sha256: null,
+        horizon_steps: params.horizon_steps,
+        view_snapshot_id: params.view_snapshot_id,
+        view_snapshot_sha256: params.view_snapshot_sha256,
+      },
     },
     202,
     { "Retry-After": String(Math.max(1, Math.ceil(params.retry_after_ms / 1000))) }
@@ -287,6 +300,7 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
         400
       );
     }
+    let resolvedSnapshotIdentity: { view_snapshot_id: string; view_snapshot_sha256: string } | null = null;
     if (requestedViewSnapshotId && requestedViewSnapshotSha && deps.stationsStore?.getStationsSnapshot) {
       const snapshotRows = await deps.stationsStore.getStationsSnapshot({
         system_id: sv.system_id,
@@ -302,6 +316,7 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
         effective_t_bucket: effectiveSnapshotBucket,
         snapshot: snapshotRows,
       });
+      resolvedSnapshotIdentity = currentSnapshot;
       if (
         currentSnapshot.view_snapshot_id !== requestedViewSnapshotId ||
         currentSnapshot.view_snapshot_sha256 !== requestedViewSnapshotSha
@@ -320,6 +335,11 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
           current_view_snapshot_sha256: currentSnapshot.view_snapshot_sha256,
         });
       }
+    } else if (requestedViewSnapshotId && requestedViewSnapshotSha) {
+      resolvedSnapshotIdentity = {
+        view_snapshot_id: requestedViewSnapshotId,
+        view_snapshot_sha256: requestedViewSnapshotSha,
+      };
     }
 
     const run = await deps.policyStore.getRunSummary({
@@ -358,6 +378,8 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
         t_bucket: tBucket,
         horizon_steps: horizonSteps,
         retry_after_ms: deps.config.retry_after_ms,
+        view_snapshot_id: requestedViewSnapshotId ?? resolvedSnapshotIdentity?.view_snapshot_id ?? null,
+        view_snapshot_sha256: requestedViewSnapshotSha ?? resolvedSnapshotIdentity?.view_snapshot_sha256 ?? null,
       });
     }
 
@@ -371,6 +393,17 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
       return json(
         {
           status: "ready",
+          computed_at: new Date().toISOString(),
+          run_key: {
+            system_id: run.system_id,
+            sv: run.sv,
+            decision_bucket_epoch_s: tBucket,
+            policy_version: run.policy_version,
+            policy_spec_sha256: run.policy_spec_sha256,
+            horizon_steps: run.horizon_steps,
+            view_snapshot_id: requestedViewSnapshotId ?? resolvedSnapshotIdentity?.view_snapshot_id ?? null,
+            view_snapshot_sha256: requestedViewSnapshotSha ?? resolvedSnapshotIdentity?.view_snapshot_sha256 ?? null,
+          },
           run: {
             run_id: run.run_id,
             system_id: run.system_id,
@@ -412,6 +445,17 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
     return json(
       {
         status: "ready",
+        computed_at: new Date().toISOString(),
+        run_key: {
+          system_id: run.system_id,
+          sv: run.sv,
+          decision_bucket_epoch_s: tBucket,
+          policy_version: run.policy_version,
+          policy_spec_sha256: run.policy_spec_sha256,
+          horizon_steps: run.horizon_steps,
+          view_snapshot_id: requestedViewSnapshotId ?? resolvedSnapshotIdentity?.view_snapshot_id ?? null,
+          view_snapshot_sha256: requestedViewSnapshotSha ?? resolvedSnapshotIdentity?.view_snapshot_sha256 ?? null,
+        },
         run: {
           run_id: run.run_id,
           policy_version: run.policy_version,

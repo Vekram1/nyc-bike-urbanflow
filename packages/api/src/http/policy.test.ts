@@ -223,6 +223,11 @@ describe("createPolicyRouteHandler", () => {
     expect(res.status).toBe(202);
     const body = await res.json();
     expect(body.status).toBe("pending");
+    expect(typeof body.computed_at).toBe("string");
+    expect(body.run_key.system_id).toBe("citibike-nyc");
+    expect(body.run_key.decision_bucket_epoch_s).toBe(1738872000);
+    expect(body.run_key.policy_version).toBe("rebal.greedy.v1");
+    expect(body.run_key.policy_spec_sha256).toBeNull();
     expect(seenDedupe).toBe("citibike-nyc:abc:1738872000:rebal.greedy.v1:0");
   });
 
@@ -285,6 +290,9 @@ describe("createPolicyRouteHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("ready");
+    expect(typeof body.computed_at).toBe("string");
+    expect(body.run_key.system_id).toBe("citibike-nyc");
+    expect(body.run_key.policy_spec_sha256).toBe("abc");
     expect(body.run.run_id).toBe(99);
   });
 
@@ -359,8 +367,82 @@ describe("createPolicyRouteHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("ready");
+    expect(typeof body.computed_at).toBe("string");
+    expect(body.run_key.policy_spec_sha256).toBe("abc");
     expect(body.top_n).toBe(1);
     expect(body.moves.length).toBe(1);
+  });
+
+  it("echoes snapshot metadata in run_key when provided and validated", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      stationsStore: {
+        async getStationsSnapshot() {
+          return [
+            {
+              station_key: "STA-001",
+              name: "W 52 St",
+              lat: 40.75,
+              lon: -73.98,
+              capacity: 40,
+              bucket_ts: "2026-02-06T20:00:00Z",
+              bikes_available: 12,
+              docks_available: 28,
+              bucket_quality: "ok",
+            },
+          ];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const mismatchRes = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000&view_snapshot_id=bad&view_snapshot_sha256=bad"
+      )
+    );
+    const mismatchBody = await mismatchRes.json();
+    const snapshotId = mismatchBody.current_view_snapshot_id as string;
+    const snapshotSha = mismatchBody.current_view_snapshot_sha256 as string;
+
+    const okRes = await handler(
+      new Request(
+        `https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000&view_snapshot_id=${encodeURIComponent(snapshotId)}&view_snapshot_sha256=${encodeURIComponent(snapshotSha)}`
+      )
+    );
+    expect(okRes.status).toBe(202);
+    const okBody = await okRes.json();
+    expect(okBody.run_key.view_snapshot_id).toBe(snapshotId);
+    expect(okBody.run_key.view_snapshot_sha256).toBe(snapshotSha);
   });
 
   it("returns 400 for unknown query params", async () => {
