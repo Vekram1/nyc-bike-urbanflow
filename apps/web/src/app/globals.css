@@ -27,6 +27,35 @@ body {
 .uf-map {
     position: absolute;
     inset: 0;
+    transition: filter 320ms ease;
+}
+
+.uf-preview-mode .uf-map {
+    filter: brightness(0.75) saturate(0.9);
+}
+
+.uf-preview-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at center, rgba(0, 0, 0, 0) 25%, rgba(0, 0, 0, 0.35) 100%);
+    z-index: 8;
+}
+
+.uf-preview-pill {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 12;
+    font-size: 12px;
+    border-radius: 999px;
+    padding: 6px 10px;
+    color: rgba(230, 237, 243, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(12, 17, 23, 0.82);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
 /* Single global HUD root: pointer-events NONE */

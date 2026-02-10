@@ -331,11 +331,11 @@ export default function CommandStack({
                         style={rowBtnStyle}
                         onClick={onRunPolicy}
                         disabled={inspectLocked || policyStatus === "pending"}
-                        aria-label="Run greedy policy for current bucket"
+                        aria-label="Run optimize preview for current bucket"
                         data-uf-id="policy-run-button"
                     >
                         <span style={{ fontSize: 12, opacity: 0.92 }}>
-                            {policyStatus === "pending" ? "Running Greedy..." : "Run Greedy"}
+                            {policyStatus === "pending" ? "Optimizing..." : "Optimize (Preview)"}
                         </span>
                     </button>
                     <button

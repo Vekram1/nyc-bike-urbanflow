@@ -108,6 +108,7 @@ type LocalPolicyStation = {
 };
 
 const POLICY_BUCKET_SECONDS = 300;
+const PREVIEW_STEP_MS = 180;
 
 function formatSigned(value: number): string {
     if (!Number.isFinite(value)) return "0.0";
@@ -242,7 +243,9 @@ export default function MapShell() {
     const [policyImpactByStation, setPolicyImpactByStation] = useState<Record<string, number>>({});
     const [policySpecSha256, setPolicySpecSha256] = useState<string>("unknown");
     const [policyReadyRunKeySerialized, setPolicyReadyRunKeySerialized] = useState<string | null>(null);
+    const [previewPhase, setPreviewPhase] = useState<"idle" | "frozen" | "computing" | "playback">("idle");
     const lastDrawerStationRef = useRef<string | null>(null);
+    const previewTimerRef = useRef<number | null>(null);
     const hud = useHudControls();
     const fps = useFps();
     const { p95: tileP95, spark, pushSample } = useRollingP95({ windowMs: 15_000 });
@@ -264,7 +267,9 @@ export default function MapShell() {
         ? Math.max(0, timelineBucket - hud.compareOffsetBuckets * 300)
         : null;
     const optimizeMode: OptimizeMode =
-        policyStatus === "pending"
+        previewPhase === "playback"
+            ? "playback"
+            : policyStatus === "pending" || previewPhase === "computing"
             ? "computing"
             : hud.mode === "live" && hud.playing && !inspectOpen
               ? "live"
@@ -460,6 +465,7 @@ export default function MapShell() {
                 policySpecSha: string;
                 runKeySerialized: string;
                 error: string | null;
+                animate: boolean;
             }
         ) => {
             const impact = summarizePolicyImpact(moves);
@@ -467,17 +473,65 @@ export default function MapShell() {
             setPolicyRunId(args.runId);
             setPolicyMovesCount(moves.length);
             setPolicyBikesMoved(bikesMoved);
-            setPolicyImpactByStation(impact);
             setPolicySpecSha256(args.policySpecSha);
             setPolicyReadyRunKeySerialized(args.runKeySerialized);
             setPolicyStatus("ready");
             setPolicyError(args.error);
-            setPolicyImpactEnabled(moves.length > 0);
+            if (previewTimerRef.current !== null) {
+                window.clearInterval(previewTimerRef.current);
+                previewTimerRef.current = null;
+            }
+            if (!args.animate || moves.length <= 0) {
+                setPolicyImpactByStation(impact);
+                setPolicyImpactEnabled(moves.length > 0);
+                setPreviewPhase("frozen");
+                return;
+            }
+
+            setPolicyImpactEnabled(true);
+            setPolicyImpactByStation({});
+            setPreviewPhase("playback");
+            const ordered = [...moves].sort((a, b) => a.move_rank - b.move_rank);
+            const nextImpact: Record<string, number> = {};
+            let idx = 0;
+            previewTimerRef.current = window.setInterval(() => {
+                const move = ordered[idx];
+                if (!move) {
+                    if (previewTimerRef.current !== null) {
+                        window.clearInterval(previewTimerRef.current);
+                        previewTimerRef.current = null;
+                    }
+                    setPreviewPhase("frozen");
+                    return;
+                }
+                const delta = Number(move.bikes_moved);
+                if (Number.isFinite(delta) && delta > 0) {
+                    nextImpact[move.from_station_key] = (nextImpact[move.from_station_key] ?? 0) - delta;
+                    nextImpact[move.to_station_key] = (nextImpact[move.to_station_key] ?? 0) + delta;
+                    setPolicyImpactByStation({ ...nextImpact });
+                }
+                idx += 1;
+            }, PREVIEW_STEP_MS);
         },
         []
     );
 
+    useEffect(() => {
+        return () => {
+            if (previewTimerRef.current !== null) {
+                window.clearInterval(previewTimerRef.current);
+                previewTimerRef.current = null;
+            }
+        };
+    }, []);
+
     const runPolicy = useCallback(async () => {
+        if (previewTimerRef.current !== null) {
+            window.clearInterval(previewTimerRef.current);
+            previewTimerRef.current = null;
+        }
+        hud.seekTo(hud.progress);
+        setPreviewPhase("computing");
         setPolicyStatus("pending");
         setPolicyError(null);
         const requestRunKeySerialized = currentRunKeySerialized;
@@ -502,12 +556,14 @@ export default function MapShell() {
                         policySpecSha: result.policySpecSha256,
                         runKeySerialized: readyRunKeySerialized,
                         error: null,
+                        animate: true,
                     });
                     return;
                 }
                 if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                 setPolicyStatus("error");
                 setPolicyError("Policy is still computing. Retry in a moment.");
+                setPreviewPhase("frozen");
                 return;
             }
         } catch (error: unknown) {
@@ -519,6 +575,7 @@ export default function MapShell() {
                         : "Policy run failed";
                 setPolicyStatus("error");
                 setPolicyError(message);
+                setPreviewPhase("frozen");
                 return;
             }
         }
@@ -530,12 +587,13 @@ export default function MapShell() {
             policySpecSha: requestPolicySpecSha,
             runKeySerialized: requestRunKeySerialized,
             error: "Using local fallback (backend policy worker unavailable or pending)",
+            animate: true,
         });
     }, [
         applyPolicyMoves,
         currentRunKeySerialized,
         currentRunKey,
-        hud.sv,
+        hud,
         policySpecSha256,
         stationIndex,
     ]);
@@ -551,6 +609,14 @@ export default function MapShell() {
     const handleTogglePolicyImpact = useCallback(() => {
         setPolicyImpactEnabled((current) => !current);
     }, []);
+    const handleGoLive = useCallback(() => {
+        if (previewTimerRef.current !== null) {
+            window.clearInterval(previewTimerRef.current);
+            previewTimerRef.current = null;
+        }
+        setPreviewPhase("idle");
+        hud.goLive();
+    }, [hud]);
 
     useEffect(() => {
         if (!hud.sv || hud.sv.startsWith("sv:local-")) return;
@@ -953,7 +1019,10 @@ export default function MapShell() {
     }, [closeInspect, hud, openInspect]);
 
     return (
-        <div className="uf-root" data-uf-id="app-root">
+        <div
+            className={`uf-root ${previewPhase !== "idle" ? "uf-preview-mode" : ""}`}
+            data-uf-id="app-root"
+        >
             {/* MAP */}
             <div className="uf-map" aria-label="Map" data-uf-id="map-shell">
                 <MapView
@@ -969,6 +1038,14 @@ export default function MapShell() {
                     freeze={inspectOpen}
                 />
             </div>
+            {previewPhase !== "idle" ? (
+                <div className="uf-preview-vignette" aria-hidden="true" />
+            ) : null}
+            {previewPhase !== "idle" ? (
+                <div className="uf-preview-pill uf-hud-pe-auto" data-uf-id="preview-pill">
+                    Preview mode: {previewPhase === "computing" ? "Compute" : previewPhase === "playback" ? "Animate" : "Frozen"}
+                </div>
+            ) : null}
 
             {/* HUD OVERLAY */}
             <HUDRoot>
@@ -1000,7 +1077,7 @@ export default function MapShell() {
                             onStepBack={hud.stepBack}
                             onStepForward={hud.stepForward}
                             onSeek={hud.seekTo}
-                            onGoLive={hud.goLive}
+                            onGoLive={handleGoLive}
                         />
                     </section>
                 </div>
@@ -1022,7 +1099,7 @@ export default function MapShell() {
                             policyImpactSummary={policyImpactSummary}
                             policySummary={policySummary}
                             onTogglePlay={hud.togglePlay}
-                            onGoLive={hud.goLive}
+                            onGoLive={handleGoLive}
                             onToggleLayer={hud.toggleLayer}
                             onToggleCompareMode={hud.toggleCompareMode}
                             onToggleSplitView={hud.toggleSplitView}
