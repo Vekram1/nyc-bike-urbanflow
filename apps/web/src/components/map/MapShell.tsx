@@ -79,6 +79,7 @@ type UfE2EState = {
     policyStatus?: "idle" | "pending" | "ready" | "stale" | "error";
     policyImpactEnabled?: boolean;
     policyMoveCount?: number;
+    policyBikesMoved?: number;
     policyLastRunId?: number;
     policyLastError?: string;
 };
@@ -107,6 +108,12 @@ type LocalPolicyStation = {
 };
 
 const POLICY_BUCKET_SECONDS = 300;
+
+function formatSigned(value: number): string {
+    if (!Number.isFinite(value)) return "0.0";
+    const rounded = Math.round(value * 10) / 10;
+    return `${rounded >= 0 ? "+" : ""}${rounded.toFixed(1)}`;
+}
 
 function toLocalPolicyStations(stations: StationPick[]): LocalPolicyStation[] {
     return stations
@@ -230,6 +237,7 @@ export default function MapShell() {
     const [policyError, setPolicyError] = useState<string | null>(null);
     const [policyRunId, setPolicyRunId] = useState<number | null>(null);
     const [policyMovesCount, setPolicyMovesCount] = useState(0);
+    const [policyBikesMoved, setPolicyBikesMoved] = useState(0);
     const [policyImpactEnabled, setPolicyImpactEnabled] = useState(false);
     const [policyImpactByStation, setPolicyImpactByStation] = useState<Record<string, number>>({});
     const [policySpecSha256, setPolicySpecSha256] = useState<string>("unknown");
@@ -383,6 +391,47 @@ export default function MapShell() {
             avgDeltaPctPoints: ((sumProjected - sumCurrent) / impactedStations) * 100,
         };
     }, [effectivePolicyImpactEnabled, policyImpactByStation, stationIndex]);
+    const policySummary = useMemo(() => {
+        if (effectivePolicyStatus !== "ready") return null;
+        if (policyMovesCount <= 0) return null;
+        const strategyLabel = policyVersion.includes("global")
+            ? "Global"
+            : "Greedy";
+        const frozenTimeLabel = new Date(decisionBucketTs * 1000).toLocaleString();
+        const stationsImproved = policyImpactSummary?.improvedStations ?? 0;
+        const shortageReducedLabel =
+            policyImpactSummary && Number.isFinite(policyImpactSummary.avgDeltaPctPoints)
+                ? `${formatSigned(policyImpactSummary.avgDeltaPctPoints)} pts`
+                : "n/a";
+        return {
+            frozenTimeLabel,
+            strategyLabel,
+            stationsImproved,
+            shortageReducedLabel,
+            bikesMoved: policyBikesMoved,
+            previewDisclaimer: "Preview only: this simulation does not change the real system.",
+            technical: {
+                sv: currentRunKey.sv,
+                policyVersion,
+                policySpecSha256,
+                decisionBucketTs: currentRunKey.decisionBucketTs,
+                viewSnapshotId: currentRunKey.viewSnapshotId,
+                viewSnapshotSha256: currentRunKey.viewSnapshotSha256,
+            },
+        };
+    }, [
+        currentRunKey.decisionBucketTs,
+        currentRunKey.sv,
+        currentRunKey.viewSnapshotId,
+        currentRunKey.viewSnapshotSha256,
+        decisionBucketTs,
+        effectivePolicyStatus,
+        policyBikesMoved,
+        policyImpactSummary,
+        policyMovesCount,
+        policySpecSha256,
+        policyVersion,
+    ]);
 
     useEffect(() => {
         let cancelled = false;
@@ -414,8 +463,10 @@ export default function MapShell() {
             }
         ) => {
             const impact = summarizePolicyImpact(moves);
+            const bikesMoved = moves.reduce((sum, move) => sum + Math.max(0, Math.round(move.bikes_moved)), 0);
             setPolicyRunId(args.runId);
             setPolicyMovesCount(moves.length);
+            setPolicyBikesMoved(bikesMoved);
             setPolicyImpactByStation(impact);
             setPolicySpecSha256(args.policySpecSha);
             setPolicyReadyRunKeySerialized(args.runKeySerialized);
@@ -808,6 +859,7 @@ export default function MapShell() {
                 policyStatus: effectivePolicyStatus,
                 policyImpactEnabled: effectivePolicyImpactEnabled,
                 policyMoveCount: policyMovesCount,
+                policyBikesMoved,
                 policyLastRunId: policyRunId ?? 0,
                 policyLastError: policyError ?? "",
             };
@@ -829,6 +881,7 @@ export default function MapShell() {
         policyError,
         effectivePolicyImpactEnabled,
         policyMovesCount,
+        policyBikesMoved,
         policyRunId,
         effectivePolicyStatus,
         selected?.station_id,
@@ -967,6 +1020,7 @@ export default function MapShell() {
                             policyMovesCount={policyMovesCount}
                             policyImpactEnabled={effectivePolicyImpactEnabled}
                             policyImpactSummary={policyImpactSummary}
+                            policySummary={policySummary}
                             onTogglePlay={hud.togglePlay}
                             onGoLive={hud.goLive}
                             onToggleLayer={hud.toggleLayer}

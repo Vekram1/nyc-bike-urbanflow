@@ -25,6 +25,22 @@ type Props = {
         worsenedStations: number;
         avgDeltaPctPoints: number;
     } | null;
+    policySummary?: {
+        frozenTimeLabel: string;
+        strategyLabel: string;
+        stationsImproved: number;
+        shortageReducedLabel: string;
+        bikesMoved: number;
+        previewDisclaimer: string;
+        technical: {
+            sv: string;
+            policyVersion: string;
+            policySpecSha256: string;
+            decisionBucketTs: number;
+            viewSnapshotId: string;
+            viewSnapshotSha256: string;
+        };
+    } | null;
     onTogglePlay: () => void;
     onGoLive: () => void;
     onToggleLayer: (key: keyof LayerToggles) => void;
@@ -55,6 +71,7 @@ export default function CommandStack({
     policyMovesCount,
     policyImpactEnabled,
     policyImpactSummary,
+    policySummary,
     onTogglePlay,
     onGoLive,
     onToggleLayer,
@@ -363,6 +380,52 @@ export default function CommandStack({
                             <div data-uf-id="policy-impact-breakdown">
                                 Improved {policyImpactSummary.improvedStations} | Worsened {policyImpactSummary.worsenedStations} | Impacted {policyImpactSummary.impactedStations}
                             </div>
+                        </div>
+                    ) : null}
+                    {policySummary ? (
+                        <div
+                            style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 6,
+                                fontSize: 11,
+                                lineHeight: 1.35,
+                                borderTop: "1px solid rgba(255,255,255,0.12)",
+                                paddingTop: 8,
+                            }}
+                            data-uf-id="policy-user-summary"
+                        >
+                            <div data-uf-id="policy-summary-frozen-time">
+                                Frozen at: {policySummary.frozenTimeLabel}
+                            </div>
+                            <div data-uf-id="policy-summary-strategy">
+                                Strategy: {policySummary.strategyLabel}
+                            </div>
+                            <div data-uf-id="policy-summary-improved">
+                                Stations improved: {policySummary.stationsImproved}
+                            </div>
+                            <div data-uf-id="policy-summary-shortage">
+                                Shortage reduced: {policySummary.shortageReducedLabel}
+                            </div>
+                            <div data-uf-id="policy-summary-moved">
+                                Bikes moved: {policySummary.bikesMoved}
+                            </div>
+                            <div style={{ opacity: 0.8 }} data-uf-id="policy-summary-disclaimer">
+                                {policySummary.previewDisclaimer}
+                            </div>
+                            <details data-uf-id="policy-technical-details">
+                                <summary style={{ cursor: "pointer" }}>
+                                    Technical details
+                                </summary>
+                                <div style={{ marginTop: 6, opacity: 0.9, wordBreak: "break-word" }}>
+                                    <div>sv: {policySummary.technical.sv}</div>
+                                    <div>policy_version: {policySummary.technical.policyVersion}</div>
+                                    <div>policy_spec_sha256: {policySummary.technical.policySpecSha256}</div>
+                                    <div>decision_bucket_ts: {policySummary.technical.decisionBucketTs}</div>
+                                    <div>view_snapshot_id: {policySummary.technical.viewSnapshotId}</div>
+                                    <div>view_snapshot_sha256: {policySummary.technical.viewSnapshotSha256}</div>
+                                </div>
+                            </details>
                         </div>
                     ) : null}
                 </div>
