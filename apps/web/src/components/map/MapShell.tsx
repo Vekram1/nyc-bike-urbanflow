@@ -16,14 +16,13 @@ import { useRollingP95 } from "@/lib/useRollingP95";
 import {
     DEFAULT_SYSTEM_ID,
     fetchPolicyConfig,
-    fetchPolicyMoves,
-    fetchPolicyRun,
     fetchTimelineDensity,
     type PolicyMove,
 } from "@/lib/controlPlane";
 import {
     buildPolicyRunKey,
     buildRenderedViewModel,
+    runPolicyForView,
     serializePolicyRunKey,
     type OptimizeMode,
     type PolicyRunKey,
@@ -415,39 +414,23 @@ export default function MapShell() {
         setPolicyError(null);
         const requestRunKeySerialized = currentRunKeySerialized;
         const requestPolicySpecSha = policySpecSha256;
-
-        const maxAttempts = 8;
         try {
             if (hud.sv && !hud.sv.startsWith("sv:local-")) {
-                for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-                    const run = await fetchPolicyRun({
-                        sv: hud.sv,
-                        policyVersion,
-                        timelineBucket: decisionBucketTs,
-                        systemId: DEFAULT_SYSTEM_ID,
-                    });
-                    if (run.status === "pending") {
-                        const waitMs = Math.max(250, Math.min(2000, run.retry_after_ms ?? 800));
-                        await new Promise((resolve) => window.setTimeout(resolve, waitMs));
-                        continue;
-                    }
-
-                    const movesOut = await fetchPolicyMoves({
-                        sv: hud.sv,
-                        policyVersion,
-                        timelineBucket: decisionBucketTs,
-                        systemId: DEFAULT_SYSTEM_ID,
-                        topN: 500,
-                    });
-
+                const result = await runPolicyForView({
+                    runKey: currentRunKey,
+                    maxAttempts: 8,
+                    topN: 500,
+                    includeSnapshotPrecondition: false,
+                });
+                if (result.status === "ready") {
                     if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                     const readyRunKeySerialized = serializePolicyRunKey({
                         ...currentRunKey,
-                        policySpecSha256: movesOut.run.policy_spec_sha256,
+                        policySpecSha256: result.policySpecSha256,
                     });
-                    applyPolicyMoves(movesOut.moves, {
-                        runId: run.run.run_id,
-                        policySpecSha: movesOut.run.policy_spec_sha256,
+                    applyPolicyMoves(result.moves, {
+                        runId: result.runId,
+                        policySpecSha: result.policySpecSha256,
                         runKeySerialized: readyRunKeySerialized,
                         error: null,
                     });
@@ -470,10 +453,8 @@ export default function MapShell() {
         applyPolicyMoves,
         currentRunKeySerialized,
         currentRunKey,
-        decisionBucketTs,
         hud.sv,
         policySpecSha256,
-        policyVersion,
         stationIndex,
     ]);
 

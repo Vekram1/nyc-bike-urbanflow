@@ -15,3 +15,10 @@ export {
     type PolicyRunKeyInput,
 } from "@/lib/policy/policyRunKey";
 
+export {
+    runPolicyForView,
+    type RunPolicyForViewArgs,
+    type RunPolicyForViewPending,
+    type RunPolicyForViewReady,
+    type RunPolicyForViewResult,
+} from "@/lib/policy/client";
