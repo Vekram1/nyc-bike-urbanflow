@@ -22,3 +22,9 @@ export {
     type RunPolicyForViewReady,
     type RunPolicyForViewResult,
 } from "@/lib/policy/client";
+
+export {
+    createOptimizationSession,
+    type OptimizationSession,
+    type OptimizationSessionMode,
+} from "@/lib/policy/optimizationSession";

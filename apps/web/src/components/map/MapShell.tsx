@@ -22,8 +22,10 @@ import {
 import {
     buildPolicyRunKey,
     buildRenderedViewModel,
+    createOptimizationSession,
     runPolicyForView,
     serializePolicyRunKey,
+    type OptimizationSession,
     type OptimizeMode,
     type PolicyRunKey,
 } from "@/lib/policy";
@@ -82,6 +84,10 @@ type UfE2EState = {
     policyBikesMoved?: number;
     policyLastRunId?: number;
     policyLastError?: string;
+    optimizationSessionId?: string;
+    optimizationSessionMode?: string;
+    optimizationActiveRequestId?: number;
+    optimizationPlaybackCursor?: number;
 };
 
 type UfE2EActions = {
@@ -244,8 +250,12 @@ export default function MapShell() {
     const [policySpecSha256, setPolicySpecSha256] = useState<string>("unknown");
     const [policyReadyRunKeySerialized, setPolicyReadyRunKeySerialized] = useState<string | null>(null);
     const [previewPhase, setPreviewPhase] = useState<"idle" | "frozen" | "computing" | "playback">("idle");
+    const [optimizationSession, setOptimizationSession] =
+        useState<OptimizationSession>(createOptimizationSession);
     const lastDrawerStationRef = useRef<string | null>(null);
     const previewTimerRef = useRef<number | null>(null);
+    const nextPolicyRequestIdRef = useRef(0);
+    const optimizationSessionRef = useRef<OptimizationSession>(optimizationSession);
     const hud = useHudControls();
     const fps = useFps();
     const { p95: tileP95, spark, pushSample } = useRollingP95({ windowMs: 15_000 });
@@ -256,6 +266,9 @@ export default function MapShell() {
         viewSnapshotId: string;
         viewSnapshotSha256: string;
     } | null>(null);
+    useEffect(() => {
+        optimizationSessionRef.current = optimizationSession;
+    }, [optimizationSession]);
 
     // “Inspect lock” v0: freeze live GBFS updates while drawer open
     const inspectOpen = !!selected;
@@ -485,12 +498,23 @@ export default function MapShell() {
                 setPolicyImpactByStation(impact);
                 setPolicyImpactEnabled(moves.length > 0);
                 setPreviewPhase("frozen");
+                setOptimizationSession((session) => ({
+                    ...session,
+                    mode: "frozen",
+                    activeRequestId: null,
+                    playbackCursor: moves.length,
+                }));
                 return;
             }
 
             setPolicyImpactEnabled(true);
             setPolicyImpactByStation({});
             setPreviewPhase("playback");
+            setOptimizationSession((session) => ({
+                ...session,
+                mode: "playback",
+                playbackCursor: 0,
+            }));
             const ordered = [...moves].sort((a, b) => a.move_rank - b.move_rank);
             const nextImpact: Record<string, number> = {};
             let idx = 0;
@@ -502,6 +526,12 @@ export default function MapShell() {
                         previewTimerRef.current = null;
                     }
                     setPreviewPhase("frozen");
+                    setOptimizationSession((session) => ({
+                        ...session,
+                        mode: "frozen",
+                        activeRequestId: null,
+                        playbackCursor: ordered.length,
+                    }));
                     return;
                 }
                 const delta = Number(move.bikes_moved);
@@ -510,6 +540,10 @@ export default function MapShell() {
                     nextImpact[move.to_station_key] = (nextImpact[move.to_station_key] ?? 0) + delta;
                     setPolicyImpactByStation({ ...nextImpact });
                 }
+                setOptimizationSession((session) => ({
+                    ...session,
+                    playbackCursor: idx + 1,
+                }));
                 idx += 1;
             }, PREVIEW_STEP_MS);
         },
@@ -530,25 +564,39 @@ export default function MapShell() {
             window.clearInterval(previewTimerRef.current);
             previewTimerRef.current = null;
         }
+        const requestId = nextPolicyRequestIdRef.current + 1;
+        nextPolicyRequestIdRef.current = requestId;
+        const sessionId = `session-${Date.now()}-${requestId}`;
+        const frozenRunKey = currentRunKey;
+        const frozenRunKeySerialized = serializePolicyRunKey(frozenRunKey);
+        setOptimizationSession({
+            sessionId,
+            mode: "computing",
+            frozenRunKey,
+            activeRequestId: requestId,
+            playbackCursor: 0,
+        });
         hud.seekTo(hud.progress);
         setPreviewPhase("computing");
         setPolicyStatus("pending");
         setPolicyError(null);
-        const requestRunKeySerialized = currentRunKeySerialized;
+        const requestRunKeySerialized = frozenRunKeySerialized;
         const requestPolicySpecSha = policySpecSha256;
         const canUseBackend = hud.sv && !hud.sv.startsWith("sv:local-");
         try {
             if (canUseBackend) {
                 const result = await runPolicyForView({
-                    runKey: currentRunKey,
+                    runKey: frozenRunKey,
                     maxAttempts: 8,
                     topN: 500,
                     includeSnapshotPrecondition: true,
                 });
                 if (result.status === "ready") {
+                    const activeSession = optimizationSessionRef.current;
+                    if (activeSession.sessionId !== sessionId || activeSession.activeRequestId !== requestId) return;
                     if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                     const readyRunKeySerialized = serializePolicyRunKey({
-                        ...currentRunKey,
+                        ...frozenRunKey,
                         policySpecSha256: result.policySpecSha256,
                     });
                     applyPolicyMoves(result.moves, {
@@ -560,14 +608,23 @@ export default function MapShell() {
                     });
                     return;
                 }
+                const activeSession = optimizationSessionRef.current;
+                if (activeSession.sessionId !== sessionId || activeSession.activeRequestId !== requestId) return;
                 if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                 setPolicyStatus("error");
                 setPolicyError("Policy is still computing. Retry in a moment.");
                 setPreviewPhase("frozen");
+                setOptimizationSession((session) => ({
+                    ...session,
+                    mode: "frozen",
+                    activeRequestId: null,
+                }));
                 return;
             }
         } catch (error: unknown) {
             if (canUseBackend) {
+                const activeSession = optimizationSessionRef.current;
+                if (activeSession.sessionId !== sessionId || activeSession.activeRequestId !== requestId) return;
                 if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                 const message =
                     error instanceof Error && error.message.length > 0
@@ -576,11 +633,18 @@ export default function MapShell() {
                 setPolicyStatus("error");
                 setPolicyError(message);
                 setPreviewPhase("frozen");
+                setOptimizationSession((session) => ({
+                    ...session,
+                    mode: "error",
+                    activeRequestId: null,
+                }));
                 return;
             }
         }
 
         const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
+        const activeSession = optimizationSessionRef.current;
+        if (activeSession.sessionId !== sessionId || activeSession.activeRequestId !== requestId) return;
         if (requestRunKeySerialized !== currentRunKeyRef.current) return;
         applyPolicyMoves(fallbackMoves, {
             runId: null,
@@ -591,7 +655,6 @@ export default function MapShell() {
         });
     }, [
         applyPolicyMoves,
-        currentRunKeySerialized,
         currentRunKey,
         hud,
         policySpecSha256,
@@ -615,6 +678,13 @@ export default function MapShell() {
             previewTimerRef.current = null;
         }
         setPreviewPhase("idle");
+        setOptimizationSession((session) => ({
+            ...session,
+            mode: "live",
+            frozenRunKey: null,
+            activeRequestId: null,
+            playbackCursor: 0,
+        }));
         hud.goLive();
     }, [hud]);
 
@@ -690,6 +760,10 @@ export default function MapShell() {
                 viewSnapshotId: `${hud.sv}:${decisionBucketTs}:${stationIndex.length}`,
                 viewSnapshotSha256: stationSnapshotSha,
             });
+            setOptimizationSession((session) => ({
+                ...session,
+                mode: session.mode === "playback" ? "playback" : "frozen",
+            }));
             updateUfE2E((current) => ({
                 ...current,
                 inspectOpenCount: (current.inspectOpenCount ?? 0) + 1,
@@ -706,6 +780,10 @@ export default function MapShell() {
         setSelected(null);
         hud.onInspectClose();
         setInspectLockRunContext(null);
+        setOptimizationSession((session) => ({
+            ...session,
+            mode: hud.mode === "live" && hud.playing ? "live" : "frozen",
+        }));
         updateUfE2E((current) => ({
             ...current,
             inspectCloseCount: (current.inspectCloseCount ?? 0) + 1,
@@ -928,6 +1006,10 @@ export default function MapShell() {
                 policyBikesMoved,
                 policyLastRunId: policyRunId ?? 0,
                 policyLastError: policyError ?? "",
+                optimizationSessionId: optimizationSession.sessionId,
+                optimizationSessionMode: optimizationSession.mode,
+                optimizationActiveRequestId: optimizationSession.activeRequestId ?? 0,
+                optimizationPlaybackCursor: optimizationSession.playbackCursor,
             };
         });
     }, [
@@ -950,6 +1032,10 @@ export default function MapShell() {
         policyBikesMoved,
         policyRunId,
         effectivePolicyStatus,
+        optimizationSession.activeRequestId,
+        optimizationSession.mode,
+        optimizationSession.playbackCursor,
+        optimizationSession.sessionId,
         selected?.station_id,
         tileRequestKey,
         timelineBucket,
@@ -1020,7 +1106,7 @@ export default function MapShell() {
 
     return (
         <div
-            className={`uf-root ${previewPhase !== "idle" ? "uf-preview-mode" : ""}`}
+            className={`uf-root ${optimizationSession.mode !== "live" ? "uf-preview-mode" : ""}`}
             data-uf-id="app-root"
         >
             {/* MAP */}
@@ -1038,12 +1124,12 @@ export default function MapShell() {
                     freeze={inspectOpen}
                 />
             </div>
-            {previewPhase !== "idle" ? (
+            {optimizationSession.mode !== "live" ? (
                 <div className="uf-preview-vignette" aria-hidden="true" />
             ) : null}
-            {previewPhase !== "idle" ? (
+            {optimizationSession.mode !== "live" ? (
                 <div className="uf-preview-pill uf-hud-pe-auto" data-uf-id="preview-pill">
-                    Preview mode: {previewPhase === "computing" ? "Compute" : previewPhase === "playback" ? "Animate" : "Frozen"}
+                    Preview mode: {optimizationSession.mode === "computing" ? "Compute" : optimizationSession.mode === "playback" ? "Animate" : "Frozen"}
                 </div>
             ) : null}
 
