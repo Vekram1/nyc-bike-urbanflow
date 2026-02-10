@@ -70,4 +70,71 @@ describe("runGlobalPolicyV1", () => {
     input.policy_version = "rebal.greedy.v1";
     expect(() => runGlobalPolicyV1(input, { logger: { info() {} } })).toThrow("unsupported_policy_version");
   });
+
+  it("satisfies conservation and budget invariants across deterministic random scenarios", () => {
+    let seed = 1337;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 0xffffffff;
+    };
+
+    for (let scenario = 0; scenario < 25; scenario += 1) {
+      const input = baseInput();
+      input.spec.effort.bike_move_budget_per_step = 8;
+      input.spec.effort.max_moves = 6;
+      input.spec.effort.max_stations_touched = 6;
+
+      const stations: GreedyPolicyInput["stations"] = [];
+      for (let i = 0; i < 6; i += 1) {
+        const capacity = 8 + Math.floor(rand() * 8);
+        const bikes = Math.floor(rand() * (capacity + 1));
+        stations.push({
+          station_key: `S${i + 1}`,
+          capacity,
+          bikes,
+          docks: capacity - bikes,
+          bucket_quality: "ok",
+        });
+      }
+      input.stations = stations;
+      input.spec.neighborhood.edges = [];
+      for (let i = 0; i < stations.length; i += 1) {
+        for (let j = 0; j < stations.length; j += 1) {
+          if (i === j) continue;
+          input.spec.neighborhood.edges.push({
+            from_station_key: stations[i].station_key,
+            to_station_key: stations[j].station_key,
+            dist_m: 100 + Math.floor(rand() * 800),
+            rank: j + 1,
+          });
+        }
+      }
+
+      const before = new Map(input.stations.map((s) => [s.station_key, s.bikes]));
+      const after = new Map(before);
+      const capacityByStation = new Map(input.stations.map((s) => [s.station_key, s.capacity]));
+      const totalBefore = input.stations.reduce((acc, s) => acc + s.bikes, 0);
+
+      const out = runGlobalPolicyV1(input, { logger: { info() {} } });
+
+      let movedTotal = 0;
+      for (const move of out.moves) {
+        movedTotal += move.bikes_moved;
+        after.set(move.from_station_key, (after.get(move.from_station_key) ?? 0) - move.bikes_moved);
+        after.set(move.to_station_key, (after.get(move.to_station_key) ?? 0) + move.bikes_moved);
+      }
+      const totalAfter = Array.from(after.values()).reduce((acc, v) => acc + v, 0);
+
+      expect(totalAfter).toBe(totalBefore);
+      expect(movedTotal).toBeLessThanOrEqual(input.spec.effort.bike_move_budget_per_step);
+      expect(out.moves.length).toBeLessThanOrEqual(input.spec.effort.max_moves);
+      expect(out.summary.stations_touched).toBeLessThanOrEqual(input.spec.effort.max_stations_touched);
+
+      for (const [stationKey, bikes] of after.entries()) {
+        const capacity = capacityByStation.get(stationKey) ?? 0;
+        expect(bikes).toBeGreaterThanOrEqual(0);
+        expect(bikes).toBeLessThanOrEqual(capacity);
+      }
+    }
+  });
 });
