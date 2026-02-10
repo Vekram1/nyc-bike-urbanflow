@@ -52,6 +52,8 @@ type Props = {
     onCompareOffsetDown: () => void;
     onCompareOffsetUp: () => void;
     onSearchPick: (station: { stationKey: string; name: string }) => void;
+    showSyncView?: boolean;
+    onSyncView?: () => void;
     onRunPolicy: () => void;
     onTogglePolicyImpact: () => void;
 };
@@ -86,6 +88,8 @@ export default function CommandStack({
     onCompareOffsetDown,
     onCompareOffsetUp,
     onSearchPick,
+    showSyncView = false,
+    onSyncView,
     onRunPolicy,
     onTogglePolicyImpact,
 }: Props) {
@@ -391,6 +395,19 @@ export default function CommandStack({
                     >
                         {policyStatusLabel(policyStatus, policyMovesCount)}
                     </div>
+                    {showSyncView && onSyncView ? (
+                        <button
+                            type="button"
+                            style={rowBtnStyle}
+                            onClick={onSyncView}
+                            data-uf-id="policy-sync-view"
+                            aria-label="Sync view and rerun optimize"
+                        >
+                            <span style={{ fontSize: 12, opacity: 0.92 }}>
+                                Sync view
+                            </span>
+                        </button>
+                    ) : null}
                     {policyImpactEnabled && policyImpactSummary ? (
                         <div
                             style={{

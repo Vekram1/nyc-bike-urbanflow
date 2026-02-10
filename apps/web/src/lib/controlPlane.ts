@@ -105,7 +105,11 @@ function isFiniteNumber(value: unknown): value is number {
 function parseErrorMessage(body: Record<string, unknown> | null, fallback: string): string {
     const error = body?.error;
     if (!error || typeof error !== "object" || Array.isArray(error)) return fallback;
+    const code = (error as { code?: unknown }).code;
     const message = (error as { message?: unknown }).message;
+    if (isString(code) && code.length > 0) {
+        if (code === "view_snapshot_mismatch") return code;
+    }
     return isString(message) && message.length > 0 ? message : fallback;
 }
 

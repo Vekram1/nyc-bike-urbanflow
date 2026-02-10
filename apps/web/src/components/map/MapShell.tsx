@@ -251,6 +251,7 @@ export default function MapShell() {
     const [policyVersion, setPolicyVersion] = useState<string>("rebal.greedy.v1");
     const [policyStatus, setPolicyStatus] = useState<"idle" | "pending" | "ready" | "stale" | "error">("idle");
     const [policyError, setPolicyError] = useState<string | null>(null);
+    const [policySyncViewNeeded, setPolicySyncViewNeeded] = useState(false);
     const [policyRunId, setPolicyRunId] = useState<number | null>(null);
     const [policyMovesCount, setPolicyMovesCount] = useState(0);
     const [policyBikesMoved, setPolicyBikesMoved] = useState(0);
@@ -624,6 +625,7 @@ export default function MapShell() {
         setPreviewPhase("computing");
         setPolicyStatus("pending");
         setPolicyError(null);
+        setPolicySyncViewNeeded(false);
         const requestRunKeySerialized = frozenRunKeySerialized;
         const requestPolicySpecSha = policySpecSha256;
         const canUseBackend = hud.sv && !hud.sv.startsWith("sv:local-");
@@ -675,7 +677,12 @@ export default function MapShell() {
                         ? error.message
                         : "Policy run failed";
                 setPolicyStatus("error");
-                setPolicyError(message);
+                if (message === "view_snapshot_mismatch") {
+                    setPolicyError("The map view changed while optimizing. Sync to the frozen view and try again.");
+                    setPolicySyncViewNeeded(true);
+                } else {
+                    setPolicyError(message);
+                }
                 setPreviewPhase("frozen");
                 setOptimizationSession((session) => ({
                     ...session,
@@ -706,6 +713,15 @@ export default function MapShell() {
     ]);
 
     const handleRunPolicy = useCallback(() => {
+        runPolicy().catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "Policy run failed";
+            setPolicyStatus("error");
+            setPolicyError(message);
+            setPolicySyncViewNeeded(false);
+        });
+    }, [runPolicy]);
+    const handleSyncView = useCallback(() => {
+        setPolicySyncViewNeeded(false);
         runPolicy().catch((error: unknown) => {
             const message = error instanceof Error ? error.message : "Policy run failed";
             setPolicyStatus("error");
@@ -1238,6 +1254,8 @@ export default function MapShell() {
                             policyImpactEnabled={effectivePolicyImpactEnabled}
                             policyImpactSummary={policyImpactSummary}
                             policySummary={policySummary}
+                            showSyncView={policySyncViewNeeded && effectivePolicyStatus === "error"}
+                            onSyncView={handleSyncView}
                             playbackView={playbackView}
                             onTogglePlaybackView={handleTogglePlaybackView}
                             onTogglePlay={hud.togglePlay}
