@@ -21,6 +21,13 @@ import {
     fetchTimelineDensity,
     type PolicyMove,
 } from "@/lib/controlPlane";
+import {
+    buildPolicyRunKey,
+    buildRenderedViewModel,
+    serializePolicyRunKey,
+    type OptimizeMode,
+    type PolicyRunKey,
+} from "@/lib/policy";
 
 type UfE2EState = {
     mapShellMounted?: boolean;
@@ -99,6 +106,8 @@ type LocalPolicyStation = {
     bikes: number;
     docks: number;
 };
+
+const POLICY_BUCKET_SECONDS = 300;
 
 function toLocalPolicyStations(stations: StationPick[]): LocalPolicyStation[] {
     return stations
@@ -193,6 +202,23 @@ function summarizePolicyImpact(moves: PolicyMove[]): Record<string, number> {
     return next;
 }
 
+function buildStationSnapshotSha(stations: StationPick[]): string {
+    // Deterministic lightweight checksum for current rendered station vector.
+    const sorted = [...stations].sort((a, b) => a.station_id.localeCompare(b.station_id));
+    let acc = 2166136261;
+    for (const station of sorted) {
+        const bikes = Number(station.bikes ?? 0);
+        const docks = Number(station.docks ?? 0);
+        const capacity = Number(station.capacity ?? 0);
+        const key = `${station.station_id}|${bikes}|${docks}|${capacity}`;
+        for (let idx = 0; idx < key.length; idx += 1) {
+            acc ^= key.charCodeAt(idx);
+            acc = Math.imul(acc, 16777619);
+        }
+    }
+    return `snap-${(acc >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 export default function MapShell() {
     const [selected, setSelected] = useState<StationPick | null>(null);
     const [stationIndex, setStationIndex] = useState<StationPick[]>([]);
@@ -207,7 +233,8 @@ export default function MapShell() {
     const [policyMovesCount, setPolicyMovesCount] = useState(0);
     const [policyImpactEnabled, setPolicyImpactEnabled] = useState(false);
     const [policyImpactByStation, setPolicyImpactByStation] = useState<Record<string, number>>({});
-    const [policyRunSv, setPolicyRunSv] = useState<string | null>(null);
+    const [policySpecSha256, setPolicySpecSha256] = useState<string>("unknown");
+    const [policyReadyRunKeySerialized, setPolicyReadyRunKeySerialized] = useState<string | null>(null);
     const lastDrawerStationRef = useRef<string | null>(null);
     const hud = useHudControls();
     const fps = useFps();
@@ -220,9 +247,50 @@ export default function MapShell() {
     const timelineDisplayTimeMs =
         hud.mode === "live" && hud.playing ? hud.serverNowMs : hud.playbackTsMs;
     const timelineBucket = Math.floor(timelineDisplayTimeMs / 1000);
+    const decisionBucketTs = Math.floor(timelineBucket / POLICY_BUCKET_SECONDS) * POLICY_BUCKET_SECONDS;
     const compareBucket = hud.compareMode
         ? Math.max(0, timelineBucket - hud.compareOffsetBuckets * 300)
         : null;
+    const optimizeMode: OptimizeMode =
+        policyStatus === "pending"
+            ? "computing"
+            : hud.mode === "live" && hud.playing && !inspectOpen
+              ? "live"
+              : "frozen";
+    const stationSnapshotSha = useMemo(() => buildStationSnapshotSha(stationIndex), [stationIndex]);
+    const currentRunKey = useMemo<PolicyRunKey>(() => {
+        const renderedViewModel = buildRenderedViewModel({
+            systemId: DEFAULT_SYSTEM_ID,
+            sv: hud.sv,
+            displayTimeMs: timelineDisplayTimeMs,
+            bucketSizeSeconds: POLICY_BUCKET_SECONDS,
+            viewSnapshotId: `${hud.sv}:${decisionBucketTs}:${stationIndex.length}`,
+            viewSnapshotSha256: stationSnapshotSha,
+            mode: optimizeMode,
+        });
+        return buildPolicyRunKey({
+            renderedView: renderedViewModel,
+            policyVersion,
+            policySpecSha256,
+        });
+    }, [
+        decisionBucketTs,
+        hud.sv,
+        optimizeMode,
+        policySpecSha256,
+        policyVersion,
+        stationIndex.length,
+        stationSnapshotSha,
+        timelineDisplayTimeMs,
+    ]);
+    const currentRunKeySerialized = useMemo(
+        () => serializePolicyRunKey(currentRunKey),
+        [currentRunKey]
+    );
+    const currentRunKeyRef = useRef(currentRunKeySerialized);
+    useEffect(() => {
+        currentRunKeyRef.current = currentRunKeySerialized;
+    }, [currentRunKeySerialized]);
     const progressLabel = `${hud.mode === "live" ? "Live" : "Replay"} ${Math.round(hud.progress * 100)}%`;
     const searchStations = stationIndex.map((station) => ({
         stationKey: station.station_id,
@@ -313,17 +381,28 @@ export default function MapShell() {
     }, []);
 
     const effectivePolicyStatus =
-        policyStatus === "ready" && policyRunSv && hud.sv && policyRunSv !== hud.sv
+        policyStatus === "ready" &&
+        policyReadyRunKeySerialized &&
+        policyReadyRunKeySerialized !== currentRunKeySerialized
             ? "stale"
             : policyStatus;
 
     const applyPolicyMoves = useCallback(
-        (moves: PolicyMove[], args: { runId: number | null; runSv: string | null; error: string | null }) => {
+        (
+            moves: PolicyMove[],
+            args: {
+                runId: number | null;
+                policySpecSha: string;
+                runKeySerialized: string;
+                error: string | null;
+            }
+        ) => {
             const impact = summarizePolicyImpact(moves);
             setPolicyRunId(args.runId);
             setPolicyMovesCount(moves.length);
             setPolicyImpactByStation(impact);
-            setPolicyRunSv(args.runSv);
+            setPolicySpecSha256(args.policySpecSha);
+            setPolicyReadyRunKeySerialized(args.runKeySerialized);
             setPolicyStatus("ready");
             setPolicyError(args.error);
             setPolicyImpactEnabled(moves.length > 0);
@@ -334,6 +413,8 @@ export default function MapShell() {
     const runPolicy = useCallback(async () => {
         setPolicyStatus("pending");
         setPolicyError(null);
+        const requestRunKeySerialized = currentRunKeySerialized;
+        const requestPolicySpecSha = policySpecSha256;
 
         const maxAttempts = 8;
         try {
@@ -342,7 +423,7 @@ export default function MapShell() {
                     const run = await fetchPolicyRun({
                         sv: hud.sv,
                         policyVersion,
-                        timelineBucket,
+                        timelineBucket: decisionBucketTs,
                         systemId: DEFAULT_SYSTEM_ID,
                     });
                     if (run.status === "pending") {
@@ -354,14 +435,20 @@ export default function MapShell() {
                     const movesOut = await fetchPolicyMoves({
                         sv: hud.sv,
                         policyVersion,
-                        timelineBucket,
+                        timelineBucket: decisionBucketTs,
                         systemId: DEFAULT_SYSTEM_ID,
                         topN: 500,
                     });
 
+                    if (requestRunKeySerialized !== currentRunKeyRef.current) return;
+                    const readyRunKeySerialized = serializePolicyRunKey({
+                        ...currentRunKey,
+                        policySpecSha256: movesOut.run.policy_spec_sha256,
+                    });
                     applyPolicyMoves(movesOut.moves, {
                         runId: run.run.run_id,
-                        runSv: hud.sv,
+                        policySpecSha: movesOut.run.policy_spec_sha256,
+                        runKeySerialized: readyRunKeySerialized,
                         error: null,
                     });
                     return;
@@ -372,12 +459,23 @@ export default function MapShell() {
         }
 
         const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
+        if (requestRunKeySerialized !== currentRunKeyRef.current) return;
         applyPolicyMoves(fallbackMoves, {
             runId: null,
-            runSv: hud.sv && !hud.sv.startsWith("sv:local-") ? hud.sv : null,
+            policySpecSha: requestPolicySpecSha,
+            runKeySerialized: requestRunKeySerialized,
             error: "Using local fallback (backend policy worker unavailable or pending)",
         });
-    }, [applyPolicyMoves, hud.sv, policyVersion, stationIndex, timelineBucket]);
+    }, [
+        applyPolicyMoves,
+        currentRunKeySerialized,
+        currentRunKey,
+        decisionBucketTs,
+        hud.sv,
+        policySpecSha256,
+        policyVersion,
+        stationIndex,
+    ]);
 
     const handleRunPolicy = useCallback(() => {
         runPolicy().catch((error: unknown) => {
