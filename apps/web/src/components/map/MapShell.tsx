@@ -414,13 +414,14 @@ export default function MapShell() {
         setPolicyError(null);
         const requestRunKeySerialized = currentRunKeySerialized;
         const requestPolicySpecSha = policySpecSha256;
+        const canUseBackend = hud.sv && !hud.sv.startsWith("sv:local-");
         try {
-            if (hud.sv && !hud.sv.startsWith("sv:local-")) {
+            if (canUseBackend) {
                 const result = await runPolicyForView({
                     runKey: currentRunKey,
                     maxAttempts: 8,
                     topN: 500,
-                    includeSnapshotPrecondition: false,
+                    includeSnapshotPrecondition: true,
                 });
                 if (result.status === "ready") {
                     if (requestRunKeySerialized !== currentRunKeyRef.current) return;
@@ -436,9 +437,22 @@ export default function MapShell() {
                     });
                     return;
                 }
+                if (requestRunKeySerialized !== currentRunKeyRef.current) return;
+                setPolicyStatus("error");
+                setPolicyError("Policy is still computing. Retry in a moment.");
+                return;
             }
-        } catch {
-            // Fall back to local deterministic approximation below.
+        } catch (error: unknown) {
+            if (canUseBackend) {
+                if (requestRunKeySerialized !== currentRunKeyRef.current) return;
+                const message =
+                    error instanceof Error && error.message.length > 0
+                        ? error.message
+                        : "Policy run failed";
+                setPolicyStatus("error");
+                setPolicyError(message);
+                return;
+            }
         }
 
         const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
