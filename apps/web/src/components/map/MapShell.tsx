@@ -90,6 +90,7 @@ type UfE2EState = {
     optimizationSessionMode?: string;
     optimizationActiveRequestId?: number;
     optimizationPlaybackCursor?: number;
+    reducedMotion?: boolean;
 };
 
 type UfE2EActions = {
@@ -275,6 +276,9 @@ export default function MapShell() {
     const [previewPhase, setPreviewPhase] = useState<"idle" | "frozen" | "computing" | "playback">("idle");
     const [optimizationSession, setOptimizationSession] =
         useState<OptimizationSession>(createOptimizationSession);
+    const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+    const [reducedMotionOverride, setReducedMotionOverride] = useState<boolean | null>(null);
+    const [a11yAnnouncement, setA11yAnnouncement] = useState("");
     const lastDrawerStationRef = useRef<string | null>(null);
     const previewTimerRef = useRef<number | null>(null);
     const policyAbortRef = useRef<AbortController | null>(null);
@@ -291,9 +295,23 @@ export default function MapShell() {
         viewSnapshotSha256: string;
     } | null>(null);
     const stationIndexRef = useRef<StationPick[]>(stationIndex);
+    const reducedMotion =
+        reducedMotionOverride === null ? prefersReducedMotion : reducedMotionOverride;
     useEffect(() => {
         optimizationSessionRef.current = optimizationSession;
     }, [optimizationSession]);
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+        const applyMedia = () => {
+            setPrefersReducedMotion(media.matches);
+        };
+        applyMedia();
+        media.addEventListener("change", applyMedia);
+        return () => {
+            media.removeEventListener("change", applyMedia);
+        };
+    }, []);
     useEffect(() => {
         stationIndexRef.current = stationIndex;
     }, [stationIndex]);
@@ -491,6 +509,27 @@ export default function MapShell() {
         () => new Date(currentRunKey.decisionBucketTs * 1000).toLocaleString(),
         [currentRunKey.decisionBucketTs]
     );
+    useEffect(() => {
+        if (policyStatus === "pending") {
+            setA11yAnnouncement("Optimization started. Computing preview on frozen data.");
+            return;
+        }
+        if (optimizationSession.mode === "playback") {
+            setA11yAnnouncement("Optimization complete. Playback started.");
+            return;
+        }
+        if (policyStatus === "ready" && optimizationSession.mode === "frozen") {
+            setA11yAnnouncement(
+                reducedMotion
+                    ? "Optimization complete. Summary is ready with reduced motion."
+                    : "Optimization complete. Preview is ready."
+            );
+            return;
+        }
+        if (policyStatus === "error" && policyError) {
+            setA11yAnnouncement(`Optimization failed. ${policyError}`);
+        }
+    }, [optimizationSession.mode, policyError, policyStatus, reducedMotion]);
 
     useEffect(() => {
         let cancelled = false;
@@ -549,7 +588,7 @@ export default function MapShell() {
                 window.clearInterval(previewTimerRef.current);
                 previewTimerRef.current = null;
             }
-            if (!args.animate || moves.length <= 0) {
+            if (!args.animate || reducedMotion || moves.length <= 0) {
                 setPolicyImpactByStation(impact);
                 setPolicyImpactEnabled(moves.length > 0);
                 setActivePlaybackMove(null);
@@ -627,7 +666,7 @@ export default function MapShell() {
                 idx += 1;
             }, PREVIEW_STEP_MS);
         },
-        [latestRunStats, policyStrategy]
+        [latestRunStats, policyStrategy, reducedMotion]
     );
 
     useEffect(() => {
@@ -1155,6 +1194,7 @@ export default function MapShell() {
                 optimizationSessionMode: optimizationSession.mode,
                 optimizationActiveRequestId: optimizationSession.activeRequestId ?? 0,
                 optimizationPlaybackCursor: optimizationSession.playbackCursor,
+                reducedMotion,
             };
         });
     }, [
@@ -1181,6 +1221,7 @@ export default function MapShell() {
         optimizationSession.mode,
         optimizationSession.playbackCursor,
         optimizationSession.sessionId,
+        reducedMotion,
         selected?.station_id,
         tileRequestKey,
         timelineBucket,
@@ -1253,9 +1294,18 @@ export default function MapShell() {
 
     return (
         <div
-            className={`uf-root ${optimizationSession.mode !== "live" ? "uf-preview-mode" : ""}`}
+            className={`uf-root ${optimizationSession.mode !== "live" ? "uf-preview-mode" : ""} ${reducedMotion ? "uf-reduced-motion" : ""}`}
             data-uf-id="app-root"
         >
+            <div
+                className="uf-sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                data-uf-id="policy-live-region"
+            >
+                {a11yAnnouncement}
+            </div>
             {/* MAP */}
             <div className="uf-map" aria-label="Map" data-uf-id="map-shell">
                 <MapView
@@ -1338,6 +1388,12 @@ export default function MapShell() {
                             canCancelPolicy={effectivePolicyStatus === "pending"}
                             onCancelPolicy={handleCancelPolicy}
                             policyCompare={policyCompare}
+                            reducedMotion={reducedMotion}
+                            onToggleReducedMotion={() =>
+                                setReducedMotionOverride((current) =>
+                                    current === null ? !prefersReducedMotion : !current
+                                )
+                            }
                             showSyncView={policySyncViewNeeded && effectivePolicyStatus === "error"}
                             onSyncView={handleSyncView}
                             playbackView={playbackView}

@@ -53,6 +53,8 @@ type Props = {
         bikesMovedDelta: number;
         stationsImprovedDelta: number;
     } | null;
+    reducedMotion?: boolean;
+    onToggleReducedMotion?: () => void;
     onTogglePlay: () => void;
     onTogglePlaybackView?: () => void;
     onGoLive: () => void;
@@ -93,6 +95,8 @@ export default function CommandStack({
     canCancelPolicy = false,
     onCancelPolicy,
     policyCompare = null,
+    reducedMotion = false,
+    onToggleReducedMotion,
     playbackView = "after",
     onTogglePlay,
     onTogglePlaybackView,
@@ -317,6 +321,7 @@ export default function CommandStack({
                         onClick={onTogglePlay}
                         aria-label={playing ? "Pause playback" : "Start playback"}
                         title={playing ? "Pause playback" : "Start playback"}
+                        aria-pressed={playing}
                         disabled={inspectLocked}
                         data-uf-id="command-play-toggle"
                     >
@@ -350,6 +355,7 @@ export default function CommandStack({
                             style={rowBtnStyle}
                             onClick={onTogglePlaybackView}
                             aria-label="Toggle before and after preview"
+                            aria-pressed={playbackView === "after"}
                             data-uf-id="preview-before-after-toggle"
                         >
                             <span style={{ fontSize: 12, opacity: 0.92 }}>
@@ -422,6 +428,7 @@ export default function CommandStack({
                         onClick={onTogglePolicyImpact}
                         disabled={inspectLocked || (policyMovesCount <= 0 && !policyImpactEnabled)}
                         aria-label="Toggle policy impact overlay"
+                        aria-pressed={policyImpactEnabled}
                         data-uf-id="policy-impact-toggle"
                         data-uf-enabled={policyImpactEnabled ? "true" : "false"}
                     >
@@ -543,6 +550,19 @@ export default function CommandStack({
                             </div>
                         </div>
                     ) : null}
+                    <button
+                        type="button"
+                        style={rowBtnStyle}
+                        onClick={() => onToggleReducedMotion?.()}
+                        disabled={!onToggleReducedMotion}
+                        aria-label="Toggle reduced motion mode"
+                        aria-pressed={reducedMotion}
+                        data-uf-id="policy-reduced-motion-toggle"
+                    >
+                        <span style={{ fontSize: 12, opacity: 0.92 }}>
+                            {reducedMotion ? "Reduced Motion On" : "Reduced Motion Off"}
+                        </span>
+                    </button>
                 </div>
             </HUDCard>
             ) : null}
