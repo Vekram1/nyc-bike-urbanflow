@@ -23,6 +23,8 @@ import {
     buildPolicyRunKey,
     buildRenderedViewModel,
     createOptimizationSession,
+    deriveEffectivePolicyStatus,
+    isActiveSessionRequest,
     runPolicyForView,
     serializePolicyRunKey,
     type OptimizationSession,
@@ -348,12 +350,11 @@ export default function MapShell() {
     useEffect(() => {
         currentRunKeyRef.current = currentRunKeySerialized;
     }, [currentRunKeySerialized]);
-    const effectivePolicyStatus =
-        policyStatus === "ready" &&
-        policyReadyRunKeySerialized &&
-        policyReadyRunKeySerialized !== currentRunKeySerialized
-            ? "stale"
-            : policyStatus;
+    const effectivePolicyStatus = deriveEffectivePolicyStatus({
+        policyStatus,
+        policyReadyRunKeySerialized,
+        currentRunKeySerialized,
+    });
     const effectivePolicyImpactEnabled =
         policyImpactEnabled && effectivePolicyStatus === "ready" && playbackView === "after";
     const progressLabel = `${hud.mode === "live" ? "Live" : "Replay"} ${Math.round(hud.progress * 100)}%`;
@@ -639,7 +640,7 @@ export default function MapShell() {
                 });
                 if (result.status === "ready") {
                     const activeSession = optimizationSessionRef.current;
-                    if (activeSession.sessionId !== sessionId || activeSession.activeRequestId !== requestId) return;
+                    if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
                     if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                     const readyRunKeySerialized = serializePolicyRunKey({
                         ...frozenRunKey,
@@ -655,7 +656,7 @@ export default function MapShell() {
                     return;
                 }
                 const activeSession = optimizationSessionRef.current;
-                if (activeSession.sessionId !== sessionId || activeSession.activeRequestId !== requestId) return;
+                if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
                 if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                 setPolicyStatus("error");
                 setPolicyError("Policy is still computing. Retry in a moment.");
@@ -670,7 +671,7 @@ export default function MapShell() {
         } catch (error: unknown) {
             if (canUseBackend) {
                 const activeSession = optimizationSessionRef.current;
-                if (activeSession.sessionId !== sessionId || activeSession.activeRequestId !== requestId) return;
+                if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
                 if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                 const message =
                     error instanceof Error && error.message.length > 0
@@ -695,7 +696,7 @@ export default function MapShell() {
 
         const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
         const activeSession = optimizationSessionRef.current;
-        if (activeSession.sessionId !== sessionId || activeSession.activeRequestId !== requestId) return;
+        if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
         if (requestRunKeySerialized !== currentRunKeyRef.current) return;
         applyPolicyMoves(fallbackMoves, {
             runId: null,

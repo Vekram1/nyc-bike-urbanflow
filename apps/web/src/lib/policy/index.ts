@@ -16,6 +16,11 @@ export {
 } from "@/lib/policy/policyRunKey";
 
 export {
+    deriveEffectivePolicyStatus,
+    type PolicyStatus,
+} from "@/lib/policy/stale";
+
+export {
     runPolicyForView,
     type RunPolicyForViewArgs,
     type RunPolicyForViewPending,
@@ -25,6 +30,7 @@ export {
 
 export {
     createOptimizationSession,
+    isActiveSessionRequest,
     type OptimizationSession,
     type OptimizationSessionMode,
 } from "@/lib/policy/optimizationSession";

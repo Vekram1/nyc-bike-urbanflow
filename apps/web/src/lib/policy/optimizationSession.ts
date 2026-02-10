@@ -24,3 +24,11 @@ export function createOptimizationSession(): OptimizationSession {
         playbackCursor: 0,
     };
 }
+
+export function isActiveSessionRequest(
+    session: OptimizationSession,
+    sessionId: string,
+    requestId: number
+): boolean {
+    return session.sessionId === sessionId && session.activeRequestId === requestId;
+}
