@@ -1,6 +1,7 @@
 # UrbanFlow Twin
 
 UrbanFlow Twin is a tiles-first bike-system digital twin for NYC Citi Bike.
+Status: early dev. Expect breaking schema/contract changes until versioned releases are tagged.
 
 This repository is for:
 - Developers extending the ingest/API/web stack.
@@ -22,12 +23,31 @@ Current optimization support:
 - `PLAN.md`: product/architecture contract and invariants.
 - `AGENTS.md`: execution protocol for coding agents.
 
+## Two Ways To Run
+
+Pick the workflow that matches your immediate goal.
+
+### A) Live View (fastest dev loop)
+- Goal: render real stations and bikes/docks quickly.
+- Requires: DB + API + ingest loop (current stack is DB-backed).
+- Result: map dots and Tier1 inspect from live data.
+
+### B) Replay And Evaluation (contract-first)
+- Goal: reproducible replay, policy runs, episodes, reliability marts.
+- Requires: everything in (A), plus refresh/rebuild jobs and retention tuning.
+
 ## Prerequisites
 
 - Bun `>=1.3`
 - PostgreSQL with PostGIS
 - Mapbox token for frontend map rendering (`NEXT_PUBLIC_MAPBOX_TOKEN`)
 - Docker (recommended for local DB)
+
+## Ports
+
+Default local ports:
+- API: `3000`
+- Web: `3001` (set `PORT=3001` if your machine prefers `3000`)
 
 ## Docker DB Quickstart (PostGIS)
 
@@ -50,6 +70,13 @@ Set DB URL:
 
 ```bash
 export DATABASE_URL='postgres://urbanflow:urbanflow@127.0.0.1:5432/urbanflow'
+```
+
+If `psql` is missing on macOS:
+
+```bash
+brew install libpq
+brew link --force libpq
 ```
 
 Sanity check PostGIS:
@@ -78,6 +105,8 @@ services:
 volumes:
   urbanflow-pgdata:
 ```
+
+Tip: save this as `docker-compose.yml` so contributors can use `docker compose up -d` and `docker compose down`.
 
 Apply all migrations in order:
 
@@ -139,6 +168,20 @@ cp apps/web/.env.example apps/web/.env.local
 cp packages/api/.env.example packages/api/.env.local
 ```
 
+### DATABASE_URL quick reference
+
+`DATABASE_URL` points to whichever Postgres instance you are using.
+
+Common values:
+- Local Docker: `postgres://urbanflow:urbanflow@127.0.0.1:5432/urbanflow`
+- Hosted Postgres: provider DSN (PostGIS must be enabled)
+
+Quick connectivity check:
+
+```bash
+psql "$DATABASE_URL" -c "select current_database(), inet_server_addr(), inet_server_port();"
+```
+
 ### Backend (`packages/api`)
 
 Minimum required:
@@ -153,6 +196,10 @@ Common optional vars:
 - `API_PORT` (default `3000`)
 - `SYSTEM_ID` (default `citibike-nyc`)
 - `ADMIN_TOKEN` for admin endpoints
+
+Security note:
+- `SV_KEY_MATERIAL_JSON` signs/verifies `sv` serving-view tokens.
+- Use strong random secrets for shared environments and rotate keys.
 
 See `packages/api/README.md` for the full backend env surface.
 
@@ -175,6 +222,18 @@ Env naming notes:
 
 ## Run The Stack
 
+## Dev Scripts
+
+Use the `scripts/dev` helpers to reduce manual setup.
+
+```bash
+scripts/dev/setup.sh         # deps + db + migrations + system seed
+scripts/dev/start-api.sh     # bun API server
+scripts/dev/start-web.sh     # Next web app
+scripts/dev/start-ingest.sh  # poll + load-db + refresh-serving
+scripts/dev/up.sh            # tmux launcher for all of the above
+```
+
 ## Quickstart: Fastest Visual Win (dots + inspect)
 
 This is the fastest path to see real station dots and click-through inventory.
@@ -188,8 +247,9 @@ This is the fastest path to see real station dots and click-through inventory.
    - clicking a station opens Tier1 inventory
 
 Note:
-- A true no-DB mode is not part of the current contract-first stack.
-- Current map dots are served through `/api/gbfs/stations` (web proxy route) backed by API control-plane + station endpoints.
+- A true no-DB mode is not part of the current stack.
+- Current live dots are fetched through `/api/gbfs/stations` (web proxy), backed by API control-plane + stations data.
+- Contract target remains tiles-first (`/api/tiles/*`) for production replay/cache behavior.
 
 ### 1) Start backend API
 
@@ -197,6 +257,12 @@ From repo root:
 
 ```bash
 bun packages/api/src/server.ts
+```
+
+Health check:
+
+```bash
+curl -sS 'http://127.0.0.1:3000/api/time?v=1&system_id=citibike-nyc&tile_schema=tile.v1&severity_version=sev.v1' | head
 ```
 
 ### 2) Start frontend
@@ -211,6 +277,12 @@ Equivalent:
 
 ```bash
 bun --bun --cwd apps/web run dev
+```
+
+If local port selection collides:
+
+```bash
+PORT=3001 bun --bun --cwd apps/web run dev
 ```
 
 ### 3) (Optional) Start GBFS poller
@@ -253,6 +325,12 @@ export DATABASE_URL='postgres://...'
 bun packages/ingest/src/cli.ts --system citibike-nyc --poll --load-db --refresh-serving
 ```
 
+Ingest sanity check:
+
+```bash
+psql "$DATABASE_URL" -c "select count(*) from logical_snapshots;"
+```
+
 Optional refresh tuning flags:
 - `--refresh-lookback-minutes <N>` (default `180`)
 - `--severity-version <version>` (default `sev.v1`)
@@ -293,6 +371,9 @@ Retention invariants:
 - Prune order is derived/hot tables first, then ingest tracking tables.
 - `logical_snapshots` deletes cascade to snapshot tables via FK `ON DELETE CASCADE`.
 - If one DB delete statement fails, later statements are not executed.
+
+Recommendation:
+- Move prune to a single explicit transaction once FK behavior is fully stabilized, to avoid partial prune windows.
 
 Manual refresh (if you want explicit control):
 
@@ -346,6 +427,14 @@ More backend validation examples are documented in `packages/api/README.md`.
 - For deep historical scrub/replay, keep DB loader + aggregate refresh running (raw polling alone is not enough).
 - Profile A runs correctly on a single Bun API + Postgres/PostGIS instance; optional scale components are not required for correctness.
 
+## Contribution Quickstart
+
+- Frontend HUD work: `apps/web/src/components/hud/*`
+- Frontend map/state work: `apps/web/src/components/map/*`, `apps/web/src/lib/*`
+- Backend control-plane routes: `packages/api/src/http/*`
+- Tile generation/data-plane: `packages/api/src/tiles/*`
+- Policy algorithms: `packages/policy/*` and `/api/policy/*` integration
+
 ## Optimization Algorithms
 
 Current:
@@ -365,6 +454,9 @@ Long-term goal:
 - Frontend cannot reach backend:
   - confirm API is running on `URBANFLOW_API_ORIGIN` (default `http://127.0.0.1:3000`).
   - if unset, Next proxy routes fall back to `http://127.0.0.1:3000`.
+- Map loads but no dots:
+  - confirm ingest loop is running and DB has rows (`select count(*) from logical_snapshots;`).
+  - verify `/api/time` returns a non-empty `recommended_live_sv`.
 - E2E fails to start server:
   - run `bun run build` in `apps/web` before Playwright.
 - `bd` reports out-of-sync database/jsonl:
