@@ -178,6 +178,8 @@ describe("createPolicyRouteHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.default_policy_version).toBe("rebal.greedy.v1");
+    expect(body.default_strategy).toBe("greedy.v1");
+    expect(Array.isArray(body.available_strategies)).toBe(true);
     expect(Array.isArray(body.available_policy_versions)).toBe(true);
   });
 
@@ -231,6 +233,7 @@ describe("createPolicyRouteHandler", () => {
     expect(body.run_key.system_id).toBe("citibike-nyc");
     expect(body.run_key.decision_bucket_epoch_s).toBe(1738872000);
     expect(body.run_key.policy_version).toBe("rebal.greedy.v1");
+    expect(body.run_key.strategy).toBe("greedy.v1");
     expect(body.run_key.policy_spec_sha256).toBeNull();
     expect(seenDedupe).toBe("citibike-nyc:abc:1738872000:rebal.greedy.v1:0");
   });
@@ -296,6 +299,7 @@ describe("createPolicyRouteHandler", () => {
     expect(body.status).toBe("ready");
     expect(typeof body.computed_at).toBe("string");
     expect(body.run_key.system_id).toBe("citibike-nyc");
+    expect(body.run_key.strategy).toBe("greedy.v1");
     expect(body.run_key.policy_spec_sha256).toBe("abc");
     expect(body.run.run_id).toBe(99);
   });
@@ -372,6 +376,7 @@ describe("createPolicyRouteHandler", () => {
     const body = await res.json();
     expect(body.status).toBe("ready");
     expect(typeof body.computed_at).toBe("string");
+    expect(body.run_key.strategy).toBe("greedy.v1");
     expect(body.run_key.policy_spec_sha256).toBe("abc");
     expect(body.top_n).toBe(1);
     expect(body.moves.length).toBe(1);
@@ -493,6 +498,105 @@ describe("createPolicyRouteHandler", () => {
     const body = await res.json();
     expect(body.error.code).toBe("unknown_param");
     expect(body.error.category).toBe("invalid_request");
+  });
+
+  it("validates strategy and policy_version consistency", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1", "rebal.global.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const invalidStrategy = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&strategy=bad&T_bucket=1738872000"
+      )
+    );
+    expect(invalidStrategy.status).toBe(400);
+    const invalidStrategyBody = await invalidStrategy.json();
+    expect(invalidStrategyBody.error.code).toBe("invalid_strategy");
+
+    const mismatch = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&strategy=global.v1&T_bucket=1738872000"
+      )
+    );
+    expect(mismatch.status).toBe(400);
+    const mismatchBody = await mismatch.json();
+    expect(mismatchBody.error.code).toBe("strategy_policy_mismatch");
+  });
+
+  it("accepts global strategy and echoes it in run_key", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1", "rebal.global.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.global.v1&strategy=global.v1&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body.run_key.strategy).toBe("global.v1");
   });
 
   it("returns 400 for unsupported version on policy endpoints", async () => {

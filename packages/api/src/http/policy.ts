@@ -16,6 +16,7 @@ const ALLOWED_RUN_KEYS = new Set([
   "sv",
   "v",
   "policy_version",
+  "strategy",
   "T_bucket",
   "horizon_steps",
   "system_id",
@@ -26,6 +27,7 @@ const ALLOWED_MOVES_KEYS = new Set([
   "sv",
   "v",
   "policy_version",
+  "strategy",
   "T_bucket",
   "horizon_steps",
   "top_n",
@@ -109,6 +111,7 @@ type PolicyErrorCategory =
   | "namespace_disallowed"
   | "sv_invalid"
   | "internal_error";
+type PolicyStrategy = "greedy.v1" | "global.v1";
 
 function classifyPolicyError(code: string): { category: PolicyErrorCategory; retryable: boolean } {
   switch (code) {
@@ -163,6 +166,19 @@ function hasUnknown(searchParams: URLSearchParams, allowed: Set<string>): string
   return null;
 }
 
+function inferStrategyFromPolicyVersion(policyVersion: string): PolicyStrategy | null {
+  if (policyVersion.includes(".greedy.")) return "greedy.v1";
+  if (policyVersion.includes(".global.")) return "global.v1";
+  return null;
+}
+
+function parseStrategy(value: string | null): PolicyStrategy | null {
+  if (!value || value.trim().length === 0) return null;
+  const normalized = value.trim();
+  if (normalized === "greedy.v1" || normalized === "global.v1") return normalized;
+  return null;
+}
+
 function requireText(searchParams: URLSearchParams, key: string): string | null {
   const value = searchParams.get(key)?.trim() ?? "";
   return value.length > 0 ? value : null;
@@ -186,6 +202,7 @@ function pendingResponse(params: {
   t_bucket: number;
   horizon_steps: number;
   retry_after_ms: number;
+  strategy: PolicyStrategy;
   view_snapshot_id: string | null;
   view_snapshot_sha256: string | null;
 }): Response {
@@ -202,6 +219,7 @@ function pendingResponse(params: {
         sv: params.sv,
         decision_bucket_epoch_s: params.t_bucket,
         policy_version: params.policy_version,
+        strategy: params.strategy,
         policy_spec_sha256: null,
         horizon_steps: params.horizon_steps,
         view_snapshot_id: params.view_snapshot_id,
@@ -263,7 +281,9 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
       return json(
         {
           default_policy_version: deps.config.default_policy_version,
+          default_strategy: inferStrategyFromPolicyVersion(deps.config.default_policy_version) ?? "greedy.v1",
           available_policy_versions: deps.config.available_policy_versions,
+          available_strategies: ["greedy.v1", "global.v1"],
           default_horizon_steps: deps.config.default_horizon_steps,
           max_moves: deps.config.max_moves,
           budget_presets: deps.config.budget_presets,
@@ -327,6 +347,30 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
       return errorResponse({
         code: "missing_policy_version",
         message: "policy_version is required",
+        status: 400,
+      });
+    }
+    const requestedStrategy = parseStrategy(url.searchParams.get("strategy"));
+    if (url.searchParams.get("strategy") !== null && requestedStrategy === null) {
+      return errorResponse({
+        code: "invalid_strategy",
+        message: "strategy must be one of greedy.v1 or global.v1",
+        status: 400,
+      });
+    }
+    const inferredStrategy = inferStrategyFromPolicyVersion(policyVersion);
+    const effectiveStrategy = requestedStrategy ?? inferredStrategy;
+    if (!effectiveStrategy) {
+      return errorResponse({
+        code: "invalid_policy_version",
+        message: "Cannot infer strategy from policy_version",
+        status: 400,
+      });
+    }
+    if (requestedStrategy && inferredStrategy && requestedStrategy !== inferredStrategy) {
+      return errorResponse({
+        code: "strategy_policy_mismatch",
+        message: "strategy must match policy_version family",
         status: 400,
       });
     }
@@ -416,6 +460,7 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
         decision_bucket_ts: tBucket,
         horizon_steps: horizonSteps,
         policy_version: policyVersion,
+        strategy: effectiveStrategy,
       };
       const dedupeKey = `${sv.system_id}:${sv.sv}:${tBucket}:${policyVersion}:${horizonSteps}`;
       const enqueue = await deps.queue.enqueue({
@@ -434,6 +479,7 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
         system_id: sv.system_id,
         sv: sv.sv,
         policy_version: policyVersion,
+        strategy: effectiveStrategy,
         t_bucket: tBucket,
         horizon_steps: horizonSteps,
         retry_after_ms: deps.config.retry_after_ms,
@@ -458,6 +504,7 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
             sv: run.sv,
             decision_bucket_epoch_s: tBucket,
             policy_version: run.policy_version,
+            strategy: effectiveStrategy,
             policy_spec_sha256: run.policy_spec_sha256,
             horizon_steps: run.horizon_steps,
             view_snapshot_id: requestedViewSnapshotId ?? resolvedSnapshotIdentity?.view_snapshot_id ?? null,
@@ -511,6 +558,7 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
           sv: run.sv,
           decision_bucket_epoch_s: tBucket,
           policy_version: run.policy_version,
+          strategy: effectiveStrategy,
           policy_spec_sha256: run.policy_spec_sha256,
           horizon_steps: run.horizon_steps,
           view_snapshot_id: requestedViewSnapshotId ?? resolvedSnapshotIdentity?.view_snapshot_id ?? null,
