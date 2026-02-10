@@ -108,6 +108,12 @@ type PolicyImpactSummary = {
     avgDeltaPctPoints: number;
 };
 
+type PolicyRunStats = {
+    strategy: "greedy" | "global";
+    bikesMoved: number;
+    improvedStations: number;
+};
+
 type LocalPolicyStation = {
     station_id: string;
     capacity: number;
@@ -251,6 +257,7 @@ export default function MapShell() {
         points: Array<{ pct: number; intensity: number }>;
     } | null>(null);
     const [policyVersion, setPolicyVersion] = useState<string>("rebal.greedy.v1");
+    const [policyStrategy, setPolicyStrategy] = useState<"greedy" | "global">("greedy");
     const [policyStatus, setPolicyStatus] = useState<"idle" | "pending" | "ready" | "stale" | "error">("idle");
     const [policyError, setPolicyError] = useState<string | null>(null);
     const [policySyncViewNeeded, setPolicySyncViewNeeded] = useState(false);
@@ -262,12 +269,15 @@ export default function MapShell() {
     const [playbackView, setPlaybackView] = useState<"before" | "after">("after");
     const [activePlaybackMove, setActivePlaybackMove] = useState<ActivePlaybackMove | null>(null);
     const [policySpecSha256, setPolicySpecSha256] = useState<string>("unknown");
+    const [latestRunStats, setLatestRunStats] = useState<PolicyRunStats | null>(null);
+    const [previousRunStats, setPreviousRunStats] = useState<PolicyRunStats | null>(null);
     const [policyReadyRunKeySerialized, setPolicyReadyRunKeySerialized] = useState<string | null>(null);
     const [previewPhase, setPreviewPhase] = useState<"idle" | "frozen" | "computing" | "playback">("idle");
     const [optimizationSession, setOptimizationSession] =
         useState<OptimizationSession>(createOptimizationSession);
     const lastDrawerStationRef = useRef<string | null>(null);
     const previewTimerRef = useRef<number | null>(null);
+    const policyAbortRef = useRef<AbortController | null>(null);
     const nextPolicyRequestIdRef = useRef(0);
     const optimizationSessionRef = useRef<OptimizationSession>(optimizationSession);
     const hud = useHudControls();
@@ -467,6 +477,16 @@ export default function MapShell() {
         policySpecSha256,
         policyVersion,
     ]);
+    const policyCompare = useMemo(() => {
+        if (!latestRunStats || !previousRunStats) return null;
+        return {
+            currentStrategy: latestRunStats.strategy === "global" ? "Global" : "Greedy",
+            previousStrategy: previousRunStats.strategy === "global" ? "Global" : "Greedy",
+            bikesMovedDelta: latestRunStats.bikesMoved - previousRunStats.bikesMoved,
+            stationsImprovedDelta:
+                latestRunStats.improvedStations - previousRunStats.improvedStations,
+        };
+    }, [latestRunStats, previousRunStats]);
     const previewFrozenLabel = useMemo(
         () => new Date(currentRunKey.decisionBucketTs * 1000).toLocaleString(),
         [currentRunKey.decisionBucketTs]
@@ -480,6 +500,9 @@ export default function MapShell() {
                 if (cancelled) return;
                 if (out.default_policy_version?.length > 0) {
                     setPolicyVersion(out.default_policy_version);
+                    setPolicyStrategy(
+                        out.default_policy_version.includes("global") ? "global" : "greedy"
+                    );
                 }
             } catch {
                 if (cancelled) return;
@@ -489,6 +512,10 @@ export default function MapShell() {
         return () => {
             cancelled = true;
         };
+    }, []);
+    const handlePolicyStrategyChange = useCallback((strategy: "greedy" | "global") => {
+        setPolicyStrategy(strategy);
+        setPolicyVersion(strategy === "global" ? "rebal.global.v1" : "rebal.greedy.v1");
     }, []);
 
     const applyPolicyMoves = useCallback(
@@ -504,6 +531,13 @@ export default function MapShell() {
         ) => {
             const impact = summarizePolicyImpact(moves);
             const bikesMoved = moves.reduce((sum, move) => sum + Math.max(0, Math.round(move.bikes_moved)), 0);
+            const improvedStations = Object.values(impact).filter((delta) => delta > 0).length;
+            setPreviousRunStats(latestRunStats);
+            setLatestRunStats({
+                strategy: policyStrategy,
+                bikesMoved,
+                improvedStations,
+            });
             setPolicyRunId(args.runId);
             setPolicyMovesCount(moves.length);
             setPolicyBikesMoved(bikesMoved);
@@ -593,7 +627,7 @@ export default function MapShell() {
                 idx += 1;
             }, PREVIEW_STEP_MS);
         },
-        []
+        [latestRunStats, policyStrategy]
     );
 
     useEffect(() => {
@@ -606,6 +640,12 @@ export default function MapShell() {
     }, []);
 
     const runPolicy = useCallback(async () => {
+        if (policyAbortRef.current) {
+            policyAbortRef.current.abort();
+            policyAbortRef.current = null;
+        }
+        const abortController = new AbortController();
+        policyAbortRef.current = abortController;
         if (previewTimerRef.current !== null) {
             window.clearInterval(previewTimerRef.current);
             previewTimerRef.current = null;
@@ -631,80 +671,98 @@ export default function MapShell() {
         const requestPolicySpecSha = policySpecSha256;
         const canUseBackend = hud.sv && !hud.sv.startsWith("sv:local-");
         try {
-            if (canUseBackend) {
-                const result = await runPolicyForView({
-                    runKey: frozenRunKey,
-                    maxAttempts: 8,
-                    topN: 500,
-                    includeSnapshotPrecondition: true,
-                });
-                if (result.status === "ready") {
+            try {
+                if (canUseBackend) {
+                    const result = await runPolicyForView({
+                        runKey: frozenRunKey,
+                        maxAttempts: 8,
+                        topN: 500,
+                        includeSnapshotPrecondition: true,
+                        signal: abortController.signal,
+                    });
+                    if (result.status === "ready") {
+                        const activeSession = optimizationSessionRef.current;
+                        if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
+                        if (requestRunKeySerialized !== currentRunKeyRef.current) return;
+                        const readyRunKeySerialized = serializePolicyRunKey({
+                            ...frozenRunKey,
+                            policySpecSha256: result.policySpecSha256,
+                        });
+                        applyPolicyMoves(result.moves, {
+                            runId: result.runId,
+                            policySpecSha: result.policySpecSha256,
+                            runKeySerialized: readyRunKeySerialized,
+                            error: null,
+                            animate: true,
+                        });
+                        return;
+                    }
                     const activeSession = optimizationSessionRef.current;
                     if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
                     if (requestRunKeySerialized !== currentRunKeyRef.current) return;
-                    const readyRunKeySerialized = serializePolicyRunKey({
-                        ...frozenRunKey,
-                        policySpecSha256: result.policySpecSha256,
-                    });
-                    applyPolicyMoves(result.moves, {
-                        runId: result.runId,
-                        policySpecSha: result.policySpecSha256,
-                        runKeySerialized: readyRunKeySerialized,
-                        error: null,
-                        animate: true,
-                    });
+                    setPolicyStatus("error");
+                    setPolicyError("Policy is still computing. Retry in a moment.");
+                    setPreviewPhase("frozen");
+                    setOptimizationSession((session) => ({
+                        ...session,
+                        mode: "frozen",
+                        activeRequestId: null,
+                    }));
                     return;
                 }
-                const activeSession = optimizationSessionRef.current;
-                if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
-                if (requestRunKeySerialized !== currentRunKeyRef.current) return;
-                setPolicyStatus("error");
-                setPolicyError("Policy is still computing. Retry in a moment.");
-                setPreviewPhase("frozen");
-                setOptimizationSession((session) => ({
-                    ...session,
-                    mode: "frozen",
-                    activeRequestId: null,
-                }));
-                return;
-            }
-        } catch (error: unknown) {
-            if (canUseBackend) {
-                const activeSession = optimizationSessionRef.current;
-                if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
-                if (requestRunKeySerialized !== currentRunKeyRef.current) return;
-                const message =
-                    error instanceof Error && error.message.length > 0
-                        ? error.message
-                        : "Policy run failed";
-                setPolicyStatus("error");
-                if (message === "view_snapshot_mismatch") {
-                    setPolicyError("The map view changed while optimizing. Sync to the frozen view and try again.");
-                    setPolicySyncViewNeeded(true);
-                } else {
-                    setPolicyError(message);
+            } catch (error: unknown) {
+                if (abortController.signal.aborted) {
+                    setPolicyStatus("idle");
+                    setPolicyError(null);
+                    setPreviewPhase("frozen");
+                    setOptimizationSession((session) => ({
+                        ...session,
+                        mode: "frozen",
+                        activeRequestId: null,
+                    }));
+                    return;
                 }
-                setPreviewPhase("frozen");
-                setOptimizationSession((session) => ({
-                    ...session,
-                    mode: "error",
-                    activeRequestId: null,
-                }));
-                return;
+                if (canUseBackend) {
+                    const activeSession = optimizationSessionRef.current;
+                    if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
+                    if (requestRunKeySerialized !== currentRunKeyRef.current) return;
+                    const message =
+                        error instanceof Error && error.message.length > 0
+                            ? error.message
+                            : "Policy run failed";
+                    setPolicyStatus("error");
+                    if (message === "view_snapshot_mismatch") {
+                        setPolicyError("The map view changed while optimizing. Sync to the frozen view and try again.");
+                        setPolicySyncViewNeeded(true);
+                    } else {
+                        setPolicyError(message);
+                    }
+                    setPreviewPhase("frozen");
+                    setOptimizationSession((session) => ({
+                        ...session,
+                        mode: "error",
+                        activeRequestId: null,
+                    }));
+                    return;
+                }
+            }
+
+            const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
+            const activeSession = optimizationSessionRef.current;
+            if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
+            if (requestRunKeySerialized !== currentRunKeyRef.current) return;
+            applyPolicyMoves(fallbackMoves, {
+                runId: null,
+                policySpecSha: requestPolicySpecSha,
+                runKeySerialized: requestRunKeySerialized,
+                error: "Using local fallback (backend policy worker unavailable or pending)",
+                animate: true,
+            });
+        } finally {
+            if (policyAbortRef.current === abortController) {
+                policyAbortRef.current = null;
             }
         }
-
-        const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
-        const activeSession = optimizationSessionRef.current;
-        if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
-        if (requestRunKeySerialized !== currentRunKeyRef.current) return;
-        applyPolicyMoves(fallbackMoves, {
-            runId: null,
-            policySpecSha: requestPolicySpecSha,
-            runKeySerialized: requestRunKeySerialized,
-            error: "Using local fallback (backend policy worker unavailable or pending)",
-            animate: true,
-        });
     }, [
         applyPolicyMoves,
         currentRunKey,
@@ -732,6 +790,26 @@ export default function MapShell() {
 
     const handleTogglePolicyImpact = useCallback(() => {
         setPolicyImpactEnabled((current) => !current);
+    }, []);
+    const handleCancelPolicy = useCallback(() => {
+        if (policyAbortRef.current) {
+            policyAbortRef.current.abort();
+            policyAbortRef.current = null;
+        }
+        if (previewTimerRef.current !== null) {
+            window.clearInterval(previewTimerRef.current);
+            previewTimerRef.current = null;
+        }
+        setPolicyStatus("idle");
+        setPolicyError(null);
+        setPolicySyncViewNeeded(false);
+        setPreviewPhase("frozen");
+        setActivePlaybackMove(null);
+        setOptimizationSession((session) => ({
+            ...session,
+            mode: "frozen",
+            activeRequestId: null,
+        }));
     }, []);
     const handleGoLive = useCallback(() => {
         if (previewTimerRef.current !== null) {
@@ -1255,6 +1333,11 @@ export default function MapShell() {
                             policyImpactEnabled={effectivePolicyImpactEnabled}
                             policyImpactSummary={policyImpactSummary}
                             policySummary={policySummary}
+                            policyStrategy={policyStrategy}
+                            onPolicyStrategyChange={handlePolicyStrategyChange}
+                            canCancelPolicy={effectivePolicyStatus === "pending"}
+                            onCancelPolicy={handleCancelPolicy}
+                            policyCompare={policyCompare}
                             showSyncView={policySyncViewNeeded && effectivePolicyStatus === "error"}
                             onSyncView={handleSyncView}
                             playbackView={playbackView}

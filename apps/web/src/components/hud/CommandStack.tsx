@@ -43,6 +43,16 @@ type Props = {
             viewSnapshotSha256: string;
         };
     } | null;
+    policyStrategy?: "greedy" | "global";
+    onPolicyStrategyChange?: (strategy: "greedy" | "global") => void;
+    canCancelPolicy?: boolean;
+    onCancelPolicy?: () => void;
+    policyCompare?: {
+        currentStrategy: string;
+        previousStrategy: string;
+        bikesMovedDelta: number;
+        stationsImprovedDelta: number;
+    } | null;
     onTogglePlay: () => void;
     onTogglePlaybackView?: () => void;
     onGoLive: () => void;
@@ -78,6 +88,11 @@ export default function CommandStack({
     policyImpactEnabled,
     policyImpactSummary,
     policySummary,
+    policyStrategy = "greedy",
+    onPolicyStrategyChange,
+    canCancelPolicy = false,
+    onCancelPolicy,
+    policyCompare = null,
     playbackView = "after",
     onTogglePlay,
     onTogglePlaybackView,
@@ -356,6 +371,28 @@ export default function CommandStack({
                     <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 2 }}>
                         Policy
                     </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                            type="button"
+                            style={smallBtnStyle}
+                            onClick={() => onPolicyStrategyChange?.("greedy")}
+                            disabled={policyStatus === "pending"}
+                            data-uf-id="policy-strategy-greedy"
+                            data-uf-active={policyStrategy === "greedy" ? "true" : "false"}
+                        >
+                            Greedy
+                        </button>
+                        <button
+                            type="button"
+                            style={smallBtnStyle}
+                            onClick={() => onPolicyStrategyChange?.("global")}
+                            disabled={policyStatus === "pending"}
+                            data-uf-id="policy-strategy-global"
+                            data-uf-active={policyStrategy === "global" ? "true" : "false"}
+                        >
+                            Global
+                        </button>
+                    </div>
                     <button
                         type="button"
                         style={rowBtnStyle}
@@ -368,6 +405,17 @@ export default function CommandStack({
                             {policyStatus === "pending" ? "Optimizing..." : "Optimize (Preview)"}
                         </span>
                     </button>
+                    {canCancelPolicy && onCancelPolicy ? (
+                        <button
+                            type="button"
+                            style={rowBtnStyle}
+                            onClick={onCancelPolicy}
+                            data-uf-id="policy-cancel"
+                            aria-label="Cancel policy run"
+                        >
+                            <span style={{ fontSize: 12, opacity: 0.92 }}>Cancel Run</span>
+                        </button>
+                    ) : null}
                     <button
                         type="button"
                         style={rowBtnStyle}
@@ -469,6 +517,30 @@ export default function CommandStack({
                                     <div>view_snapshot_sha256: {policySummary.technical.viewSnapshotSha256}</div>
                                 </div>
                             </details>
+                        </div>
+                    ) : null}
+                    {policyCompare ? (
+                        <div
+                            style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 4,
+                                fontSize: 11,
+                                opacity: 0.9,
+                                borderTop: "1px solid rgba(255,255,255,0.12)",
+                                paddingTop: 8,
+                            }}
+                            data-uf-id="policy-compare-cards"
+                        >
+                            <div>
+                                Compare {policyCompare.currentStrategy} vs {policyCompare.previousStrategy}
+                            </div>
+                            <div>
+                                Bikes moved {formatSigned(policyCompare.bikesMovedDelta)}
+                            </div>
+                            <div>
+                                Stations improved {formatSigned(policyCompare.stationsImprovedDelta)}
+                            </div>
                         </div>
                     ) : null}
                 </div>
