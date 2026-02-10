@@ -240,6 +240,11 @@ export default function MapShell() {
     const { p95: tileP95, spark, pushSample } = useRollingP95({ windowMs: 15_000 });
     const inspectAnchorTileKeyRef = useRef<string | null>(null);
     const inspectSessionIdRef = useRef(0);
+    const [inspectLockRunContext, setInspectLockRunContext] = useState<{
+        decisionBucketTs: number;
+        viewSnapshotId: string;
+        viewSnapshotSha256: string;
+    } | null>(null);
 
     // “Inspect lock” v0: freeze live GBFS updates while drawer open
     const inspectOpen = !!selected;
@@ -258,22 +263,33 @@ export default function MapShell() {
               : "frozen";
     const stationSnapshotSha = useMemo(() => buildStationSnapshotSha(stationIndex), [stationIndex]);
     const currentRunKey = useMemo<PolicyRunKey>(() => {
+        const lockedContext = hud.inspectLocked ? inspectLockRunContext : null;
         const renderedViewModel = buildRenderedViewModel({
             systemId: DEFAULT_SYSTEM_ID,
             sv: hud.sv,
             displayTimeMs: timelineDisplayTimeMs,
             bucketSizeSeconds: POLICY_BUCKET_SECONDS,
-            viewSnapshotId: `${hud.sv}:${decisionBucketTs}:${stationIndex.length}`,
-            viewSnapshotSha256: stationSnapshotSha,
+            viewSnapshotId:
+                lockedContext?.viewSnapshotId ?? `${hud.sv}:${decisionBucketTs}:${stationIndex.length}`,
+            viewSnapshotSha256: lockedContext?.viewSnapshotSha256 ?? stationSnapshotSha,
             mode: optimizeMode,
         });
-        return buildPolicyRunKey({
+        const runKey = buildPolicyRunKey({
             renderedView: renderedViewModel,
             policyVersion,
             policySpecSha256,
         });
+        if (lockedContext) {
+            return {
+                ...runKey,
+                decisionBucketTs: lockedContext.decisionBucketTs,
+            };
+        }
+        return runKey;
     }, [
         decisionBucketTs,
+        inspectLockRunContext,
+        hud.inspectLocked,
         hud.sv,
         optimizeMode,
         policySpecSha256,
@@ -290,6 +306,14 @@ export default function MapShell() {
     useEffect(() => {
         currentRunKeyRef.current = currentRunKeySerialized;
     }, [currentRunKeySerialized]);
+    const effectivePolicyStatus =
+        policyStatus === "ready" &&
+        policyReadyRunKeySerialized &&
+        policyReadyRunKeySerialized !== currentRunKeySerialized
+            ? "stale"
+            : policyStatus;
+    const effectivePolicyImpactEnabled =
+        policyImpactEnabled && effectivePolicyStatus === "ready";
     const progressLabel = `${hud.mode === "live" ? "Live" : "Replay"} ${Math.round(hud.progress * 100)}%`;
     const searchStations = stationIndex.map((station) => ({
         stationKey: station.station_id,
@@ -319,7 +343,7 @@ export default function MapShell() {
         };
     }, [stationIndex]);
     const policyImpactSummary = useMemo<PolicyImpactSummary | null>(() => {
-        if (!policyImpactEnabled || Object.keys(policyImpactByStation).length === 0) {
+        if (!effectivePolicyImpactEnabled || Object.keys(policyImpactByStation).length === 0) {
             return null;
         }
 
@@ -358,7 +382,7 @@ export default function MapShell() {
             worsenedStations,
             avgDeltaPctPoints: ((sumProjected - sumCurrent) / impactedStations) * 100,
         };
-    }, [policyImpactByStation, policyImpactEnabled, stationIndex]);
+    }, [effectivePolicyImpactEnabled, policyImpactByStation, stationIndex]);
 
     useEffect(() => {
         let cancelled = false;
@@ -378,13 +402,6 @@ export default function MapShell() {
             cancelled = true;
         };
     }, []);
-
-    const effectivePolicyStatus =
-        policyStatus === "ready" &&
-        policyReadyRunKeySerialized &&
-        policyReadyRunKeySerialized !== currentRunKeySerialized
-            ? "stale"
-            : policyStatus;
 
     const applyPolicyMoves = useCallback(
         (
@@ -551,6 +568,11 @@ export default function MapShell() {
     const openInspect = useCallback((station: StationPick) => {
         if (!selected) {
             hud.onInspectOpen();
+            setInspectLockRunContext({
+                decisionBucketTs,
+                viewSnapshotId: `${hud.sv}:${decisionBucketTs}:${stationIndex.length}`,
+                viewSnapshotSha256: stationSnapshotSha,
+            });
             updateUfE2E((current) => ({
                 ...current,
                 inspectOpenCount: (current.inspectOpenCount ?? 0) + 1,
@@ -560,12 +582,13 @@ export default function MapShell() {
             }));
         }
         setSelected(station);
-    }, [hud, selected]);
+    }, [decisionBucketTs, hud, selected, stationIndex.length, stationSnapshotSha]);
 
     const closeInspect = useCallback((reason: "drawer_close_button" | "escape_key" = "drawer_close_button") => {
         if (!selected) return;
         setSelected(null);
         hud.onInspectClose();
+        setInspectLockRunContext(null);
         updateUfE2E((current) => ({
             ...current,
             inspectCloseCount: (current.inspectCloseCount ?? 0) + 1,
@@ -783,7 +806,7 @@ export default function MapShell() {
                 mode: hud.mode,
                 playbackTsMs: hud.playbackTsMs,
                 policyStatus: effectivePolicyStatus,
-                policyImpactEnabled,
+                policyImpactEnabled: effectivePolicyImpactEnabled,
                 policyMoveCount: policyMovesCount,
                 policyLastRunId: policyRunId ?? 0,
                 policyLastError: policyError ?? "",
@@ -804,7 +827,7 @@ export default function MapShell() {
         hud.splitView,
         inspectOpen,
         policyError,
-        policyImpactEnabled,
+        effectivePolicyImpactEnabled,
         policyMovesCount,
         policyRunId,
         effectivePolicyStatus,
@@ -888,7 +911,7 @@ export default function MapShell() {
                     timelineBucket={timelineBucket}
                     systemId={DEFAULT_SYSTEM_ID}
                     selectedStationId={selected?.station_id ?? null}
-                    policyImpactEnabled={policyImpactEnabled}
+                    policyImpactEnabled={effectivePolicyImpactEnabled}
                     policyImpactByStation={policyImpactByStation}
                     freeze={inspectOpen}
                 />
@@ -942,7 +965,7 @@ export default function MapShell() {
                             searchStations={searchStations}
                             policyStatus={effectivePolicyStatus}
                             policyMovesCount={policyMovesCount}
-                            policyImpactEnabled={policyImpactEnabled}
+                            policyImpactEnabled={effectivePolicyImpactEnabled}
                             policyImpactSummary={policyImpactSummary}
                             onTogglePlay={hud.togglePlay}
                             onGoLive={hud.goLive}
@@ -975,9 +998,9 @@ export default function MapShell() {
                     station={selected}
                     sv={hud.sv}
                     timelineBucket={timelineBucket}
-                    policyImpactEnabled={policyImpactEnabled}
+                    policyImpactEnabled={effectivePolicyImpactEnabled}
                     policyImpactDelta={
-                        selected && policyImpactEnabled
+                        selected && effectivePolicyImpactEnabled
                             ? Number(policyImpactByStation[selected.station_id] ?? 0)
                             : 0
                     }
