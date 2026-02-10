@@ -51,11 +51,74 @@ describe("createStationsRouteHandler", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.type).toBe("FeatureCollection");
+    expect(body.view_snapshot_id).toContain("vs:citibike-nyc:21:1738872000:");
+    expect(typeof body.view_snapshot_sha256).toBe("string");
+    expect(body.view_snapshot_sha256.length).toBe(64);
+    expect(body.effective_t_bucket).toBe(1738872000);
     expect(Array.isArray(body.features)).toBe(true);
     expect(body.features.length).toBe(1);
     expect(body.features[0]?.id).toBe("STA-001");
     expect(body.features[0]?.properties?.bikes).toBe(12);
     expect(body.features[0]?.properties?.docks).toBe(28);
+  });
+
+  it("derives effective snapshot bucket and stable hash when T_bucket is omitted", async () => {
+    const handler = createStationsRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      },
+      stationsStore: {
+        async getStationDetail() {
+          return null;
+        },
+        async getStationSeries() {
+          return [];
+        },
+        async getStationsSnapshot() {
+          return [
+            {
+              station_key: "STA-002",
+              name: "W 53 St",
+              lat: 40.76,
+              lon: -73.97,
+              capacity: 30,
+              bucket_ts: "2026-02-06T20:00:00Z",
+              bikes_available: 7,
+              docks_available: 23,
+              bucket_quality: "ok",
+            },
+            {
+              station_key: "STA-001",
+              name: "W 52 St",
+              lat: 40.75,
+              lon: -73.98,
+              capacity: 40,
+              bucket_ts: "2026-02-06T20:00:00Z",
+              bikes_available: 12,
+              docks_available: 28,
+              bucket_quality: "ok",
+            },
+          ];
+        },
+      },
+      default_bucket_seconds: 300,
+      max_series_window_s: 86400,
+      max_series_points: 288,
+    });
+
+    const firstRes = await handler(new Request("https://example.test/api/stations?v=1&sv=abc"));
+    expect(firstRes.status).toBe(200);
+    const firstBody = await firstRes.json();
+    expect(firstBody.effective_t_bucket).toBe(1770408000);
+    expect(firstBody.view_snapshot_id).toContain("vs:citibike-nyc:21:1770408000:");
+    expect(firstBody.view_snapshot_sha256.length).toBe(64);
+
+    const secondRes = await handler(new Request("https://example.test/api/stations?v=1&sv=abc"));
+    const secondBody = await secondRes.json();
+    expect(secondBody.view_snapshot_sha256).toBe(firstBody.view_snapshot_sha256);
+    expect(secondBody.view_snapshot_id).toBe(firstBody.view_snapshot_id);
   });
 
   it("returns 400 for unknown query params on /api/stations", async () => {
