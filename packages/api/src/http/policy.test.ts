@@ -12,6 +12,121 @@ const validSv = {
 };
 
 describe("createPolicyRouteHandler", () => {
+  it("returns 409 view_snapshot_mismatch when snapshot precondition does not match", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      stationsStore: {
+        async getStationsSnapshot() {
+          return [
+            {
+              station_key: "STA-001",
+              name: "W 52 St",
+              lat: 40.75,
+              lon: -73.98,
+              capacity: 40,
+              bucket_ts: "2026-02-06T20:00:00Z",
+              bikes_available: 12,
+              docks_available: 28,
+              bucket_quality: "ok",
+            },
+          ];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000&view_snapshot_id=bad&view_snapshot_sha256=bad"
+      )
+    );
+    expect(res.status).toBe(409);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.error.code).toBe("view_snapshot_mismatch");
+    expect(typeof body.current_view_snapshot_id).toBe("string");
+    expect(typeof body.current_view_snapshot_sha256).toBe("string");
+  });
+
+  it("returns 400 when only one snapshot precondition field is provided", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      stationsStore: {
+        async getStationsSnapshot() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000&view_snapshot_id=only-one"
+      )
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("invalid_snapshot_precondition");
+  });
+
   it("returns policy config payload", async () => {
     const handler = createPolicyRouteHandler({
       tokens: {

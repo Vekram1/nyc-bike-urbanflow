@@ -762,6 +762,7 @@ async function main(): Promise<void> {
       tokens: tokenService,
       allowlist,
       policyStore,
+      stationsStore,
       queue,
       config: {
         default_policy_version: cfg.policy_default_version,

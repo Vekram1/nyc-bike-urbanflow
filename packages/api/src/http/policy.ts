@@ -4,13 +4,24 @@ import type { AllowlistStore } from "../allowlist/types";
 import { validateSvQuery } from "../sv/http";
 import type { ServingTokenService } from "../sv/service";
 import type { PolicyMove, PolicyRunSummary } from "../policy/store";
+import { buildSnapshotIdentity, deriveEffectiveSnapshotBucket } from "./snapshot-identity";
+import type { StationSnapshot } from "./stations";
 
 const CONFIG_PATH = "/api/policy/config";
 const RUN_PATH = "/api/policy/run";
 const MOVES_PATH = "/api/policy/moves";
 
 const ALLOWED_CONFIG_KEYS = new Set(["v"]);
-const ALLOWED_RUN_KEYS = new Set(["sv", "v", "policy_version", "T_bucket", "horizon_steps", "system_id"]);
+const ALLOWED_RUN_KEYS = new Set([
+  "sv",
+  "v",
+  "policy_version",
+  "T_bucket",
+  "horizon_steps",
+  "system_id",
+  "view_snapshot_id",
+  "view_snapshot_sha256",
+]);
 const ALLOWED_MOVES_KEYS = new Set([
   "sv",
   "v",
@@ -19,6 +30,8 @@ const ALLOWED_MOVES_KEYS = new Set([
   "horizon_steps",
   "top_n",
   "system_id",
+  "view_snapshot_id",
+  "view_snapshot_sha256",
 ]);
 
 export type PolicyRouteDeps = {
@@ -33,6 +46,14 @@ export type PolicyRouteDeps = {
       horizon_steps: number;
     }) => Promise<PolicyRunSummary | null>;
     listMoves: (args: { run_id: number; limit: number }) => Promise<PolicyMove[]>;
+  };
+  stationsStore?: {
+    getStationsSnapshot: (args: {
+      system_id: string;
+      view_id: number;
+      t_bucket_epoch_s: number | null;
+      limit: number;
+    }) => Promise<StationSnapshot[]>;
   };
   queue: {
     enqueue: (args: {
@@ -125,6 +146,27 @@ function pendingResponse(params: {
     },
     202,
     { "Retry-After": String(Math.max(1, Math.ceil(params.retry_after_ms / 1000))) }
+  );
+}
+
+function snapshotMismatchResponse(params: {
+  requested_view_snapshot_id: string;
+  requested_view_snapshot_sha256: string;
+  current_view_snapshot_id: string;
+  current_view_snapshot_sha256: string;
+}): Response {
+  return json(
+    {
+      error: {
+        code: "view_snapshot_mismatch",
+        message: "Snapshot precondition does not match current rendered snapshot",
+      },
+      requested_view_snapshot_id: params.requested_view_snapshot_id,
+      requested_view_snapshot_sha256: params.requested_view_snapshot_sha256,
+      current_view_snapshot_id: params.current_view_snapshot_id,
+      current_view_snapshot_sha256: params.current_view_snapshot_sha256,
+    },
+    409
   );
 }
 
@@ -229,6 +271,55 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
         { error: { code: "invalid_horizon_steps", message: "horizon_steps must be an integer between 0 and 288" } },
         400
       );
+    }
+
+    const requestedViewSnapshotId = requireText(url.searchParams, "view_snapshot_id");
+    const requestedViewSnapshotSha = requireText(url.searchParams, "view_snapshot_sha256");
+    const hasSnapshotPrecondition = requestedViewSnapshotId !== null || requestedViewSnapshotSha !== null;
+    if (hasSnapshotPrecondition && (!requestedViewSnapshotId || !requestedViewSnapshotSha)) {
+      return json(
+        {
+          error: {
+            code: "invalid_snapshot_precondition",
+            message: "view_snapshot_id and view_snapshot_sha256 must be provided together",
+          },
+        },
+        400
+      );
+    }
+    if (requestedViewSnapshotId && requestedViewSnapshotSha && deps.stationsStore?.getStationsSnapshot) {
+      const snapshotRows = await deps.stationsStore.getStationsSnapshot({
+        system_id: sv.system_id,
+        view_id: sv.view_id,
+        t_bucket_epoch_s: tBucket,
+        limit: 10000,
+      });
+      const effectiveSnapshotBucket = deriveEffectiveSnapshotBucket(tBucket, snapshotRows);
+      const currentSnapshot = buildSnapshotIdentity({
+        system_id: sv.system_id,
+        view_id: sv.view_id,
+        view_spec_sha256: sv.view_spec_sha256,
+        effective_t_bucket: effectiveSnapshotBucket,
+        snapshot: snapshotRows,
+      });
+      if (
+        currentSnapshot.view_snapshot_id !== requestedViewSnapshotId ||
+        currentSnapshot.view_snapshot_sha256 !== requestedViewSnapshotSha
+      ) {
+        logger.warn("policy.snapshot_precondition_mismatch", {
+          system_id: sv.system_id,
+          view_id: sv.view_id,
+          t_bucket: tBucket,
+          requested_view_snapshot_id: requestedViewSnapshotId,
+          current_view_snapshot_id: currentSnapshot.view_snapshot_id,
+        });
+        return snapshotMismatchResponse({
+          requested_view_snapshot_id: requestedViewSnapshotId,
+          requested_view_snapshot_sha256: requestedViewSnapshotSha,
+          current_view_snapshot_id: currentSnapshot.view_snapshot_id,
+          current_view_snapshot_sha256: currentSnapshot.view_snapshot_sha256,
+        });
+      }
     }
 
     const run = await deps.policyStore.getRunSummary({
