@@ -26,10 +26,20 @@ repo_root() {
 load_env_file_if_present() {
   local env_file="$1"
   if [[ -f "$env_file" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$env_file"
-    set +a
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      # skip empty lines and comments
+      [[ -z "$line" ]] && continue
+      [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+      # dotenv-style KEY=VALUE parser (no shell eval)
+      local key="${line%%=*}"
+      local value="${line#*=}"
+      key="${key#"${key%%[![:space:]]*}"}"
+      key="${key%"${key##*[![:space:]]}"}"
+
+      [[ -z "$key" ]] && continue
+      export "$key=$value"
+    done <"$env_file"
   fi
 }
 
@@ -41,4 +51,3 @@ load_default_envs() {
   load_env_file_if_present "$root/packages/api/.env.local"
   load_env_file_if_present "$root/apps/web/.env.local"
 }
-

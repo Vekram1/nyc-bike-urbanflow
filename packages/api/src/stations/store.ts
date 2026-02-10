@@ -242,16 +242,34 @@ export class PgStationsStore {
          ss.bucket_quality
        FROM stations_current sc
        LEFT JOIN LATERAL (
-         SELECT
-           s.bucket_ts,
-           s.bikes_available,
-           s.docks_available,
-           s.bucket_quality
-         FROM station_status_1m s
-         WHERE s.system_id = sc.system_id
-           AND s.station_key = sc.station_key
-           AND ($2::bigint IS NULL OR s.bucket_ts <= TO_TIMESTAMP($2))
-         ORDER BY s.bucket_ts DESC
+         (
+           SELECT
+             s.bucket_ts,
+             s.bikes_available,
+             s.docks_available,
+             s.bucket_quality
+           FROM station_status_1m s
+           WHERE s.system_id = sc.system_id
+             AND s.station_key = sc.station_key
+             AND ($2::bigint IS NULL OR s.bucket_ts <= TO_TIMESTAMP($2))
+           ORDER BY s.bucket_ts DESC
+           LIMIT 1
+         )
+         UNION ALL
+         (
+           -- If requested T_bucket predates available history, fall back to earliest sample.
+           SELECT
+             s.bucket_ts,
+             s.bikes_available,
+             s.docks_available,
+             s.bucket_quality
+           FROM station_status_1m s
+           WHERE s.system_id = sc.system_id
+             AND s.station_key = sc.station_key
+             AND $2::bigint IS NOT NULL
+           ORDER BY s.bucket_ts ASC
+           LIMIT 1
+         )
          LIMIT 1
        ) ss ON TRUE
        WHERE sc.system_id = $1

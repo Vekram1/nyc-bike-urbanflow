@@ -19,6 +19,12 @@ type Props = {
     policyStatus: "idle" | "pending" | "ready" | "stale" | "error";
     policyMovesCount: number;
     policyImpactEnabled: boolean;
+    policyImpactSummary?: {
+        impactedStations: number;
+        improvedStations: number;
+        worsenedStations: number;
+        avgDeltaPctPoints: number;
+    } | null;
     onTogglePlay: () => void;
     onGoLive: () => void;
     onToggleLayer: (key: keyof LayerToggles) => void;
@@ -48,6 +54,7 @@ export default function CommandStack({
     policyStatus,
     policyMovesCount,
     policyImpactEnabled,
+    policyImpactSummary,
     onTogglePlay,
     onGoLive,
     onToggleLayer,
@@ -341,6 +348,23 @@ export default function CommandStack({
                     >
                         {policyStatusLabel(policyStatus, policyMovesCount)}
                     </div>
+                    {policyImpactEnabled && policyImpactSummary ? (
+                        <div
+                            style={{
+                                fontSize: 11,
+                                opacity: 0.9,
+                                lineHeight: 1.35,
+                            }}
+                            data-uf-id="policy-impact-summary"
+                        >
+                            <div data-uf-id="policy-impact-delta">
+                                Avg availability {formatSigned(policyImpactSummary.avgDeltaPctPoints)} pts
+                            </div>
+                            <div data-uf-id="policy-impact-breakdown">
+                                Improved {policyImpactSummary.improvedStations} | Worsened {policyImpactSummary.worsenedStations} | Impacted {policyImpactSummary.impactedStations}
+                            </div>
+                        </div>
+                    ) : null}
                 </div>
             </HUDCard>
 
@@ -465,6 +489,12 @@ function policyStatusLabel(status: Props["policyStatus"], moveCount: number): st
     if (status === "stale") return "Policy: Stale";
     if (status === "error") return "Policy: Error";
     return "Policy: Idle";
+}
+
+function formatSigned(value: number): string {
+    if (!Number.isFinite(value)) return "0.0";
+    const rounded = Math.round(value * 10) / 10;
+    return `${rounded >= 0 ? "+" : ""}${rounded.toFixed(1)}`;
 }
 
 const toggleStyle: React.CSSProperties = {

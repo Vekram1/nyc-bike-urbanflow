@@ -132,6 +132,28 @@ function colorForBikesAvailabilityRatio(value: number | null): string {
     return LOWEST_BUCKET_COLOR;
 }
 
+function computeBikesAvailabilityRatio(props: Record<string, unknown>): number | null {
+    const explicitRatio = toNum(props.bikes_availability_ratio);
+    if (explicitRatio != null) {
+        return Math.max(0, Math.min(1, explicitRatio));
+    }
+
+    const bikes = toNum(props.bikes);
+    if (bikes == null || bikes < 0) {
+        return null;
+    }
+
+    const capacity = toNum(props.capacity);
+    const docks = toNum(props.docks);
+    const fallbackSlots = bikes + Math.max(0, docks ?? 0);
+    const totalSlots = capacity != null && capacity > 0 ? capacity : fallbackSlots;
+    if (!Number.isFinite(totalSlots) || totalSlots <= 0) {
+        return null;
+    }
+
+    return Math.max(0, Math.min(1, bikes / totalSlots));
+}
+
 export default function MapView(props: Props) {
     const {
         onStationPick,
@@ -264,9 +286,21 @@ export default function MapView(props: Props) {
                         60, 18,
                     ],
 
-                    // simple “bad if empty/full else good” — replace with severity later
+                    // Availability-driven ramp (optionally projected under policy impact mode).
                     "circle-color": [
                         "case",
+                        [
+                            "all",
+                            ["coalesce", ["get", "policy_impact_enabled"], false],
+                            ["has", "policy_projected_ratio"],
+                            ["!=", ["coalesce", ["get", "policy_impact_delta"], 0], 0],
+                        ],
+                        [
+                            "step",
+                            ["coalesce", ["get", "policy_projected_ratio"], -1],
+                            LOWEST_BUCKET_COLOR,
+                            ...BIKES_AVAILABILITY_BUCKET_COLORS.flatMap((stop) => [stop.minRatio, stop.color]),
+                        ],
                         ["!", ["has", "bikes_availability_ratio"]], NO_RATIO_COLOR,
                         [
                             "step",
@@ -388,6 +422,29 @@ export default function MapView(props: Props) {
                         feature.properties.policy_impact_delta = Number.isFinite(impactDelta)
                             ? impactDelta
                             : 0;
+                        const ratio = computeBikesAvailabilityRatio(feature.properties);
+                        if (ratio != null) {
+                            feature.properties.bikes_availability_ratio = ratio;
+                            const bikes = toNum(feature.properties.bikes);
+                            const docks = toNum(feature.properties.docks);
+                            const capacity = toNum(feature.properties.capacity);
+                            const fallbackSlots = Math.max(0, (bikes ?? 0) + (docks ?? 0));
+                            const totalSlots = capacity != null && capacity > 0 ? capacity : fallbackSlots;
+                            if (Number.isFinite(totalSlots) && totalSlots > 0 && Number.isFinite(impactDelta)) {
+                                const projectedBikes = Math.max(
+                                    0,
+                                    Math.min(totalSlots, (bikes ?? ratio * totalSlots) + impactDelta)
+                                );
+                                feature.properties.policy_projected_ratio = Math.max(
+                                    0,
+                                    Math.min(1, projectedBikes / totalSlots)
+                                );
+                            } else {
+                                feature.properties.policy_projected_ratio = ratio;
+                            }
+                        } else {
+                            feature.properties.policy_projected_ratio = null;
+                        }
                     }
                 }
                 (src as SourceWithSetData).setData(json);
@@ -539,6 +596,17 @@ export default function MapView(props: Props) {
             console.error("[MapView] policy_overlay_refresh_failed", { error: e })
         );
     }, [freeze, policyImpactByStation, policyImpactEnabled, refreshStations]);
+
+    // Recompute station state/colors immediately on scrub/live token changes.
+    useEffect(() => {
+        svRef.current = sv;
+        timelineBucketRef.current = timelineBucket;
+        systemIdRef.current = systemId;
+        if (freeze) return;
+        refreshStations().catch((e) =>
+            console.error("[MapView] timeline_or_sv_refresh_failed", { error: e })
+        );
+    }, [freeze, refreshStations, sv, timelineBucket, systemId]);
 
     if (!token) {
         return (

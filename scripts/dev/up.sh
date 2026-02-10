@@ -22,6 +22,7 @@ if command -v tmux >/dev/null 2>&1; then
   tmux split-window -h -t "$SESSION:0" "cd '$ROOT' && scripts/dev/start-api.sh"
   tmux split-window -v -t "$SESSION:0.1" "cd '$ROOT' && scripts/dev/start-web.sh"
   tmux split-window -v -t "$SESSION:0.0" "cd '$ROOT' && scripts/dev/start-ingest.sh"
+  tmux split-window -v -t "$SESSION:0.2" "cd '$ROOT' && scripts/dev/start-policy-worker.sh"
   tmux select-layout -t "$SESSION:0" tiled
   exec tmux attach -t "$SESSION"
 fi
@@ -31,4 +32,4 @@ echo "  scripts/dev/setup.sh"
 echo "  scripts/dev/start-api.sh"
 echo "  scripts/dev/start-web.sh"
 echo "  scripts/dev/start-ingest.sh"
-
+echo "  scripts/dev/start-policy-worker.sh"

@@ -1,0 +1,103 @@
+name: Dev Smoke
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: urbanflow
+          POSTGRES_PASSWORD: urbanflow
+          POSTGRES_DB: urbanflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U urbanflow -d urbanflow"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://urbanflow:urbanflow@127.0.0.1:5432/urbanflow
+      SYSTEM_ID: citibike-nyc
+      NEXT_PUBLIC_SYSTEM_ID: citibike-nyc
+      URBANFLOW_API_ORIGIN: http://127.0.0.1:3000
+      NEXT_PUBLIC_MAPBOX_TOKEN: pk.test-token-for-ci
+      SV_KEY_MATERIAL_JSON: '{"k1":"dev-secret"}'
+      PORT: "3001"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..40}; do
+            if psql "$DATABASE_URL" -c "select 1" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres not ready" >&2
+          exit 1
+
+      - name: Apply migrations
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+          for f in sql/migrations/*.sql; do
+            echo "Applying $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Seed systems row
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO systems (
+            system_id,
+            gbfs_entrypoint_url,
+            default_map_bounds,
+            default_center,
+            timezone,
+            provider_name,
+            provider_region
+          )
+          VALUES (
+            'citibike-nyc',
+            'https://gbfs.citibikenyc.com/gbfs/gbfs.json',
+            ARRAY[-74.25909, 40.477399, -73.700272, 40.917577]::double precision[],
+            ARRAY[-73.98513, 40.758896]::double precision[],
+            'America/New_York',
+            'Citi Bike',
+            'NYC'
+          )
+          ON CONFLICT (system_id) DO UPDATE SET
+            gbfs_entrypoint_url = EXCLUDED.gbfs_entrypoint_url,
+            default_map_bounds = EXCLUDED.default_map_bounds,
+            default_center = EXCLUDED.default_center,
+            timezone = EXCLUDED.timezone,
+            provider_name = EXCLUDED.provider_name,
+            provider_region = EXCLUDED.provider_region,
+            updated_at = NOW();
+          SQL
+
+      - name: Run deterministic smoke (fixtures + web proxy)
+        run: |
+          chmod +x scripts/dev/*.sh
+          scripts/dev/smoke.sh

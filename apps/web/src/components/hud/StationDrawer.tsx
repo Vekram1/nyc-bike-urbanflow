@@ -13,6 +13,19 @@ type Tier2State =
     | { status: "success"; message: string; bundleBytes: number; payload: unknown }
     | { status: "error"; message: string };
 
+type DrawerTier2Payload = {
+    point_in_time?: {
+        bucket_ts?: string | null;
+        bikes_available?: number | null;
+        docks_available?: number | null;
+        bucket_quality?: string | null;
+        severity?: number | null;
+        pressure_score?: number | null;
+    };
+    series?: { points?: Array<unknown> };
+    episodes?: { items?: Array<unknown> };
+};
+
 type UfE2EState = {
     tier1OpenedCount?: number;
     tier1LastOpenedAt?: string;
@@ -49,9 +62,11 @@ export default function StationDrawer(props: {
     station: StationPick | null;
     sv: string;
     timelineBucket: number;
+    policyImpactEnabled: boolean;
+    policyImpactDelta: number;
     onClose: () => void;
 }) {
-    const { station, sv, timelineBucket, onClose } = props;
+    const { station, sv, timelineBucket, policyImpactEnabled, policyImpactDelta, onClose } = props;
     const isOpen = station != null;
     const debounceRef = useRef<number | null>(null);
     const abortRef = useRef<AbortController | null>(null);
@@ -247,6 +262,20 @@ export default function StationDrawer(props: {
                     <Row label="Total Capacity" value={fmtNum(station.capacity)} rowId="drawer-row-capacity" valueId="drawer-value-capacity" />
                     <Row label="Bikes Available" value={fmtNum(station.bikes)} rowId="drawer-row-bikes" valueId="drawer-value-bikes" />
                     <Row label="Empty Docks" value={fmtNum(station.docks)} rowId="drawer-row-docks" valueId="drawer-value-docks" />
+                    {policyImpactEnabled ? (
+                        <Row
+                            label="Policy Impact (Bikes)"
+                            value={formatSignedNum(policyImpactDelta)}
+                            rowId="drawer-row-policy-impact"
+                            valueId="drawer-value-policy-impact"
+                        />
+                    ) : null}
+                    <Row
+                        label="Snapshot Time"
+                        value={fmtTime(station.t_bucket)}
+                        rowId="drawer-row-snapshot-time"
+                        valueId="drawer-value-snapshot-time"
+                    />
                 </div>
 
                 <div style={{ marginTop: 14 }}>
@@ -265,9 +294,12 @@ export default function StationDrawer(props: {
                         {tier2.message}
                     </div>
                     {tier2.status === "success" ? (
-                        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }} data-uf-id="drawer-tier2-bundle-size">
-                            Bundle size: {tier2.bundleBytes.toLocaleString()} bytes
-                        </div>
+                        <>
+                            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }} data-uf-id="drawer-tier2-bundle-size">
+                                Bundle size: {tier2.bundleBytes.toLocaleString()} bytes
+                            </div>
+                            <Tier2Details payload={tier2.payload as DrawerTier2Payload} />
+                        </>
                     ) : null}
                 </div>
 
@@ -320,6 +352,37 @@ function Row({
 
 function fmtNum(x: number | null) {
     return x == null || Number.isNaN(x) ? "—" : String(x);
+}
+
+function fmtTime(value: string | null): string {
+    if (!value) return "—";
+    const ms = Date.parse(value);
+    if (!Number.isFinite(ms)) return "—";
+    return new Date(ms).toLocaleString();
+}
+
+function formatSignedNum(value: number): string {
+    if (!Number.isFinite(value)) return "0";
+    const rounded = Math.round(value);
+    return `${rounded >= 0 ? "+" : ""}${rounded}`;
+}
+
+function Tier2Details({ payload }: { payload: DrawerTier2Payload | null }) {
+    if (!payload || typeof payload !== "object") return null;
+    const point = payload.point_in_time ?? {};
+    const seriesCount = Array.isArray(payload.series?.points) ? payload.series?.points.length ?? 0 : 0;
+    const episodeCount = Array.isArray(payload.episodes?.items) ? payload.episodes?.items.length ?? 0 : 0;
+    return (
+        <div style={{ marginTop: 8, display: "grid", gap: 6, fontSize: 12, opacity: 0.92 }} data-uf-id="drawer-tier2-details">
+            <Row label="Tier2 Bucket" value={fmtTime(point.bucket_ts ?? null)} rowId="drawer-row-tier2-bucket" valueId="drawer-value-tier2-bucket" />
+            <Row label="Tier2 Bikes" value={fmtNum(point.bikes_available ?? null)} rowId="drawer-row-tier2-bikes" valueId="drawer-value-tier2-bikes" />
+            <Row label="Tier2 Docks" value={fmtNum(point.docks_available ?? null)} rowId="drawer-row-tier2-docks" valueId="drawer-value-tier2-docks" />
+            <Row label="Tier2 Quality" value={(point.bucket_quality ?? "—")} rowId="drawer-row-tier2-quality" valueId="drawer-value-tier2-quality" />
+            <Row label="Tier2 Severity" value={fmtNum(point.severity ?? null)} rowId="drawer-row-tier2-severity" valueId="drawer-value-tier2-severity" />
+            <Row label="Series Points" value={String(seriesCount)} rowId="drawer-row-tier2-series-count" valueId="drawer-value-tier2-series-count" />
+            <Row label="Episodes" value={String(episodeCount)} rowId="drawer-row-tier2-episodes-count" valueId="drawer-value-tier2-episodes-count" />
+        </div>
+    );
 }
 
 const primaryBtnStyle: React.CSSProperties = {

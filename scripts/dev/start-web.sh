@@ -44,4 +44,9 @@ fi
 export PORT
 
 log "Starting web on port ${PORT}"
-exec bun --bun --cwd apps/web run dev
+if bun run --help >/dev/null 2>&1; then
+  exec bun run --cwd apps/web dev
+fi
+
+# Fallback for older bun flag parsing variants.
+exec bun --cwd apps/web run dev

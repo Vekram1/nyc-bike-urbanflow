@@ -119,14 +119,43 @@ class BunSqlExecutor implements SqlExecutor {
   private readonly sql: SQL;
 
   constructor(db_url: string) {
-    this.sql = new SQL(db_url);
+    // Loader uses explicit BEGIN/COMMIT in gbfs/loader.ts, so force a single
+    // connection executor to avoid Bun SQL transaction guard errors.
+    this.sql = new SQL(db_url, { max: 1 });
+  }
+
+  private toPgArrayLiteral(values: Array<unknown>): string {
+    const encode = (value: unknown): string => {
+      if (value === null || value === undefined) {
+        return "NULL";
+      }
+      if (value instanceof Date) {
+        return `"${value.toISOString().replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+      }
+      if (typeof value === "number") {
+        if (!Number.isFinite(value)) {
+          throw new Error("Non-finite number cannot be encoded in postgres array literal");
+        }
+        return String(value);
+      }
+      if (typeof value === "boolean") {
+        return value ? "true" : "false";
+      }
+      const text = String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      return `"${text}"`;
+    };
+
+    return `{${values.map((entry) => encode(entry)).join(",")}}`;
   }
 
   async query<Row extends Record<string, unknown>>(
     text: string,
     params: Array<unknown> = []
   ): Promise<SqlQueryResult<Row>> {
-    const out = await this.sql.unsafe(text, params);
+    const normalizedParams = params.map((param) =>
+      Array.isArray(param) ? this.toPgArrayLiteral(param as Array<unknown>) : param
+    );
+    const out = await this.sql.unsafe(text, normalizedParams);
     return { rows: out as Row[] };
   }
 }

@@ -51,13 +51,14 @@ export class PgServingViewStore {
     if (dataset_ids.length === 0) {
       return [];
     }
+    const placeholders = dataset_ids.map((_, idx) => `$${idx + 2}`).join(", ");
     const rows = await this.db.query<DatasetWatermarkRow>(
       `SELECT system_id, dataset_id, as_of_ts, as_of_text, max_observed_at, updated_at
        FROM dataset_watermarks
        WHERE system_id = $1
-         AND dataset_id = ANY($2::text[])
+         AND dataset_id IN (${placeholders})
        ORDER BY dataset_id ASC`,
-      [system_id, dataset_ids]
+      [system_id, ...dataset_ids]
     );
     return rows.rows.map((row) => ({
       system_id: row.system_id,

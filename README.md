@@ -231,6 +231,7 @@ scripts/dev/setup.sh         # deps + db + migrations + system seed
 scripts/dev/start-api.sh     # bun API server
 scripts/dev/start-web.sh     # Next web app
 scripts/dev/start-ingest.sh  # poll + load-db + refresh-serving
+scripts/dev/smoke.sh         # deterministic smoke (API + ingest + optional web)
 scripts/dev/up.sh            # tmux launcher for all of the above
 ```
 

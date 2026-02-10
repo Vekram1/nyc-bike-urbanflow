@@ -223,12 +223,11 @@ export function createStationsRouteHandler(deps: StationsRouteDeps): (request: R
       if (limit === null) {
         return json({ error: { code: "invalid_limit", message: "limit must be integer between 1 and 10000" } }, 400);
       }
-      const snapshotReader = deps.stationsStore.getStationsSnapshot;
-      if (!snapshotReader) {
+      if (!deps.stationsStore.getStationsSnapshot) {
         return json({ error: { code: "not_found", message: "Route not found" } }, 404);
       }
 
-      const snapshot = await snapshotReader({
+      const snapshot = await deps.stationsStore.getStationsSnapshot({
         system_id: sv.system_id,
         view_id: sv.view_id,
         t_bucket_epoch_s: tBucket,

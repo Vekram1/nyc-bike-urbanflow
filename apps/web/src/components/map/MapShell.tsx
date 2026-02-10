@@ -86,6 +86,96 @@ type UfE2EActions = {
     compareOffsetDown: () => void;
 };
 
+type PolicyImpactSummary = {
+    impactedStations: number;
+    improvedStations: number;
+    worsenedStations: number;
+    avgDeltaPctPoints: number;
+};
+
+type LocalPolicyStation = {
+    station_id: string;
+    capacity: number;
+    bikes: number;
+    docks: number;
+};
+
+function toLocalPolicyStations(stations: StationPick[]): LocalPolicyStation[] {
+    return stations
+        .map((station) => {
+            const capacity = Number(station.capacity ?? 0);
+            const bikes = Number(station.bikes ?? 0);
+            const docks = Number(station.docks ?? 0);
+            if (!Number.isFinite(capacity) || capacity <= 0) return null;
+            if (!Number.isFinite(bikes) || bikes < 0) return null;
+            if (!Number.isFinite(docks) || docks < 0) return null;
+            return {
+                station_id: station.station_id,
+                capacity,
+                bikes,
+                docks,
+            } satisfies LocalPolicyStation;
+        })
+        .filter((station): station is LocalPolicyStation => station !== null);
+}
+
+function computeLocalGreedyFallbackMoves(stations: StationPick[], limit = 200): PolicyMove[] {
+    const input = toLocalPolicyStations(stations);
+    if (input.length === 0) return [];
+
+    const donors = input
+        .map((station) => {
+            const softTarget = Math.ceil(station.capacity * 0.6);
+            const excess = Math.max(0, station.bikes - softTarget);
+            return { station, excess };
+        })
+        .filter((entry) => entry.excess > 0)
+        .sort((a, b) => b.excess - a.excess);
+
+    const receivers = input
+        .map((station) => {
+            const softFloor = Math.ceil(station.capacity * 0.4);
+            const needed = Math.max(0, softFloor - station.bikes);
+            return { station, needed };
+        })
+        .filter((entry) => entry.needed > 0)
+        .sort((a, b) => b.needed - a.needed);
+
+    if (donors.length === 0 || receivers.length === 0) return [];
+
+    const moves: PolicyMove[] = [];
+    let donorIdx = 0;
+    let receiverIdx = 0;
+
+    while (donorIdx < donors.length && receiverIdx < receivers.length && moves.length < limit) {
+        const donor = donors[donorIdx];
+        const receiver = receivers[receiverIdx];
+        const transfer = Math.min(5, donor.excess, receiver.needed);
+        if (transfer > 0 && donor.station.station_id !== receiver.station.station_id) {
+            moves.push({
+                move_rank: moves.length + 1,
+                from_station_key: donor.station.station_id,
+                to_station_key: receiver.station.station_id,
+                bikes_moved: transfer,
+                dist_m: 0,
+                budget_exhausted: false,
+                neighbor_exhausted: false,
+                reason_codes: ["local_fallback"],
+            });
+            donor.excess -= transfer;
+            receiver.needed -= transfer;
+        } else {
+            donor.excess = 0;
+            receiver.needed = 0;
+        }
+
+        if (donor.excess <= 0) donorIdx += 1;
+        if (receiver.needed <= 0) receiverIdx += 1;
+    }
+
+    return moves;
+}
+
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
     if (typeof window === "undefined") return;
     const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
@@ -127,7 +217,8 @@ export default function MapShell() {
 
     // “Inspect lock” v0: freeze live GBFS updates while drawer open
     const inspectOpen = !!selected;
-    const timelineDisplayTimeMs = hud.playbackTsMs;
+    const timelineDisplayTimeMs =
+        hud.mode === "live" && hud.playing ? hud.serverNowMs : hud.playbackTsMs;
     const timelineBucket = Math.floor(timelineDisplayTimeMs / 1000);
     const compareBucket = hud.compareMode
         ? Math.max(0, timelineBucket - hud.compareOffsetBuckets * 300)
@@ -160,6 +251,47 @@ export default function MapShell() {
             full,
         };
     }, [stationIndex]);
+    const policyImpactSummary = useMemo<PolicyImpactSummary | null>(() => {
+        if (!policyImpactEnabled || Object.keys(policyImpactByStation).length === 0) {
+            return null;
+        }
+
+        let impactedStations = 0;
+        let improvedStations = 0;
+        let worsenedStations = 0;
+        let sumCurrent = 0;
+        let sumProjected = 0;
+
+        for (const station of stationIndex) {
+            const delta = Number(policyImpactByStation[station.station_id] ?? 0);
+            if (!Number.isFinite(delta) || delta === 0) continue;
+
+            const bikes = Number(station.bikes ?? 0);
+            const docks = Number(station.docks ?? 0);
+            const capacity = Number(station.capacity ?? 0);
+            const fallbackSlots = Math.max(0, bikes + docks);
+            const totalSlots = Number.isFinite(capacity) && capacity > 0 ? capacity : fallbackSlots;
+            if (!Number.isFinite(totalSlots) || totalSlots <= 0) continue;
+
+            const currentRatio = Math.max(0, Math.min(1, bikes / totalSlots));
+            const projectedRatio = Math.max(0, Math.min(1, (bikes + delta) / totalSlots));
+            const ratioDelta = projectedRatio - currentRatio;
+
+            impactedStations += 1;
+            if (ratioDelta > 0) improvedStations += 1;
+            if (ratioDelta < 0) worsenedStations += 1;
+            sumCurrent += currentRatio;
+            sumProjected += projectedRatio;
+        }
+
+        if (impactedStations <= 0) return null;
+        return {
+            impactedStations,
+            improvedStations,
+            worsenedStations,
+            avgDeltaPctPoints: ((sumProjected - sumCurrent) / impactedStations) * 100,
+        };
+    }, [policyImpactByStation, policyImpactEnabled, stationIndex]);
 
     useEffect(() => {
         let cancelled = false;
@@ -185,51 +317,67 @@ export default function MapShell() {
             ? "stale"
             : policyStatus;
 
-    const runPolicy = useCallback(async () => {
-        if (!hud.sv || hud.sv.startsWith("sv:local-")) {
-            setPolicyStatus("error");
-            setPolicyError("Live serving token unavailable");
-            return;
-        }
+    const applyPolicyMoves = useCallback(
+        (moves: PolicyMove[], args: { runId: number | null; runSv: string | null; error: string | null }) => {
+            const impact = summarizePolicyImpact(moves);
+            setPolicyRunId(args.runId);
+            setPolicyMovesCount(moves.length);
+            setPolicyImpactByStation(impact);
+            setPolicyRunSv(args.runSv);
+            setPolicyStatus("ready");
+            setPolicyError(args.error);
+            setPolicyImpactEnabled(moves.length > 0);
+        },
+        []
+    );
 
+    const runPolicy = useCallback(async () => {
         setPolicyStatus("pending");
         setPolicyError(null);
 
         const maxAttempts = 8;
-        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-            const run = await fetchPolicyRun({
-                sv: hud.sv,
-                policyVersion,
-                timelineBucket,
-                systemId: DEFAULT_SYSTEM_ID,
-            });
-            if (run.status === "pending") {
-                const waitMs = Math.max(250, Math.min(2000, run.retry_after_ms ?? 800));
-                await new Promise((resolve) => window.setTimeout(resolve, waitMs));
-                continue;
+        try {
+            if (hud.sv && !hud.sv.startsWith("sv:local-")) {
+                for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+                    const run = await fetchPolicyRun({
+                        sv: hud.sv,
+                        policyVersion,
+                        timelineBucket,
+                        systemId: DEFAULT_SYSTEM_ID,
+                    });
+                    if (run.status === "pending") {
+                        const waitMs = Math.max(250, Math.min(2000, run.retry_after_ms ?? 800));
+                        await new Promise((resolve) => window.setTimeout(resolve, waitMs));
+                        continue;
+                    }
+
+                    const movesOut = await fetchPolicyMoves({
+                        sv: hud.sv,
+                        policyVersion,
+                        timelineBucket,
+                        systemId: DEFAULT_SYSTEM_ID,
+                        topN: 500,
+                    });
+
+                    applyPolicyMoves(movesOut.moves, {
+                        runId: run.run.run_id,
+                        runSv: hud.sv,
+                        error: null,
+                    });
+                    return;
+                }
             }
-
-            const movesOut = await fetchPolicyMoves({
-                sv: hud.sv,
-                policyVersion,
-                timelineBucket,
-                systemId: DEFAULT_SYSTEM_ID,
-                topN: 500,
-            });
-
-            const impact = summarizePolicyImpact(movesOut.moves);
-            setPolicyRunId(run.run.run_id);
-            setPolicyMovesCount(movesOut.moves.length);
-            setPolicyImpactByStation(impact);
-            setPolicyRunSv(hud.sv);
-            setPolicyStatus("ready");
-            setPolicyImpactEnabled(movesOut.moves.length > 0);
-            return;
+        } catch {
+            // Fall back to local deterministic approximation below.
         }
 
-        setPolicyStatus("error");
-        setPolicyError("Policy run timed out");
-    }, [hud.sv, policyVersion, timelineBucket]);
+        const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
+        applyPolicyMoves(fallbackMoves, {
+            runId: null,
+            runSv: hud.sv && !hud.sv.startsWith("sv:local-") ? hud.sv : null,
+            error: "Using local fallback (backend policy worker unavailable or pending)",
+        });
+    }, [applyPolicyMoves, hud.sv, policyVersion, stationIndex, timelineBucket]);
 
     const handleRunPolicy = useCallback(() => {
         runPolicy().catch((error: unknown) => {
@@ -702,6 +850,7 @@ export default function MapShell() {
                             policyStatus={effectivePolicyStatus}
                             policyMovesCount={policyMovesCount}
                             policyImpactEnabled={policyImpactEnabled}
+                            policyImpactSummary={policyImpactSummary}
                             onTogglePlay={hud.togglePlay}
                             onGoLive={hud.goLive}
                             onToggleLayer={hud.toggleLayer}
@@ -733,6 +882,12 @@ export default function MapShell() {
                     station={selected}
                     sv={hud.sv}
                     timelineBucket={timelineBucket}
+                    policyImpactEnabled={policyImpactEnabled}
+                    policyImpactDelta={
+                        selected && policyImpactEnabled
+                            ? Number(policyImpactByStation[selected.station_id] ?? 0)
+                            : 0
+                    }
                     onClose={() => closeInspect("drawer_close_button")}
                 />
             </HUDRoot>

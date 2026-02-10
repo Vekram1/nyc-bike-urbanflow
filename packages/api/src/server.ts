@@ -1,3 +1,5 @@
+/// <reference path="./runtime-shims.d.ts" />
+
 import { SQL } from "bun";
 
 import { PgAllowlistStore } from "./allowlist/store";
@@ -170,15 +172,25 @@ function buildTimelineStore(db: SqlExecutor) {
         min_observation_ts: string | null;
         max_observation_ts: string | null;
       }>(
-        `SELECT
+        `WITH bucket_counts AS (
+           SELECT bucket_ts, COUNT(*)::int AS station_count
+           FROM station_status_1m
+           WHERE system_id = $1
+           GROUP BY bucket_ts
+         ),
+         active_buckets AS (
+           SELECT bucket_ts
+           FROM bucket_counts
+           WHERE station_count >= 100
+         )
+         SELECT
            MIN(bucket_ts)::text AS min_observation_ts,
            MAX(bucket_ts)::text AS max_observation_ts
-         FROM station_status_1m
-         WHERE system_id = $1`,
+         FROM active_buckets`,
         [args.system_id]
       );
       const row = out.rows[0];
-      const minTs = row?.min_observation_ts ?? new Date(0).toISOString();
+      const minTs = row?.min_observation_ts ?? new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const maxTs = row?.max_observation_ts ?? minTs;
       return {
         min_observation_ts: minTs,

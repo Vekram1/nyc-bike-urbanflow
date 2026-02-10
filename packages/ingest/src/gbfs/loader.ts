@@ -338,6 +338,58 @@ async function insertRawManifest(db: SqlExecutor, manifest: GbfsManifest, publis
   );
 }
 
+async function upsertDatasetWatermark(
+  db: SqlExecutor,
+  args: {
+    system_id: string;
+    feed_name: string;
+    publisher_last_updated: string;
+    logical_snapshot_id: number;
+    raw_object_sha256: string;
+  }
+): Promise<void> {
+  const datasetId = `gbfs.${args.feed_name}`;
+  await db.query(
+    `INSERT INTO datasets (dataset_id, note)
+     VALUES ($1, $2)
+     ON CONFLICT (dataset_id) DO NOTHING`,
+    [datasetId, "GBFS feed watermark"]
+  );
+
+  await db.query(
+    `INSERT INTO dataset_watermarks (
+       system_id,
+       dataset_id,
+       as_of_ts,
+       as_of_text,
+       max_observed_at,
+       details_json,
+       updated_at
+     )
+     VALUES ($1, $2, $3::timestamptz, NULL, $3::timestamptz, $4::jsonb, NOW())
+     ON CONFLICT (system_id, dataset_id) DO UPDATE
+       SET as_of_ts = GREATEST(COALESCE(dataset_watermarks.as_of_ts, EXCLUDED.as_of_ts), EXCLUDED.as_of_ts),
+           as_of_text = NULL,
+           max_observed_at = GREATEST(
+             COALESCE(dataset_watermarks.max_observed_at, EXCLUDED.max_observed_at),
+             EXCLUDED.max_observed_at
+           ),
+           details_json = EXCLUDED.details_json,
+           updated_at = NOW()`,
+    [
+      args.system_id,
+      datasetId,
+      args.publisher_last_updated,
+      JSON.stringify({
+        source: "gbfs.loader",
+        feed_name: args.feed_name,
+        logical_snapshot_id: args.logical_snapshot_id,
+        raw_object_sha256: args.raw_object_sha256,
+      }),
+    ]
+  );
+}
+
 async function insertStationInformationRows(
   db: SqlExecutor,
   logicalSnapshotId: number,
@@ -784,6 +836,14 @@ export async function loadGbfsManifest(
       stationRowsWritten = statusResult.station_rows_written;
       lifecycleUpserts = statusResult.lifecycle_upserts;
     }
+
+    await upsertDatasetWatermark(db, {
+      system_id: manifest.system_id,
+      feed_name: manifest.feed_name,
+      publisher_last_updated: publisherLastUpdated,
+      logical_snapshot_id: logicalSnapshot.logical_snapshot_id,
+      raw_object_sha256: manifest.raw_object_sha256,
+    });
 
     logEvent("info", "gbfs_manifest_loaded", {
       system_id: manifest.system_id,
