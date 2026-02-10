@@ -103,6 +103,57 @@ function json(body: unknown, status: number, headers?: Record<string, string>): 
   });
 }
 
+type PolicyErrorCategory =
+  | "invalid_request"
+  | "view_snapshot_mismatch"
+  | "namespace_disallowed"
+  | "sv_invalid"
+  | "internal_error";
+
+function classifyPolicyError(code: string): { category: PolicyErrorCategory; retryable: boolean } {
+  switch (code) {
+    case "view_snapshot_mismatch":
+      return { category: "view_snapshot_mismatch", retryable: true };
+    case "namespace_not_allowed":
+    case "policy_version_not_allowed":
+    case "system_id_not_allowed":
+      return { category: "namespace_disallowed", retryable: false };
+    case "sv_required":
+    case "sv_invalid":
+    case "sv_revoked":
+    case "sv_expired":
+      return { category: "sv_invalid", retryable: false };
+    case "method_not_allowed":
+    case "not_found":
+      return { category: "internal_error", retryable: false };
+    default:
+      return { category: "invalid_request", retryable: false };
+  }
+}
+
+function errorResponse(params: {
+  code: string;
+  message: string;
+  status: number;
+  headers?: Record<string, string>;
+  extra?: Record<string, unknown>;
+}): Response {
+  const classified = classifyPolicyError(params.code);
+  return json(
+    {
+      error: {
+        code: params.code,
+        category: classified.category,
+        retryable: classified.retryable,
+        message: params.message,
+      },
+      ...(params.extra ?? {}),
+    },
+    params.status,
+    params.headers
+  );
+}
+
 function hasUnknown(searchParams: URLSearchParams, allowed: Set<string>): string | null {
   for (const key of searchParams.keys()) {
     if (!allowed.has(key)) {
@@ -168,19 +219,17 @@ function snapshotMismatchResponse(params: {
   current_view_snapshot_id: string;
   current_view_snapshot_sha256: string;
 }): Response {
-  return json(
-    {
-      error: {
-        code: "view_snapshot_mismatch",
-        message: "Snapshot precondition does not match current rendered snapshot",
-      },
+  return errorResponse({
+    code: "view_snapshot_mismatch",
+    message: "Snapshot precondition does not match current rendered snapshot",
+    status: 409,
+    extra: {
       requested_view_snapshot_id: params.requested_view_snapshot_id,
       requested_view_snapshot_sha256: params.requested_view_snapshot_sha256,
       current_view_snapshot_id: params.current_view_snapshot_id,
       current_view_snapshot_sha256: params.current_view_snapshot_sha256,
     },
-    409
-  );
+  });
 }
 
 export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Request) => Promise<Response> {
@@ -188,27 +237,28 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
     const logger = deps.logger ?? defaultLogger;
 
     if (request.method !== "GET") {
-      return json({ error: { code: "method_not_allowed", message: "Method must be GET" } }, 405);
+      return errorResponse({ code: "method_not_allowed", message: "Method must be GET", status: 405 });
     }
 
     const url = new URL(request.url);
     const path = url.pathname;
     if (path !== CONFIG_PATH && path !== RUN_PATH && path !== MOVES_PATH) {
-      return json({ error: { code: "not_found", message: "Route not found" } }, 404);
+      return errorResponse({ code: "not_found", message: "Route not found", status: 404 });
     }
 
     const v = url.searchParams.get("v");
     if (v !== null && v !== "1") {
-      return json({ error: { code: "unsupported_version", message: "Only v=1 is supported" } }, 400);
+      return errorResponse({ code: "unsupported_version", message: "Only v=1 is supported", status: 400 });
     }
 
     if (path === CONFIG_PATH) {
       const unknown = hasUnknown(url.searchParams, ALLOWED_CONFIG_KEYS);
       if (unknown) {
-        return json(
-          { error: { code: "unknown_param", message: `Unknown query parameter: ${unknown}` } },
-          400
-        );
+        return errorResponse({
+          code: "unknown_param",
+          message: `Unknown query parameter: ${unknown}`,
+          status: 400,
+        });
       }
       return json(
         {
@@ -224,23 +274,25 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
 
     const unknown = hasUnknown(url.searchParams, path === RUN_PATH ? ALLOWED_RUN_KEYS : ALLOWED_MOVES_KEYS);
     if (unknown) {
-      return json(
-        { error: { code: "unknown_param", message: `Unknown query parameter: ${unknown}` } },
-        400
-      );
+      return errorResponse({
+        code: "unknown_param",
+        message: `Unknown query parameter: ${unknown}`,
+        status: 400,
+      });
     }
 
     const sv = await validateSvQuery(deps.tokens, url.searchParams, { ctx: { path: url.pathname } });
     if (!sv.ok) {
-      return json({ error: { code: sv.code, message: sv.message } }, sv.status, sv.headers);
+      return errorResponse({ code: sv.code, message: sv.message, status: sv.status, headers: sv.headers });
     }
 
     const requestedSystemId = url.searchParams.get("system_id")?.trim();
     if (requestedSystemId && requestedSystemId !== sv.system_id) {
-      return json(
-        { error: { code: "system_id_mismatch", message: "system_id must match sv token" } },
-        400
-      );
+      return errorResponse({
+        code: "system_id_mismatch",
+        message: "system_id must match sv token",
+        status: 400,
+      });
     }
 
     const systemAllow = await enforceAllowlist(
@@ -249,7 +301,11 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
       { path: url.pathname }
     );
     if (!systemAllow.ok) {
-      return json({ error: { code: systemAllow.code, message: systemAllow.message } }, systemAllow.status);
+      return errorResponse({
+        code: systemAllow.code,
+        message: systemAllow.message,
+        status: systemAllow.status,
+      });
     }
 
     const allowlisted = await enforceAllowlistedQueryParams(
@@ -259,46 +315,49 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
       { system_id: sv.system_id, ctx: { path: url.pathname } }
     );
     if (!allowlisted.ok) {
-      return json({ error: { code: allowlisted.code, message: allowlisted.message } }, allowlisted.status);
+      return errorResponse({
+        code: allowlisted.code,
+        message: allowlisted.message,
+        status: allowlisted.status,
+      });
     }
 
     const policyVersion = requireText(url.searchParams, "policy_version");
     if (!policyVersion) {
-      return json(
-        { error: { code: "missing_policy_version", message: "policy_version is required" } },
-        400
-      );
+      return errorResponse({
+        code: "missing_policy_version",
+        message: "policy_version is required",
+        status: 400,
+      });
     }
 
     const tBucket = parsePositiveInt(url.searchParams.get("T_bucket"));
     if (tBucket === null) {
-      return json(
-        { error: { code: "invalid_t_bucket", message: "T_bucket must be a positive integer epoch second" } },
-        400
-      );
+      return errorResponse({
+        code: "invalid_t_bucket",
+        message: "T_bucket must be a positive integer epoch second",
+        status: 400,
+      });
     }
 
     const horizonSteps = parsePositiveInt(url.searchParams.get("horizon_steps")) ?? deps.config.default_horizon_steps;
     if (!Number.isInteger(horizonSteps) || horizonSteps < 0 || horizonSteps > 288) {
-      return json(
-        { error: { code: "invalid_horizon_steps", message: "horizon_steps must be an integer between 0 and 288" } },
-        400
-      );
+      return errorResponse({
+        code: "invalid_horizon_steps",
+        message: "horizon_steps must be an integer between 0 and 288",
+        status: 400,
+      });
     }
 
     const requestedViewSnapshotId = requireText(url.searchParams, "view_snapshot_id");
     const requestedViewSnapshotSha = requireText(url.searchParams, "view_snapshot_sha256");
     const hasSnapshotPrecondition = requestedViewSnapshotId !== null || requestedViewSnapshotSha !== null;
     if (hasSnapshotPrecondition && (!requestedViewSnapshotId || !requestedViewSnapshotSha)) {
-      return json(
-        {
-          error: {
-            code: "invalid_snapshot_precondition",
-            message: "view_snapshot_id and view_snapshot_sha256 must be provided together",
-          },
-        },
-        400
-      );
+      return errorResponse({
+        code: "invalid_snapshot_precondition",
+        message: "view_snapshot_id and view_snapshot_sha256 must be provided together",
+        status: 400,
+      });
     }
     let resolvedSnapshotIdentity: { view_snapshot_id: string; view_snapshot_sha256: string } | null = null;
     if (requestedViewSnapshotId && requestedViewSnapshotSha && deps.stationsStore?.getStationsSnapshot) {
@@ -427,10 +486,11 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
     const requestedTopN = parsePositiveInt(url.searchParams.get("top_n"));
     const topN = Math.min(deps.config.max_moves, requestedTopN ?? deps.config.max_moves);
     if (topN <= 0) {
-      return json(
-        { error: { code: "invalid_top_n", message: "top_n must be a positive integer" } },
-        400
-      );
+      return errorResponse({
+        code: "invalid_top_n",
+        message: "top_n must be a positive integer",
+        status: 400,
+      });
     }
 
     const moves = await deps.policyStore.listMoves({ run_id: run.run_id, limit: topN });

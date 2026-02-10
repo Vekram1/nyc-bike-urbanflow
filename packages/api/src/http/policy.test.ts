@@ -73,6 +73,8 @@ describe("createPolicyRouteHandler", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     const body = await res.json();
     expect(body.error.code).toBe("view_snapshot_mismatch");
+    expect(body.error.category).toBe("view_snapshot_mismatch");
+    expect(body.error.retryable).toBe(true);
     expect(typeof body.current_view_snapshot_id).toBe("string");
     expect(typeof body.current_view_snapshot_sha256).toBe("string");
   });
@@ -125,6 +127,8 @@ describe("createPolicyRouteHandler", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe("invalid_snapshot_precondition");
+    expect(body.error.category).toBe("invalid_request");
+    expect(body.error.retryable).toBe(false);
   });
 
   it("returns policy config payload", async () => {
@@ -488,6 +492,7 @@ describe("createPolicyRouteHandler", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe("unknown_param");
+    expect(body.error.category).toBe("invalid_request");
   });
 
   it("returns 400 for unsupported version on policy endpoints", async () => {
