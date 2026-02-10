@@ -12,6 +12,141 @@ const validSv = {
 };
 
 describe("createPolicyRouteHandler", () => {
+  it("returns pending/ready via /api/policy/status and supports /api/policy/cancel", async () => {
+    let pending = true;
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          if (pending) return null;
+          return {
+            run_id: 501,
+            system_id: "citibike-nyc",
+            policy_version: "rebal.greedy.v1",
+            policy_spec_sha256: "abc",
+            sv: "abc",
+            decision_bucket_ts: "2026-02-06T18:00:00.000Z",
+            horizon_steps: 0,
+            input_quality: "ok",
+            status: "success",
+            no_op: false,
+            no_op_reason: null,
+            error_reason: null,
+            created_at: "2026-02-06T18:00:00.000Z",
+            move_count: 2,
+          };
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 77 };
+        },
+        async getPendingByDedupeKey() {
+          return pending ? { job_id: 77 } : null;
+        },
+        async cancelByDedupeKey() {
+          if (!pending) return false;
+          pending = false;
+          return true;
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const statusPending = await handler(
+      new Request(
+        "https://example.test/api/policy/status?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(statusPending.status).toBe(202);
+    const pendingBody = await statusPending.json();
+    expect(pendingBody.status).toBe("pending");
+
+    const cancelRes = await handler(
+      new Request(
+        "https://example.test/api/policy/cancel?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000",
+        { method: "POST" }
+      )
+    );
+    expect(cancelRes.status).toBe(200);
+    const cancelBody = await cancelRes.json();
+    expect(cancelBody.status).toBe("canceled");
+
+    const statusReady = await handler(
+      new Request(
+        "https://example.test/api/policy/status?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(statusReady.status).toBe(200);
+    const readyBody = await statusReady.json();
+    expect(readyBody.status).toBe("ready");
+    expect(readyBody.run.run_id).toBe(501);
+  });
+
+  it("requires POST for /api/policy/cancel", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/policy/cancel?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(405);
+    const body = await res.json();
+    expect(body.error.code).toBe("method_not_allowed");
+  });
+
   it("returns 409 view_snapshot_mismatch when snapshot precondition does not match", async () => {
     const handler = createPolicyRouteHandler({
       tokens: {

@@ -91,6 +91,30 @@ export class PgJobQueue {
     await this.db.query(`DELETE FROM job_queue WHERE job_id = $1`, [job_id]);
   }
 
+  async getPendingByDedupeKey(args: { type: JobType; dedupe_key: string }): Promise<{ job_id: number } | null> {
+    const rows = await this.db.query<{ job_id: number }>(
+      `SELECT job_id
+       FROM job_queue
+       WHERE type = $1
+         AND dedupe_key = $2
+       ORDER BY job_id ASC
+       LIMIT 1`,
+      [args.type, args.dedupe_key]
+    );
+    return rows.rows[0] ?? null;
+  }
+
+  async cancelByDedupeKey(args: { type: JobType; dedupe_key: string }): Promise<boolean> {
+    const rows = await this.db.query<{ job_id: number }>(
+      `DELETE FROM job_queue
+       WHERE type = $1
+         AND dedupe_key = $2
+       RETURNING job_id`,
+      [args.type, args.dedupe_key]
+    );
+    return rows.rows.length > 0;
+  }
+
   async fail(params: {
     job_id: number;
     reason_code: string;
@@ -142,4 +166,3 @@ export class PgJobQueue {
     return { moved_to_dlq: false };
   }
 }
-

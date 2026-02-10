@@ -10,6 +10,8 @@ import type { StationSnapshot } from "./stations";
 const CONFIG_PATH = "/api/policy/config";
 const RUN_PATH = "/api/policy/run";
 const MOVES_PATH = "/api/policy/moves";
+const STATUS_PATH = "/api/policy/status";
+const CANCEL_PATH = "/api/policy/cancel";
 
 const ALLOWED_CONFIG_KEYS = new Set(["v"]);
 const ALLOWED_RUN_KEYS = new Set([
@@ -64,6 +66,8 @@ export type PolicyRouteDeps = {
       dedupe_key?: string;
       max_attempts?: number;
     }) => Promise<{ ok: true; job_id: number } | { ok: false; reason: "deduped" }>;
+    getPendingByDedupeKey?: (args: { type: string; dedupe_key: string }) => Promise<{ job_id: number } | null>;
+    cancelByDedupeKey?: (args: { type: string; dedupe_key: string }) => Promise<boolean>;
   };
   config: {
     default_policy_version: string;
@@ -195,6 +199,16 @@ function parsePositiveInt(value: string | null): number | null {
   return parsed;
 }
 
+function buildPolicyRunDedupeKey(args: {
+  system_id: string;
+  sv: string;
+  t_bucket: number;
+  policy_version: string;
+  horizon_steps: number;
+}): string {
+  return `${args.system_id}:${args.sv}:${args.t_bucket}:${args.policy_version}:${args.horizon_steps}`;
+}
+
 function pendingResponse(params: {
   system_id: string;
   sv: string;
@@ -254,14 +268,23 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
   return async (request: Request): Promise<Response> => {
     const logger = deps.logger ?? defaultLogger;
 
-    if (request.method !== "GET") {
-      return errorResponse({ code: "method_not_allowed", message: "Method must be GET", status: 405 });
-    }
-
     const url = new URL(request.url);
     const path = url.pathname;
-    if (path !== CONFIG_PATH && path !== RUN_PATH && path !== MOVES_PATH) {
+    if (
+      path !== CONFIG_PATH &&
+      path !== RUN_PATH &&
+      path !== MOVES_PATH &&
+      path !== STATUS_PATH &&
+      path !== CANCEL_PATH
+    ) {
       return errorResponse({ code: "not_found", message: "Route not found", status: 404 });
+    }
+    if (path === CANCEL_PATH) {
+      if (request.method !== "POST") {
+        return errorResponse({ code: "method_not_allowed", message: "Method must be POST", status: 405 });
+      }
+    } else if (request.method !== "GET") {
+      return errorResponse({ code: "method_not_allowed", message: "Method must be GET", status: 405 });
     }
 
     const v = url.searchParams.get("v");
@@ -292,7 +315,10 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
       );
     }
 
-    const unknown = hasUnknown(url.searchParams, path === RUN_PATH ? ALLOWED_RUN_KEYS : ALLOWED_MOVES_KEYS);
+    const unknown = hasUnknown(
+      url.searchParams,
+      path === MOVES_PATH ? ALLOWED_MOVES_KEYS : ALLOWED_RUN_KEYS
+    );
     if (unknown) {
       return errorResponse({
         code: "unknown_param",
@@ -445,6 +471,14 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
       };
     }
 
+    const dedupeKey = buildPolicyRunDedupeKey({
+      system_id: sv.system_id,
+      sv: sv.sv,
+      t_bucket: tBucket,
+      policy_version: policyVersion,
+      horizon_steps: horizonSteps,
+    });
+
     const run = await deps.policyStore.getRunSummary({
       system_id: sv.system_id,
       sv: sv.sv,
@@ -452,6 +486,95 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
       decision_bucket_epoch_s: tBucket,
       horizon_steps: horizonSteps,
     });
+
+    if (path === STATUS_PATH) {
+      if (run) {
+        return json(
+          {
+            status: "ready",
+            computed_at: new Date().toISOString(),
+            run_key: {
+              system_id: run.system_id,
+              sv: run.sv,
+              decision_bucket_epoch_s: tBucket,
+              policy_version: run.policy_version,
+              strategy: effectiveStrategy,
+              policy_spec_sha256: run.policy_spec_sha256,
+              horizon_steps: run.horizon_steps,
+              view_snapshot_id: requestedViewSnapshotId ?? resolvedSnapshotIdentity?.view_snapshot_id ?? null,
+              view_snapshot_sha256: requestedViewSnapshotSha ?? resolvedSnapshotIdentity?.view_snapshot_sha256 ?? null,
+            },
+            run: {
+              run_id: run.run_id,
+              policy_version: run.policy_version,
+              policy_spec_sha256: run.policy_spec_sha256,
+              decision_bucket_ts: run.decision_bucket_ts,
+              horizon_steps: run.horizon_steps,
+            },
+          },
+          200
+        );
+      }
+      const pending = deps.queue.getPendingByDedupeKey
+        ? await deps.queue.getPendingByDedupeKey({ type: "policy.run_v1", dedupe_key: dedupeKey })
+        : null;
+      if (pending) {
+        return pendingResponse({
+          system_id: sv.system_id,
+          sv: sv.sv,
+          policy_version: policyVersion,
+          strategy: effectiveStrategy,
+          t_bucket: tBucket,
+          horizon_steps: horizonSteps,
+          retry_after_ms: deps.config.retry_after_ms,
+          view_snapshot_id: requestedViewSnapshotId ?? resolvedSnapshotIdentity?.view_snapshot_id ?? null,
+          view_snapshot_sha256: requestedViewSnapshotSha ?? resolvedSnapshotIdentity?.view_snapshot_sha256 ?? null,
+        });
+      }
+      return errorResponse({
+        code: "policy_run_not_found",
+        message: "No ready or pending policy run for the provided run key",
+        status: 404,
+      });
+    }
+
+    if (path === CANCEL_PATH) {
+      if (run) {
+        return errorResponse({
+          code: "policy_run_already_completed",
+          message: "Policy run is already completed and cannot be canceled",
+          status: 409,
+        });
+      }
+      const canceled = deps.queue.cancelByDedupeKey
+        ? await deps.queue.cancelByDedupeKey({ type: "policy.run_v1", dedupe_key: dedupeKey })
+        : false;
+      if (!canceled) {
+        return errorResponse({
+          code: "policy_run_not_found",
+          message: "No pending policy run found for cancellation",
+          status: 404,
+        });
+      }
+      return json(
+        {
+          status: "canceled",
+          canceled: true,
+          run_key: {
+            system_id: sv.system_id,
+            sv: sv.sv,
+            decision_bucket_epoch_s: tBucket,
+            policy_version: policyVersion,
+            strategy: effectiveStrategy,
+            policy_spec_sha256: null,
+            horizon_steps: horizonSteps,
+            view_snapshot_id: requestedViewSnapshotId ?? resolvedSnapshotIdentity?.view_snapshot_id ?? null,
+            view_snapshot_sha256: requestedViewSnapshotSha ?? resolvedSnapshotIdentity?.view_snapshot_sha256 ?? null,
+          },
+        },
+        200
+      );
+    }
 
     if (!run) {
       const payload = {
@@ -462,7 +585,6 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
         policy_version: policyVersion,
         strategy: effectiveStrategy,
       };
-      const dedupeKey = `${sv.system_id}:${sv.sv}:${tBucket}:${policyVersion}:${horizonSteps}`;
       const enqueue = await deps.queue.enqueue({
         type: "policy.run_v1",
         payload,
