@@ -6,6 +6,7 @@ import type { SqlExecutor, SqlQueryResult } from "../db/types";
 import { PgJobQueue } from "../jobs/queue";
 import { PgPolicyOutputStore } from "../../../policy/src/output_store";
 import { runGreedyPolicyV1 } from "../../../policy/src/greedy_v1";
+import { runGlobalPolicyV1 } from "../../../policy/src/global_v1";
 import type {
   GreedyPolicyInput,
   GreedyPolicySpec,
@@ -314,7 +315,7 @@ async function processPolicyJob(
   job: { job_id: number; payload_json: unknown }
 ): Promise<void> {
   const payload = parseJobPayload(job.payload_json);
-  if (payload.policy_version !== "rebal.greedy.v1") {
+  if (payload.policy_version !== "rebal.greedy.v1" && payload.policy_version !== "rebal.global.v1") {
     await queue.fail({
       job_id: job.job_id,
       reason_code: "unsupported_policy_version",
@@ -347,9 +348,26 @@ async function processPolicyJob(
     stations,
   };
 
-  const policyOut = runGreedyPolicyV1(input, {
-    logger: { info: logInfo },
-  });
+  const policyOut =
+    payload.policy_version === "rebal.global.v1"
+      ? runGlobalPolicyV1(
+          {
+            ...input,
+            policy_version: "rebal.global.v1",
+          },
+          {
+            logger: { info: logInfo },
+          }
+        )
+      : runGreedyPolicyV1(
+          {
+            ...input,
+            policy_version: "rebal.greedy.v1",
+          },
+          {
+            logger: { info: logInfo },
+          }
+        );
   const runId = await output.upsertRun({
     system_id: payload.system_id,
     policy_version: payload.policy_version,
