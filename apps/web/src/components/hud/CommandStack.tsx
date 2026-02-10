@@ -8,6 +8,7 @@ import Keycap from "./Keycap";
 import type { LayerToggles } from "@/lib/hudTypes";
 
 type Props = {
+    previewMode?: boolean;
     playing: boolean;
     inspectLocked: boolean;
     compareMode: boolean;
@@ -59,6 +60,7 @@ type SearchResult = {
 };
 
 export default function CommandStack({
+    previewMode = false,
     playing,
     inspectLocked,
     compareMode,
@@ -218,68 +220,73 @@ export default function CommandStack({
 
     return (
         <>
+            {!previewMode ? (
             <HUDCard>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <Row label="Search" hint=" / " />
-                    <input
-                        type="search"
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        onKeyDown={onSearchKeyDown}
-                        placeholder="Station name or key"
-                        aria-label="Search stations"
-                        data-uf-id="search-input"
-                        style={searchInputStyle}
-                    />
-                    <div
-                        style={{ fontSize: 11, opacity: 0.7, minHeight: 14 }}
-                        data-uf-id="search-status"
-                    >
-                        {searchHint}
-                    </div>
-                    {remoteError ? (
-                        <div
-                            style={{
-                                fontSize: 10,
-                                opacity: 0.9,
-                                border: "1px solid rgba(251,191,36,0.45)",
-                                borderRadius: 999,
-                                padding: "2px 8px",
-                                display: "inline-flex",
-                                width: "fit-content",
-                            }}
-                            data-uf-id="search-fallback-badge"
-                        >
-                            Backend unavailable; using local fallback
-                        </div>
-                    ) : null}
-                    {results.length > 0 ? (
-                        <div style={searchResultsStyle} data-uf-id="search-results">
-                            {results.map((item, idx) => (
-                                <button
-                                    key={item.stationKey}
-                                    type="button"
-                                    onClick={() => handlePick(item)}
-                                    onMouseEnter={() => setActiveResultIdx(idx)}
-                                    style={
-                                        idx === activeResultIdx
-                                            ? {
-                                                  ...searchResultButtonStyle,
-                                                  border: "1px solid rgba(255,255,255,0.35)",
-                                                  background: "rgba(255,255,255,0.12)",
-                                              }
-                                            : searchResultButtonStyle
-                                    }
-                                    data-uf-id={`search-result-${item.stationKey}`}
-                                    data-uf-active={idx === activeResultIdx ? "true" : "false"}
+                    {!previewMode ? (
+                        <>
+                            <Row label="Search" hint=" / " />
+                            <input
+                                type="search"
+                                value={query}
+                                onChange={(event) => setQuery(event.target.value)}
+                                onKeyDown={onSearchKeyDown}
+                                placeholder="Station name or key"
+                                aria-label="Search stations"
+                                data-uf-id="search-input"
+                                style={searchInputStyle}
+                            />
+                            <div
+                                style={{ fontSize: 11, opacity: 0.7, minHeight: 14 }}
+                                data-uf-id="search-status"
+                            >
+                                {searchHint}
+                            </div>
+                            {remoteError ? (
+                                <div
+                                    style={{
+                                        fontSize: 10,
+                                        opacity: 0.9,
+                                        border: "1px solid rgba(251,191,36,0.45)",
+                                        borderRadius: 999,
+                                        padding: "2px 8px",
+                                        display: "inline-flex",
+                                        width: "fit-content",
+                                    }}
+                                    data-uf-id="search-fallback-badge"
                                 >
-                                    {item.name}
-                                    <span style={{ opacity: 0.6, marginLeft: 6 }}>
-                                        {item.stationKey}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
+                                    Backend unavailable; using local fallback
+                                </div>
+                            ) : null}
+                            {results.length > 0 ? (
+                                <div style={searchResultsStyle} data-uf-id="search-results">
+                                    {results.map((item, idx) => (
+                                        <button
+                                            key={item.stationKey}
+                                            type="button"
+                                            onClick={() => handlePick(item)}
+                                            onMouseEnter={() => setActiveResultIdx(idx)}
+                                            style={
+                                                idx === activeResultIdx
+                                                    ? {
+                                                          ...searchResultButtonStyle,
+                                                          border: "1px solid rgba(255,255,255,0.35)",
+                                                          background: "rgba(255,255,255,0.12)",
+                                                      }
+                                                    : searchResultButtonStyle
+                                            }
+                                            data-uf-id={`search-result-${item.stationKey}`}
+                                            data-uf-active={idx === activeResultIdx ? "true" : "false"}
+                                        >
+                                            {item.name}
+                                            <span style={{ opacity: 0.6, marginLeft: 6 }}>
+                                                {item.stationKey}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </>
                     ) : null}
                     <button
                         type="button"
@@ -317,10 +324,12 @@ export default function CommandStack({
                     <Row label="Step" hint="← / →" />
                     <Row label="Jump" hint="Home / End" />
                     <Row label="Speed" hint="- / +" />
-                    <Row label="About" hint="?" />
+                    {!previewMode ? <Row label="About" hint="?" /> : null}
                 </div>
             </HUDCard>
+            ) : null}
 
+            {!previewMode ? (
             <HUDCard>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 2 }}>
@@ -430,7 +439,9 @@ export default function CommandStack({
                     ) : null}
                 </div>
             </HUDCard>
+            ) : null}
 
+            {!previewMode ? (
             <HUDCard>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 2 }}>
@@ -468,6 +479,7 @@ export default function CommandStack({
                     </label>
                 </div>
             </HUDCard>
+            ) : null}
 
             <HUDCard>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

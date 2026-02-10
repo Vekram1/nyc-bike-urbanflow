@@ -450,6 +450,10 @@ export default function MapShell() {
         policySpecSha256,
         policyVersion,
     ]);
+    const previewFrozenLabel = useMemo(
+        () => new Date(currentRunKey.decisionBucketTs * 1000).toLocaleString(),
+        [currentRunKey.decisionBucketTs]
+    );
 
     useEffect(() => {
         let cancelled = false;
@@ -1129,7 +1133,7 @@ export default function MapShell() {
             ) : null}
             {optimizationSession.mode !== "live" ? (
                 <div className="uf-preview-pill uf-hud-pe-auto" data-uf-id="preview-pill">
-                    Preview mode: {optimizationSession.mode === "computing" ? "Compute" : optimizationSession.mode === "playback" ? "Animate" : "Frozen"}
+                    Frozen: {previewFrozenLabel} · {optimizationSession.mode === "computing" ? "Compute" : optimizationSession.mode === "playback" ? "Animate" : "Preview"}
                 </div>
             ) : null}
 
@@ -1171,6 +1175,7 @@ export default function MapShell() {
                 <div className="uf-left-stack" data-uf-id="hud-controls">
                     <nav aria-label="Playback and layer controls">
                         <CommandStack
+                            previewMode={optimizationSession.mode !== "live"}
                             playing={hud.playing}
                             inspectLocked={hud.inspectLocked}
                             compareMode={hud.compareMode}
