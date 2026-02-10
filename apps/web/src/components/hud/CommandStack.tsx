@@ -26,6 +26,7 @@ type Props = {
         worsenedStations: number;
         avgDeltaPctPoints: number;
     } | null;
+    playbackView?: "before" | "after";
     policySummary?: {
         frozenTimeLabel: string;
         strategyLabel: string;
@@ -43,6 +44,7 @@ type Props = {
         };
     } | null;
     onTogglePlay: () => void;
+    onTogglePlaybackView?: () => void;
     onGoLive: () => void;
     onToggleLayer: (key: keyof LayerToggles) => void;
     onToggleCompareMode: () => void;
@@ -74,7 +76,9 @@ export default function CommandStack({
     policyImpactEnabled,
     policyImpactSummary,
     policySummary,
+    playbackView = "after",
     onTogglePlay,
+    onTogglePlaybackView,
     onGoLive,
     onToggleLayer,
     onToggleCompareMode,
@@ -321,6 +325,19 @@ export default function CommandStack({
                             <Keycap k="L" />
                         </span>
                     </button>
+                    {previewMode && onTogglePlaybackView ? (
+                        <button
+                            type="button"
+                            style={rowBtnStyle}
+                            onClick={onTogglePlaybackView}
+                            aria-label="Toggle before and after preview"
+                            data-uf-id="preview-before-after-toggle"
+                        >
+                            <span style={{ fontSize: 12, opacity: 0.92 }}>
+                                {playbackView === "after" ? "View: After" : "View: Before"}
+                            </span>
+                        </button>
+                    ) : null}
                     <Row label="Step" hint="← / →" />
                     <Row label="Jump" hint="Home / End" />
                     <Row label="Speed" hint="- / +" />

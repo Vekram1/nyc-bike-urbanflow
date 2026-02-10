@@ -15,6 +15,9 @@ const NYC = {
 
 const SOURCE_ID = "gbfs-stations";
 const LAYER_ID = "gbfs-stations-circles";
+const ACTIVE_MOVE_SOURCE_ID = "policy-active-move";
+const ACTIVE_MOVE_LINE_LAYER_ID = "policy-active-move-line";
+const ACTIVE_MOVE_MARKER_LAYER_ID = "policy-active-move-marker";
 let activeMapViewCount = 0;
 const NO_RATIO_COLOR = "#7f8c8d";
 const BIKES_AVAILABILITY_BUCKET_COLORS: Array<{ minRatio: number; color: string }> = [
@@ -33,6 +36,8 @@ const LOWEST_BUCKET_COLOR = "#ef4444";
 export type StationPick = {
     station_id: string;
     name: string;
+    lat: number | null;
+    lon: number | null;
     capacity: number | null;
     bikes: number | null;
     docks: number | null;
@@ -58,6 +63,14 @@ type Props = {
     selectedStationId?: string | null;
     policyImpactEnabled?: boolean;
     policyImpactByStation?: Record<string, number>;
+    activePolicyMove?: {
+        fromStationKey: string;
+        toStationKey: string;
+        bikesMoved: number;
+        from: [number, number];
+        to: [number, number];
+        progress: number;
+    } | null;
     freeze?: boolean; // when true, stop refreshing GBFS + keep view deterministic
 };
 
@@ -165,6 +178,7 @@ export default function MapView(props: Props) {
         selectedStationId,
         policyImpactEnabled = false,
         policyImpactByStation = {},
+        activePolicyMove = null,
         freeze,
     } = props;
 
@@ -176,6 +190,8 @@ export default function MapView(props: Props) {
     const systemIdRef = useRef(systemId);
     const policyImpactEnabledRef = useRef(policyImpactEnabled);
     const policyImpactByStationRef = useRef(policyImpactByStation);
+    const activePolicyMoveRef = useRef(activePolicyMove);
+    const cachedStationsRef = useRef<Record<string, unknown> | null>(null);
 
     useEffect(() => {
         svRef.current = sv;
@@ -196,6 +212,9 @@ export default function MapView(props: Props) {
     useEffect(() => {
         policyImpactByStationRef.current = policyImpactByStation;
     }, [policyImpactByStation]);
+    useEffect(() => {
+        activePolicyMoveRef.current = activePolicyMove;
+    }, [activePolicyMove]);
 
     useEffect(() => {
         activeMapViewCount += 1;
@@ -317,6 +336,8 @@ export default function MapView(props: Props) {
                         "case",
                         ["boolean", ["feature-state", "selected"], false],
                         2,
+                        [">", ["coalesce", ["get", "policy_move_active"], 0], 0],
+                        2,
                         1,
                     ],
                     "circle-stroke-color": [
@@ -345,6 +366,42 @@ export default function MapView(props: Props) {
             layerAdded = true;
         }
 
+        if (!map.getSource(ACTIVE_MOVE_SOURCE_ID)) {
+            map.addSource(ACTIVE_MOVE_SOURCE_ID, {
+                type: "geojson",
+                data: { type: "FeatureCollection", features: [] },
+            });
+        }
+
+        if (!map.getLayer(ACTIVE_MOVE_LINE_LAYER_ID)) {
+            map.addLayer({
+                id: ACTIVE_MOVE_LINE_LAYER_ID,
+                type: "line",
+                source: ACTIVE_MOVE_SOURCE_ID,
+                filter: ["==", ["get", "kind"], "line"],
+                paint: {
+                    "line-color": "#f59e0b",
+                    "line-width": 2,
+                    "line-opacity": 0.9,
+                },
+            });
+        }
+
+        if (!map.getLayer(ACTIVE_MOVE_MARKER_LAYER_ID)) {
+            map.addLayer({
+                id: ACTIVE_MOVE_MARKER_LAYER_ID,
+                type: "circle",
+                source: ACTIVE_MOVE_SOURCE_ID,
+                filter: ["==", ["get", "kind"], "marker"],
+                paint: {
+                    "circle-radius": 5,
+                    "circle-color": "#f59e0b",
+                    "circle-stroke-width": 1,
+                    "circle-stroke-color": "#fff7ed",
+                },
+            });
+        }
+
         if (sourceAdded || layerAdded) {
             console.info("[MapView] source_layer_ready", {
                 sourceId: SOURCE_ID,
@@ -361,15 +418,6 @@ export default function MapView(props: Props) {
             mapRefreshAttempts: (current.mapRefreshAttempts ?? 0) + 1,
             mapRefreshLastAttemptTs: new Date().toISOString(),
         }));
-        if (freeze) {
-            updateUfE2E((current) => ({
-                ...current,
-                mapRefreshSkippedFrozen: (current.mapRefreshSkippedFrozen ?? 0) + 1,
-                mapRefreshLastSkipReason: "freeze",
-            }));
-            return; // <— Inspect lock: no updates while drawer is open
-        }
-
         const map = mapRef.current?.getMap();
         if (!map) {
             updateUfE2E((current) => ({
@@ -390,6 +438,78 @@ export default function MapView(props: Props) {
             return;
         }
 
+        const applyPolicyFields = (json: Record<string, unknown>) => {
+            const impactEnabled = policyImpactEnabledRef.current;
+            const impactByStation = policyImpactByStationRef.current;
+            const activeMove = activePolicyMoveRef.current;
+            const features = Array.isArray(json.features) ? json.features : [];
+            for (const feature of features as Array<{ properties?: Record<string, unknown> }>) {
+                if (!feature.properties || typeof feature.properties !== "object") continue;
+                const stationIdRaw = feature.properties.station_id;
+                const stationId =
+                    typeof stationIdRaw === "string" && stationIdRaw.length > 0
+                        ? stationIdRaw
+                        : "";
+                const impactDelta =
+                    stationId.length > 0
+                        ? Number(impactByStation[stationId] ?? 0)
+                        : 0;
+                feature.properties.policy_impact_enabled = impactEnabled;
+                feature.properties.policy_impact_delta = Number.isFinite(impactDelta)
+                    ? impactDelta
+                    : 0;
+                feature.properties.policy_move_active =
+                    activeMove &&
+                    (stationId === activeMove.fromStationKey || stationId === activeMove.toStationKey)
+                        ? 1
+                        : 0;
+                const ratio = computeBikesAvailabilityRatio(feature.properties);
+                if (ratio != null) {
+                    feature.properties.bikes_availability_ratio = ratio;
+                    const bikes = toNum(feature.properties.bikes);
+                    const docks = toNum(feature.properties.docks);
+                    const capacity = toNum(feature.properties.capacity);
+                    const fallbackSlots = Math.max(0, (bikes ?? 0) + (docks ?? 0));
+                    const totalSlots = capacity != null && capacity > 0 ? capacity : fallbackSlots;
+                    if (Number.isFinite(totalSlots) && totalSlots > 0 && Number.isFinite(impactDelta)) {
+                        const projectedBikes = Math.max(
+                            0,
+                            Math.min(totalSlots, (bikes ?? ratio * totalSlots) + impactDelta)
+                        );
+                        feature.properties.policy_projected_ratio = Math.max(
+                            0,
+                            Math.min(1, projectedBikes / totalSlots)
+                        );
+                    } else {
+                        feature.properties.policy_projected_ratio = ratio;
+                    }
+                } else {
+                    feature.properties.policy_projected_ratio = null;
+                }
+            }
+        };
+
+        if (freeze) {
+            const cached = cachedStationsRef.current;
+            if (cached && cached.type === "FeatureCollection") {
+                const clone = structuredClone(cached);
+                applyPolicyFields(clone);
+                (src as SourceWithSetData).setData(clone);
+                updateUfE2E((current) => ({
+                    ...current,
+                    mapRefreshSkippedFrozen: (current.mapRefreshSkippedFrozen ?? 0) + 1,
+                    mapRefreshLastSkipReason: "freeze_local_render",
+                }));
+            } else {
+                updateUfE2E((current) => ({
+                    ...current,
+                    mapRefreshSkippedFrozen: (current.mapRefreshSkippedFrozen ?? 0) + 1,
+                    mapRefreshLastSkipReason: "freeze_no_cache",
+                }));
+            }
+            return;
+        }
+
         try {
             const started = performance.now();
             const params = new URLSearchParams({
@@ -404,50 +524,9 @@ export default function MapView(props: Props) {
             onTileFetchSampleMs?.(latencyMs);
 
             if (json?.type === "FeatureCollection") {
-                const impactEnabled = policyImpactEnabledRef.current;
-                const impactByStation = policyImpactByStationRef.current;
-                if (Array.isArray(json.features)) {
-                    for (const feature of json.features as Array<{ properties?: Record<string, unknown> }>) {
-                        if (!feature.properties || typeof feature.properties !== "object") continue;
-                        const stationIdRaw = feature.properties.station_id;
-                        const stationId =
-                            typeof stationIdRaw === "string" && stationIdRaw.length > 0
-                                ? stationIdRaw
-                                : "";
-                        const impactDelta =
-                            stationId.length > 0
-                                ? Number(impactByStation[stationId] ?? 0)
-                                : 0;
-                        feature.properties.policy_impact_enabled = impactEnabled;
-                        feature.properties.policy_impact_delta = Number.isFinite(impactDelta)
-                            ? impactDelta
-                            : 0;
-                        const ratio = computeBikesAvailabilityRatio(feature.properties);
-                        if (ratio != null) {
-                            feature.properties.bikes_availability_ratio = ratio;
-                            const bikes = toNum(feature.properties.bikes);
-                            const docks = toNum(feature.properties.docks);
-                            const capacity = toNum(feature.properties.capacity);
-                            const fallbackSlots = Math.max(0, (bikes ?? 0) + (docks ?? 0));
-                            const totalSlots = capacity != null && capacity > 0 ? capacity : fallbackSlots;
-                            if (Number.isFinite(totalSlots) && totalSlots > 0 && Number.isFinite(impactDelta)) {
-                                const projectedBikes = Math.max(
-                                    0,
-                                    Math.min(totalSlots, (bikes ?? ratio * totalSlots) + impactDelta)
-                                );
-                                feature.properties.policy_projected_ratio = Math.max(
-                                    0,
-                                    Math.min(1, projectedBikes / totalSlots)
-                                );
-                            } else {
-                                feature.properties.policy_projected_ratio = ratio;
-                            }
-                        } else {
-                            feature.properties.policy_projected_ratio = null;
-                        }
-                    }
-                }
+                applyPolicyFields(json);
                 (src as SourceWithSetData).setData(json);
+                cachedStationsRef.current = structuredClone(json);
                 const featureCount = Array.isArray(json.features) ? json.features.length : 0;
                 if (onStationsData && Array.isArray(json.features)) {
                     const stations: StationPick[] = json.features
@@ -458,6 +537,8 @@ export default function MapView(props: Props) {
                             return {
                                 station_id: stationId,
                                 name: p.name ? String(p.name) : stationId,
+                                lat: toNum(p.lat),
+                                lon: toNum(p.lon),
                                 capacity: toNum(p.capacity),
                                 bikes: toNum(p.bikes),
                                 docks: toNum(p.docks),
@@ -591,11 +672,46 @@ export default function MapView(props: Props) {
     }, [selectedStationId]);
 
     useEffect(() => {
-        if (freeze) return;
         refreshStations().catch((e) =>
             console.error("[MapView] policy_overlay_refresh_failed", { error: e })
         );
-    }, [freeze, policyImpactByStation, policyImpactEnabled, refreshStations]);
+    }, [freeze, policyImpactByStation, policyImpactEnabled, activePolicyMove, refreshStations]);
+
+    useEffect(() => {
+        const map = mapRef.current?.getMap();
+        if (!map) return;
+        const src = map.getSource(ACTIVE_MOVE_SOURCE_ID);
+        if (!src || !("setData" in src)) return;
+        const move = activePolicyMove;
+        if (!move) {
+            (src as SourceWithSetData).setData({ type: "FeatureCollection", features: [] });
+            return;
+        }
+        const progress = Math.max(0, Math.min(1, move.progress));
+        const markerLon = move.from[0] + (move.to[0] - move.from[0]) * progress;
+        const markerLat = move.from[1] + (move.to[1] - move.from[1]) * progress;
+        (src as SourceWithSetData).setData({
+            type: "FeatureCollection",
+            features: [
+                {
+                    type: "Feature",
+                    properties: { kind: "line", bikes_moved: move.bikesMoved },
+                    geometry: {
+                        type: "LineString",
+                        coordinates: [move.from, move.to],
+                    },
+                },
+                {
+                    type: "Feature",
+                    properties: { kind: "marker", bikes_moved: move.bikesMoved },
+                    geometry: {
+                        type: "Point",
+                        coordinates: [markerLon, markerLat],
+                    },
+                },
+            ],
+        });
+    }, [activePolicyMove]);
 
     // Recompute station state/colors immediately on scrub/live token changes.
     useEffect(() => {
@@ -671,6 +787,8 @@ export default function MapView(props: Props) {
                 onStationPick({
                     station_id,
                     name: p.name ? String(p.name) : station_id,
+                    lat: toNum(p.lat),
+                    lon: toNum(p.lon),
                     capacity: toNum(p.capacity),
                     bikes: toNum(p.bikes),
                     docks: toNum(p.docks),

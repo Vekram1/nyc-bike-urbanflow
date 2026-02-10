@@ -113,6 +113,15 @@ type LocalPolicyStation = {
     docks: number;
 };
 
+type ActivePlaybackMove = {
+    fromStationKey: string;
+    toStationKey: string;
+    bikesMoved: number;
+    from: [number, number];
+    to: [number, number];
+    progress: number;
+};
+
 const POLICY_BUCKET_SECONDS = 300;
 const PREVIEW_STEP_MS = 180;
 
@@ -247,6 +256,8 @@ export default function MapShell() {
     const [policyBikesMoved, setPolicyBikesMoved] = useState(0);
     const [policyImpactEnabled, setPolicyImpactEnabled] = useState(false);
     const [policyImpactByStation, setPolicyImpactByStation] = useState<Record<string, number>>({});
+    const [playbackView, setPlaybackView] = useState<"before" | "after">("after");
+    const [activePlaybackMove, setActivePlaybackMove] = useState<ActivePlaybackMove | null>(null);
     const [policySpecSha256, setPolicySpecSha256] = useState<string>("unknown");
     const [policyReadyRunKeySerialized, setPolicyReadyRunKeySerialized] = useState<string | null>(null);
     const [previewPhase, setPreviewPhase] = useState<"idle" | "frozen" | "computing" | "playback">("idle");
@@ -266,9 +277,13 @@ export default function MapShell() {
         viewSnapshotId: string;
         viewSnapshotSha256: string;
     } | null>(null);
+    const stationIndexRef = useRef<StationPick[]>(stationIndex);
     useEffect(() => {
         optimizationSessionRef.current = optimizationSession;
     }, [optimizationSession]);
+    useEffect(() => {
+        stationIndexRef.current = stationIndex;
+    }, [stationIndex]);
 
     // “Inspect lock” v0: freeze live GBFS updates while drawer open
     const inspectOpen = !!selected;
@@ -339,7 +354,7 @@ export default function MapShell() {
             ? "stale"
             : policyStatus;
     const effectivePolicyImpactEnabled =
-        policyImpactEnabled && effectivePolicyStatus === "ready";
+        policyImpactEnabled && effectivePolicyStatus === "ready" && playbackView === "after";
     const progressLabel = `${hud.mode === "live" ? "Live" : "Replay"} ${Math.round(hud.progress * 100)}%`;
     const searchStations = stationIndex.map((station) => ({
         stationKey: station.station_id,
@@ -501,6 +516,7 @@ export default function MapShell() {
             if (!args.animate || moves.length <= 0) {
                 setPolicyImpactByStation(impact);
                 setPolicyImpactEnabled(moves.length > 0);
+                setActivePlaybackMove(null);
                 setPreviewPhase("frozen");
                 setOptimizationSession((session) => ({
                     ...session,
@@ -512,6 +528,7 @@ export default function MapShell() {
             }
 
             setPolicyImpactEnabled(true);
+            setPlaybackView("after");
             setPolicyImpactByStation({});
             setPreviewPhase("playback");
             setOptimizationSession((session) => ({
@@ -536,7 +553,30 @@ export default function MapShell() {
                         activeRequestId: null,
                         playbackCursor: ordered.length,
                     }));
+                    setActivePlaybackMove(null);
                     return;
+                }
+                const currentStations = stationIndexRef.current;
+                const fromStation = currentStations.find((station) => station.station_id === move.from_station_key);
+                const toStation = currentStations.find((station) => station.station_id === move.to_station_key);
+                if (
+                    fromStation &&
+                    toStation &&
+                    Number.isFinite(fromStation.lon) &&
+                    Number.isFinite(fromStation.lat) &&
+                    Number.isFinite(toStation.lon) &&
+                    Number.isFinite(toStation.lat)
+                ) {
+                    setActivePlaybackMove({
+                        fromStationKey: move.from_station_key,
+                        toStationKey: move.to_station_key,
+                        bikesMoved: Math.max(0, Math.round(move.bikes_moved)),
+                        from: [fromStation.lon as number, fromStation.lat as number],
+                        to: [toStation.lon as number, toStation.lat as number],
+                        progress: 0.5,
+                    });
+                } else {
+                    setActivePlaybackMove(null);
                 }
                 const delta = Number(move.bikes_moved);
                 if (Number.isFinite(delta) && delta > 0) {
@@ -681,6 +721,7 @@ export default function MapShell() {
             window.clearInterval(previewTimerRef.current);
             previewTimerRef.current = null;
         }
+        setActivePlaybackMove(null);
         setPreviewPhase("idle");
         setOptimizationSession((session) => ({
             ...session,
@@ -691,6 +732,9 @@ export default function MapShell() {
         }));
         hud.goLive();
     }, [hud]);
+    const handleTogglePlaybackView = useCallback(() => {
+        setPlaybackView((current) => (current === "after" ? "before" : "after"));
+    }, []);
 
     useEffect(() => {
         if (!hud.sv || hud.sv.startsWith("sv:local-")) return;
@@ -809,6 +853,8 @@ export default function MapShell() {
             openInspect({
                 station_id: result.stationKey,
                 name: result.name,
+                lat: fromMap?.lat ?? 40.75,
+                lon: fromMap?.lon ?? -73.98,
                 capacity: fromMap?.capacity ?? null,
                 bikes: fromMap?.bikes ?? null,
                 docks: fromMap?.docks ?? null,
@@ -1074,6 +1120,8 @@ export default function MapShell() {
                 openInspect({
                     station_id: stationId,
                     name: `Station ${stationId}`,
+                    lat: 40.75,
+                    lon: -73.98,
                     capacity: 40,
                     bikes: 12,
                     docks: 28,
@@ -1125,7 +1173,8 @@ export default function MapShell() {
                     selectedStationId={selected?.station_id ?? null}
                     policyImpactEnabled={effectivePolicyImpactEnabled}
                     policyImpactByStation={policyImpactByStation}
-                    freeze={inspectOpen}
+                    activePolicyMove={activePlaybackMove}
+                    freeze={inspectOpen || optimizationSession.mode === "playback"}
                 />
             </div>
             {optimizationSession.mode !== "live" ? (
@@ -1189,6 +1238,8 @@ export default function MapShell() {
                             policyImpactEnabled={effectivePolicyImpactEnabled}
                             policyImpactSummary={policyImpactSummary}
                             policySummary={policySummary}
+                            playbackView={playbackView}
+                            onTogglePlaybackView={handleTogglePlaybackView}
                             onTogglePlay={hud.togglePlay}
                             onGoLive={handleGoLive}
                             onToggleLayer={hud.toggleLayer}
