@@ -44,6 +44,7 @@ type Props = {
         };
     } | null;
     policyStrategy?: "greedy" | "global";
+    availablePolicyStrategies?: Array<"greedy" | "global">;
     onPolicyStrategyChange?: (strategy: "greedy" | "global") => void;
     canCancelPolicy?: boolean;
     onCancelPolicy?: () => void;
@@ -96,6 +97,7 @@ export default function CommandStack({
     policyImpactSummary,
     policySummary,
     policyStrategy = "greedy",
+    availablePolicyStrategies = ["greedy", "global"],
     onPolicyStrategyChange,
     canCancelPolicy = false,
     onCancelPolicy,
@@ -128,6 +130,8 @@ export default function CommandStack({
     const [loading, setLoading] = useState(false);
     const [remoteError, setRemoteError] = useState<string | null>(null);
     const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+    const greedyStrategyAvailable = availablePolicyStrategies.includes("greedy");
+    const globalStrategyAvailable = availablePolicyStrategies.includes("global");
     const trimmedQuery = query.trim();
     const canSearch = trimmedQuery.length >= 2;
     const localResults = useMemo(() => {
@@ -401,7 +405,7 @@ export default function CommandStack({
                             type="button"
                             style={smallBtnStyle}
                             onClick={() => onPolicyStrategyChange?.("greedy")}
-                            disabled={policyStatus === "pending"}
+                            disabled={policyStatus === "pending" || !greedyStrategyAvailable}
                             data-uf-id="policy-strategy-greedy"
                             data-uf-active={policyStrategy === "greedy" ? "true" : "false"}
                         >
@@ -411,7 +415,7 @@ export default function CommandStack({
                             type="button"
                             style={smallBtnStyle}
                             onClick={() => onPolicyStrategyChange?.("global")}
-                            disabled={policyStatus === "pending"}
+                            disabled={policyStatus === "pending" || !globalStrategyAvailable}
                             data-uf-id="policy-strategy-global"
                             data-uf-active={policyStrategy === "global" ? "true" : "false"}
                         >

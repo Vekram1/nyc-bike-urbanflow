@@ -147,6 +147,124 @@ describe("createPolicyRouteHandler", () => {
     expect(body.error.code).toBe("method_not_allowed");
   });
 
+  it("returns 503 on /api/policy/status when latest run is failed", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return {
+            run_id: 99,
+            system_id: "citibike-nyc",
+            policy_version: "rebal.greedy.v1",
+            policy_spec_sha256: "abc",
+            sv: "abc",
+            decision_bucket_ts: "2026-02-06T18:00:00.000Z",
+            horizon_steps: 0,
+            input_quality: "blocked",
+            status: "fail",
+            no_op: true,
+            no_op_reason: "input_quality_blocked",
+            error_reason: "policy_worker_error",
+            created_at: "2026-02-06T18:00:00.000Z",
+            move_count: 0,
+          };
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const res = await handler(
+      new Request(
+        "https://example.test/api/policy/status?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000"
+      )
+    );
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error.code).toBe("policy_run_failed");
+  });
+
+  it("returns 503 when pending run exceeds timeout threshold", async () => {
+    const createdAt = new Date(Date.now() - 20_000);
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          return validSv;
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: false as const, reason: "deduped" };
+        },
+        async getPendingByDedupeKey() {
+          return {
+            job_id: 77,
+            attempts: 4,
+            max_attempts: 10,
+            created_at: createdAt,
+            visible_at: new Date(Date.now() + 5_000),
+          };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.greedy.v1",
+        available_policy_versions: ["rebal.greedy.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2500,
+        pending_timeout_ms: 10_000,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const res = await handler(
+      new Request("https://example.test/api/policy/run?v=1&sv=abc&policy_version=rebal.greedy.v1&T_bucket=1738872000")
+    );
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error.code).toBe("policy_worker_unavailable");
+    expect(body.error.retryable).toBe(true);
+    expect(body.pending_age_ms).toBeGreaterThan(10_000);
+    expect(body.attempts).toBe(4);
+    expect(body.max_attempts).toBe(10);
+  });
+
   it("returns 409 view_snapshot_mismatch when snapshot precondition does not match", async () => {
     const handler = createPolicyRouteHandler({
       tokens: {
@@ -316,6 +434,53 @@ describe("createPolicyRouteHandler", () => {
     expect(body.default_strategy).toBe("greedy.v1");
     expect(Array.isArray(body.available_strategies)).toBe(true);
     expect(Array.isArray(body.available_policy_versions)).toBe(true);
+  });
+
+  it("filters policy config versions through allowlist when listAllowedValues is available", async () => {
+    const handler = createPolicyRouteHandler({
+      tokens: {
+        async validate() {
+          throw new Error("not used");
+        },
+      } as unknown as import("../sv/service").ServingTokenService,
+      allowlist: {
+        async isAllowed() {
+          return true;
+        },
+        async listAllowedValues() {
+          return ["rebal.greedy.v1"];
+        },
+      },
+      policyStore: {
+        async getRunSummary() {
+          return null;
+        },
+        async listMoves() {
+          return [];
+        },
+      },
+      queue: {
+        async enqueue() {
+          return { ok: true as const, job_id: 1 };
+        },
+      },
+      config: {
+        default_policy_version: "rebal.global.v1",
+        available_policy_versions: ["rebal.greedy.v1", "rebal.global.v1"],
+        default_horizon_steps: 0,
+        retry_after_ms: 2000,
+        max_moves: 50,
+        budget_presets: [],
+      },
+    });
+
+    const res = await handler(new Request("https://example.test/api/policy/config?v=1"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.default_policy_version).toBe("rebal.greedy.v1");
+    expect(body.default_strategy).toBe("greedy.v1");
+    expect(body.available_policy_versions).toEqual(["rebal.greedy.v1"]);
+    expect(body.available_strategies).toEqual(["greedy.v1"]);
   });
 
   it("returns 202 and enqueues when run is missing", async () => {

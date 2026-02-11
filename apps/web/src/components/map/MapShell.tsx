@@ -377,6 +377,14 @@ function buildStationSnapshotSha(stations: StationPick[]): string {
     return `snap-${(acc >>> 0).toString(16).padStart(8, "0")}`;
 }
 
+function parseSnapshotBucketFromViewSnapshotId(viewSnapshotId: string): number | null {
+    const parts = viewSnapshotId.split(":");
+    if (parts.length < 5) return null;
+    const parsed = Number(parts[3]);
+    if (!Number.isFinite(parsed) || parsed < 0) return null;
+    return Math.floor(parsed);
+}
+
 export default function MapShell() {
     const isDevMode = process.env.NODE_ENV !== "production";
     const [selected, setSelected] = useState<StationPick | null>(null);
@@ -391,6 +399,9 @@ export default function MapShell() {
     } | null>(null);
     const [policyVersion, setPolicyVersion] = useState<string>("rebal.greedy.v1");
     const [policyStrategy, setPolicyStrategy] = useState<"greedy" | "global">("greedy");
+    const [availablePolicyVersions, setAvailablePolicyVersions] = useState<string[]>([
+        "rebal.greedy.v1",
+    ]);
     const [policyStatus, setPolicyStatus] = useState<"idle" | "pending" | "ready" | "stale" | "error">("idle");
     const [policyError, setPolicyError] = useState<string | null>(null);
     const [policySyncViewNeeded, setPolicySyncViewNeeded] = useState(false);
@@ -516,18 +527,20 @@ export default function MapShell() {
         stationSnapshotSha,
         timelineDisplayTimeMs,
     ]);
-    const currentRunKeySerialized = useMemo(
-        () => serializePolicyRunKey(currentRunKey),
-        [currentRunKey]
+    const activeRunKey = useMemo<PolicyRunKey>(() => {
+        if (optimizationSession.mode !== "live" && optimizationSession.frozenRunKey) {
+            return optimizationSession.frozenRunKey;
+        }
+        return currentRunKey;
+    }, [currentRunKey, optimizationSession.frozenRunKey, optimizationSession.mode]);
+    const activeRunKeySerialized = useMemo(
+        () => serializePolicyRunKey(activeRunKey),
+        [activeRunKey]
     );
-    const currentRunKeyRef = useRef(currentRunKeySerialized);
-    useEffect(() => {
-        currentRunKeyRef.current = currentRunKeySerialized;
-    }, [currentRunKeySerialized]);
     const effectivePolicyStatus = deriveEffectivePolicyStatus({
         policyStatus,
         policyReadyRunKeySerialized,
-        currentRunKeySerialized,
+        currentRunKeySerialized: activeRunKeySerialized,
     });
     const effectivePolicyImpactEnabled =
         policyImpactEnabled && effectivePolicyStatus === "ready" && playbackView === "after";
@@ -619,19 +632,19 @@ export default function MapShell() {
             bikesMoved: policyBikesMoved,
             previewDisclaimer: "Preview only: this simulation does not dispatch bikes in the live system.",
             technical: {
-                sv: currentRunKey.sv,
+                sv: activeRunKey.sv,
                 policyVersion,
                 policySpecSha256,
-                decisionBucketTs: currentRunKey.decisionBucketTs,
-                viewSnapshotId: currentRunKey.viewSnapshotId,
-                viewSnapshotSha256: currentRunKey.viewSnapshotSha256,
+                decisionBucketTs: activeRunKey.decisionBucketTs,
+                viewSnapshotId: activeRunKey.viewSnapshotId,
+                viewSnapshotSha256: activeRunKey.viewSnapshotSha256,
             },
         };
     }, [
-        currentRunKey.decisionBucketTs,
-        currentRunKey.sv,
-        currentRunKey.viewSnapshotId,
-        currentRunKey.viewSnapshotSha256,
+        activeRunKey.decisionBucketTs,
+        activeRunKey.sv,
+        activeRunKey.viewSnapshotId,
+        activeRunKey.viewSnapshotSha256,
         decisionBucketTs,
         effectivePolicyStatus,
         policyBikesMoved,
@@ -650,8 +663,8 @@ export default function MapShell() {
         };
     }, [latestRunStats, previousRunStats]);
     const previewFrozenLabel = useMemo(
-        () => new Date(currentRunKey.decisionBucketTs * 1000).toLocaleString(),
-        [currentRunKey.decisionBucketTs]
+        () => new Date(activeRunKey.decisionBucketTs * 1000).toLocaleString(),
+        [activeRunKey.decisionBucketTs]
     );
     const diagnosticsPayload = useMemo<DiagnosticsPayload>(() => {
         const topStationDeltas = Object.entries(policyImpactByStation)
@@ -664,15 +677,15 @@ export default function MapShell() {
             .slice(0, 12);
         return {
             generated_at: new Date().toISOString(),
-            system_id: currentRunKey.systemId,
+            system_id: activeRunKey.systemId,
             run_key: {
-                system_id: currentRunKey.systemId,
-                sv_redacted: redactSvForDiagnostics(currentRunKey.sv),
-                decision_bucket_ts: currentRunKey.decisionBucketTs,
-                view_snapshot_id: currentRunKey.viewSnapshotId,
-                view_snapshot_sha256: currentRunKey.viewSnapshotSha256,
-                policy_version: currentRunKey.policyVersion,
-                policy_spec_sha256: currentRunKey.policySpecSha256,
+                system_id: activeRunKey.systemId,
+                sv_redacted: redactSvForDiagnostics(activeRunKey.sv),
+                decision_bucket_ts: activeRunKey.decisionBucketTs,
+                view_snapshot_id: activeRunKey.viewSnapshotId,
+                view_snapshot_sha256: activeRunKey.viewSnapshotSha256,
+                policy_version: activeRunKey.policyVersion,
+                policy_spec_sha256: activeRunKey.policySpecSha256,
             },
             policy_status: effectivePolicyStatus,
             policy_run_id: policyRunId,
@@ -686,7 +699,7 @@ export default function MapShell() {
             top_station_deltas: topStationDeltas,
         };
     }, [
-        currentRunKey,
+        activeRunKey,
         effectivePolicyStatus,
         optimizationSession.mode,
         playbackQuality,
@@ -702,6 +715,14 @@ export default function MapShell() {
         () => JSON.stringify(diagnosticsPayload, null, 2),
         [diagnosticsPayload]
     );
+    const availablePolicyStrategies = useMemo<Array<"greedy" | "global">>(() => {
+        const next = new Set<"greedy" | "global">();
+        for (const version of availablePolicyVersions) {
+            next.add(version.includes("global") ? "global" : "greedy");
+        }
+        if (next.size === 0) next.add("greedy");
+        return Array.from(next);
+    }, [availablePolicyVersions]);
     const handleExportDiagnostics = useCallback(async (): Promise<boolean> => {
         try {
             await navigator.clipboard.writeText(diagnosticsPayloadText);
@@ -746,12 +767,21 @@ export default function MapShell() {
             try {
                 const out = await fetchPolicyConfig();
                 if (cancelled) return;
+                const versions =
+                    out.available_policy_versions.length > 0
+                        ? out.available_policy_versions
+                        : [out.default_policy_version];
+                setAvailablePolicyVersions(versions);
                 if (out.default_policy_version?.length > 0) {
                     setPolicyVersion(out.default_policy_version);
                     setPolicyStrategy(
                         out.default_policy_version.includes("global") ? "global" : "greedy"
                     );
+                    return;
                 }
+                const fallbackVersion = versions[0] ?? "rebal.greedy.v1";
+                setPolicyVersion(fallbackVersion);
+                setPolicyStrategy(fallbackVersion.includes("global") ? "global" : "greedy");
             } catch {
                 if (cancelled) return;
             }
@@ -761,10 +791,19 @@ export default function MapShell() {
             cancelled = true;
         };
     }, []);
-    const handlePolicyStrategyChange = useCallback((strategy: "greedy" | "global") => {
-        setPolicyStrategy(strategy);
-        setPolicyVersion(strategy === "global" ? "rebal.global.v1" : "rebal.greedy.v1");
-    }, []);
+    const handlePolicyStrategyChange = useCallback(
+        (strategy: "greedy" | "global") => {
+            const matchingVersion = availablePolicyVersions.find((version) =>
+                strategy === "global"
+                    ? version.includes("global")
+                    : !version.includes("global")
+            );
+            if (!matchingVersion) return;
+            setPolicyStrategy(strategy);
+            setPolicyVersion(matchingVersion);
+        },
+        [availablePolicyVersions]
+    );
 
     const applyPolicyMoves = useCallback(
         (
@@ -790,6 +829,21 @@ export default function MapShell() {
             setPolicyMovesCount(moves.length);
             setPolicyBikesMoved(bikesMoved);
             setPolicySpecSha256(args.policySpecSha);
+            setOptimizationSession((session) => {
+                if (!session.frozenRunKey) {
+                    return session;
+                }
+                if (session.frozenRunKey.policySpecSha256 === args.policySpecSha) {
+                    return session;
+                }
+                return {
+                    ...session,
+                    frozenRunKey: {
+                        ...session.frozenRunKey,
+                        policySpecSha256: args.policySpecSha,
+                    },
+                };
+            });
             setPolicyReadyRunKeySerialized(args.runKeySerialized);
             setPolicyStatus("ready");
             setPolicyError(
@@ -1019,15 +1073,21 @@ export default function MapShell() {
         const requestRunKeySerialized = frozenRunKeySerialized;
         const requestPolicySpecSha = policySpecSha256;
         const canUseBackend = hud.sv && !hud.sv.startsWith("sv:local-");
+        const snapshotBucketTs = parseSnapshotBucketFromViewSnapshotId(
+            frozenRunKey.viewSnapshotId
+        );
+        const snapshotMatchesDecisionBucket =
+            snapshotBucketTs !== null &&
+            snapshotBucketTs === frozenRunKey.decisionBucketTs;
         const hasServerSnapshotPrecondition =
             frozenRunKey.viewSnapshotId.startsWith("vs:") &&
-            frozenRunKey.viewSnapshotSha256.length === 64;
+            frozenRunKey.viewSnapshotSha256.length === 64 &&
+            snapshotMatchesDecisionBucket;
         try {
             if (isDevMode && demoPolicyMode) {
                 const demoMoves = computeDemoFixtureMoves(stationIndex);
                 const activeSession = optimizationSessionRef.current;
                 if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
-                if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                 applyPolicyMoves(demoMoves, {
                     runId: null,
                     policySpecSha: requestPolicySpecSha,
@@ -1056,7 +1116,6 @@ export default function MapShell() {
                     if (result.status === "ready") {
                         const activeSession = optimizationSessionRef.current;
                         if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
-                        if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                         const readyRunKeySerialized = serializePolicyRunKey({
                             ...frozenRunKey,
                             policySpecSha256: result.policySpecSha256,
@@ -1072,15 +1131,14 @@ export default function MapShell() {
                     }
                     const activeSession = optimizationSessionRef.current;
                     if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
-                    if (requestRunKeySerialized !== currentRunKeyRef.current) return;
-                    setPolicyStatus("error");
-                    setPolicyError("Policy is still computing. Retry in a moment.");
-                    setPreviewPhase("frozen");
-                    setOptimizationSession((session) => ({
-                        ...session,
-                        mode: "frozen",
-                        activeRequestId: null,
-                    }));
+                    const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
+                    applyPolicyMoves(fallbackMoves, {
+                        runId: null,
+                        policySpecSha: requestPolicySpecSha,
+                        runKeySerialized: requestRunKeySerialized,
+                        error: "Backend policy still computing. Showing local preview fallback.",
+                        animate: true,
+                    });
                     return;
                 }
             } catch (error: unknown) {
@@ -1098,7 +1156,6 @@ export default function MapShell() {
                 if (canUseBackend) {
                     const activeSession = optimizationSessionRef.current;
                     if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
-                    if (requestRunKeySerialized !== currentRunKeyRef.current) return;
                     const message =
                         error instanceof Error && error.message.length > 0
                             ? error.message
@@ -1107,25 +1164,40 @@ export default function MapShell() {
                     if (message === "view_snapshot_mismatch") {
                         setPolicyError("The map view changed while optimizing. Sync to the frozen view and try again.");
                         setPolicySyncViewNeeded(true);
+                        setPreviewPhase("frozen");
+                        setOptimizationSession((session) => ({
+                            ...session,
+                            mode: "error",
+                            activeRequestId: null,
+                        }));
+                        return;
                     } else if (message === "policy_run_timeout") {
-                        setPolicyError("Policy run timed out. Check the policy worker and try again.");
+                        const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
+                        applyPolicyMoves(fallbackMoves, {
+                            runId: null,
+                            policySpecSha: requestPolicySpecSha,
+                            runKeySerialized: requestRunKeySerialized,
+                            error: "Backend policy timed out. Showing local preview fallback.",
+                            animate: true,
+                        });
+                        return;
                     } else {
-                        setPolicyError(message);
+                        const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
+                        applyPolicyMoves(fallbackMoves, {
+                            runId: null,
+                            policySpecSha: requestPolicySpecSha,
+                            runKeySerialized: requestRunKeySerialized,
+                            error: `Backend policy failed (${message}). Showing local preview fallback.`,
+                            animate: true,
+                        });
+                        return;
                     }
-                    setPreviewPhase("frozen");
-                    setOptimizationSession((session) => ({
-                        ...session,
-                        mode: "error",
-                        activeRequestId: null,
-                    }));
-                    return;
                 }
             }
 
             const fallbackMoves = computeLocalGreedyFallbackMoves(stationIndex, 200);
             const activeSession = optimizationSessionRef.current;
             if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
-            if (requestRunKeySerialized !== currentRunKeyRef.current) return;
             applyPolicyMoves(fallbackMoves, {
                 runId: null,
                 policySpecSha: requestPolicySpecSha,
@@ -1703,7 +1775,7 @@ export default function MapShell() {
                     policyImpactEnabled={effectivePolicyImpactEnabled}
                     policyImpactByStation={policyImpactByStation}
                     activePolicyMove={activePlaybackMove}
-                    freeze={inspectOpen || optimizationSession.mode === "playback"}
+                    freeze={inspectOpen || optimizationSession.mode !== "live"}
                 />
             </div>
             {optimizationSession.mode !== "live" ? (
@@ -1768,6 +1840,7 @@ export default function MapShell() {
                             policyImpactSummary={policyImpactSummary}
                             policySummary={policySummary}
                             policyStrategy={policyStrategy}
+                            availablePolicyStrategies={availablePolicyStrategies}
                             onPolicyStrategyChange={handlePolicyStrategyChange}
                             canCancelPolicy={effectivePolicyStatus === "pending"}
                             onCancelPolicy={handleCancelPolicy}

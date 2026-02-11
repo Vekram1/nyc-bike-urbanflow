@@ -66,7 +66,13 @@ export type PolicyRouteDeps = {
       dedupe_key?: string;
       max_attempts?: number;
     }) => Promise<{ ok: true; job_id: number } | { ok: false; reason: "deduped" }>;
-    getPendingByDedupeKey?: (args: { type: string; dedupe_key: string }) => Promise<{ job_id: number } | null>;
+    getPendingByDedupeKey?: (args: { type: string; dedupe_key: string }) => Promise<{
+      job_id: number;
+      attempts?: number;
+      max_attempts?: number;
+      visible_at?: Date;
+      created_at?: Date;
+    } | null>;
     cancelByDedupeKey?: (args: { type: string; dedupe_key: string }) => Promise<boolean>;
   };
   config: {
@@ -74,6 +80,7 @@ export type PolicyRouteDeps = {
     available_policy_versions: string[];
     default_horizon_steps: number;
     retry_after_ms: number;
+    pending_timeout_ms?: number;
     max_moves: number;
     budget_presets: Array<{
       key: string;
@@ -130,6 +137,10 @@ function classifyPolicyError(code: string): { category: PolicyErrorCategory; ret
     case "sv_revoked":
     case "sv_expired":
       return { category: "sv_invalid", retryable: false };
+    case "policy_worker_unavailable":
+      return { category: "internal_error", retryable: true };
+    case "policy_run_failed":
+      return { category: "internal_error", retryable: false };
     case "method_not_allowed":
     case "not_found":
       return { category: "internal_error", retryable: false };
@@ -174,6 +185,18 @@ function inferStrategyFromPolicyVersion(policyVersion: string): PolicyStrategy |
   if (policyVersion.includes(".greedy.")) return "greedy.v1";
   if (policyVersion.includes(".global.")) return "global.v1";
   return null;
+}
+
+function uniquePolicyVersions(values: string[]): string[] {
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    if (normalized.length === 0 || seen.has(normalized)) continue;
+    seen.add(normalized);
+    next.push(normalized);
+  }
+  return next;
 }
 
 function parseStrategy(value: string | null): PolicyStrategy | null {
@@ -245,6 +268,28 @@ function pendingResponse(params: {
   );
 }
 
+function pendingTimeoutResponse(params: {
+  message: string;
+  pending_age_ms: number | null;
+  attempts: number | null;
+  max_attempts: number | null;
+  retry_after_ms: number;
+}): Response {
+  return errorResponse({
+    code: "policy_worker_unavailable",
+    message: params.message,
+    status: 503,
+    headers: {
+      "Retry-After": String(Math.max(1, Math.ceil(params.retry_after_ms / 1000))),
+    },
+    extra: {
+      pending_age_ms: params.pending_age_ms,
+      attempts: params.attempts,
+      max_attempts: params.max_attempts,
+    },
+  });
+}
+
 function snapshotMismatchResponse(params: {
   requested_view_snapshot_id: string;
   requested_view_snapshot_sha256: string;
@@ -267,6 +312,7 @@ function snapshotMismatchResponse(params: {
 export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
     const logger = deps.logger ?? defaultLogger;
+    const pendingTimeoutMs = Math.max(1, deps.config.pending_timeout_ms ?? 15000);
 
     const url = new URL(request.url);
     const path = url.pathname;
@@ -301,12 +347,35 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
           status: 400,
         });
       }
+      let availablePolicyVersions = uniquePolicyVersions(deps.config.available_policy_versions);
+      if (typeof deps.allowlist.listAllowedValues === "function") {
+        const allowlisted = await deps.allowlist.listAllowedValues({ kind: "policy_version" });
+        if (allowlisted.length > 0) {
+          const allowed = new Set(allowlisted);
+          const filtered = availablePolicyVersions.filter((value) => allowed.has(value));
+          if (filtered.length > 0) {
+            availablePolicyVersions = filtered;
+          } else if (allowed.has(deps.config.default_policy_version)) {
+            availablePolicyVersions = [deps.config.default_policy_version];
+          }
+        }
+      }
+      const defaultPolicyVersion = availablePolicyVersions.includes(deps.config.default_policy_version)
+        ? deps.config.default_policy_version
+        : availablePolicyVersions[0] ?? deps.config.default_policy_version;
+      const availableStrategies = Array.from(
+        new Set(
+          availablePolicyVersions
+            .map((policyVersion) => inferStrategyFromPolicyVersion(policyVersion))
+            .filter((strategy): strategy is PolicyStrategy => strategy !== null)
+        )
+      );
       return json(
         {
-          default_policy_version: deps.config.default_policy_version,
-          default_strategy: inferStrategyFromPolicyVersion(deps.config.default_policy_version) ?? "greedy.v1",
-          available_policy_versions: deps.config.available_policy_versions,
-          available_strategies: ["greedy.v1", "global.v1"],
+          default_policy_version: defaultPolicyVersion,
+          default_strategy: inferStrategyFromPolicyVersion(defaultPolicyVersion) ?? "greedy.v1",
+          available_policy_versions: availablePolicyVersions,
+          available_strategies: availableStrategies.length > 0 ? availableStrategies : ["greedy.v1"],
           default_horizon_steps: deps.config.default_horizon_steps,
           max_moves: deps.config.max_moves,
           budget_presets: deps.config.budget_presets,
@@ -486,6 +555,18 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
       decision_bucket_epoch_s: tBucket,
       horizon_steps: horizonSteps,
     });
+    if (run && run.status !== "success") {
+      return errorResponse({
+        code: "policy_run_failed",
+        message: run.error_reason
+          ? `Policy run failed: ${run.error_reason}`
+          : "Policy run failed",
+        status: 503,
+        headers: {
+          "Retry-After": String(Math.max(1, Math.ceil(deps.config.retry_after_ms / 1000))),
+        },
+      });
+    }
 
     if (path === STATUS_PATH) {
       if (run) {
@@ -519,6 +600,34 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
         ? await deps.queue.getPendingByDedupeKey({ type: "policy.run_v1", dedupe_key: dedupeKey })
         : null;
       if (pending) {
+        const createdAtMs =
+          pending.created_at instanceof Date && Number.isFinite(pending.created_at.getTime())
+            ? pending.created_at.getTime()
+            : null;
+        const pendingAgeMs = createdAtMs === null ? null : Math.max(0, Date.now() - createdAtMs);
+        const attempts =
+          typeof pending.attempts === "number" && Number.isFinite(pending.attempts) ? pending.attempts : null;
+        const maxAttempts =
+          typeof pending.max_attempts === "number" && Number.isFinite(pending.max_attempts)
+            ? pending.max_attempts
+            : null;
+        if (pendingAgeMs !== null && pendingAgeMs > pendingTimeoutMs) {
+          logger.warn("policy.pending_timeout", {
+            system_id: sv.system_id,
+            policy_version: policyVersion,
+            t_bucket: tBucket,
+            pending_age_ms: pendingAgeMs,
+            attempts,
+            max_attempts: maxAttempts,
+          });
+          return pendingTimeoutResponse({
+            message: "Policy worker is unavailable or stalled for this run key",
+            pending_age_ms: pendingAgeMs,
+            attempts,
+            max_attempts: maxAttempts,
+            retry_after_ms: deps.config.retry_after_ms,
+          });
+        }
         return pendingResponse({
           system_id: sv.system_id,
           sv: sv.sv,
@@ -577,6 +686,39 @@ export function createPolicyRouteHandler(deps: PolicyRouteDeps): (request: Reque
     }
 
     if (!run) {
+      const existingPending = deps.queue.getPendingByDedupeKey
+        ? await deps.queue.getPendingByDedupeKey({ type: "policy.run_v1", dedupe_key: dedupeKey })
+        : null;
+      if (existingPending) {
+        const createdAtMs =
+          existingPending.created_at instanceof Date && Number.isFinite(existingPending.created_at.getTime())
+            ? existingPending.created_at.getTime()
+            : null;
+        const pendingAgeMs = createdAtMs === null ? null : Math.max(0, Date.now() - createdAtMs);
+        if (pendingAgeMs !== null && pendingAgeMs > pendingTimeoutMs) {
+          logger.warn("policy.run.pending_timeout", {
+            system_id: sv.system_id,
+            policy_version: policyVersion,
+            t_bucket: tBucket,
+            pending_age_ms: pendingAgeMs,
+            attempts: existingPending.attempts ?? null,
+            max_attempts: existingPending.max_attempts ?? null,
+          });
+          return pendingTimeoutResponse({
+            message: "Policy worker is unavailable or stalled for this run key",
+            pending_age_ms: pendingAgeMs,
+            attempts:
+              typeof existingPending.attempts === "number" && Number.isFinite(existingPending.attempts)
+                ? existingPending.attempts
+                : null,
+            max_attempts:
+              typeof existingPending.max_attempts === "number" && Number.isFinite(existingPending.max_attempts)
+                ? existingPending.max_attempts
+                : null,
+            retry_after_ms: deps.config.retry_after_ms,
+          });
+        }
+      }
       const payload = {
         system_id: sv.system_id,
         sv: sv.sv,

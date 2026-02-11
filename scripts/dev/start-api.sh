@@ -16,7 +16,14 @@ export SYSTEM_ID="${SYSTEM_ID:-citibike-nyc}"
 export SV_KEY_MATERIAL_JSON="${SV_KEY_MATERIAL_JSON:-{\"k1\":\"dev-secret\"}}"
 export API_HOST="${API_HOST:-0.0.0.0}"
 export API_PORT="${API_PORT:-3000}"
+export POLICY_DEFAULT_VERSION="${POLICY_DEFAULT_VERSION:-rebal.greedy.v1}"
+export POLICY_AVAILABLE_VERSIONS="${POLICY_AVAILABLE_VERSIONS:-rebal.greedy.v1,rebal.global.v1}"
 export POLICY_WORKER_ENABLED="${POLICY_WORKER_ENABLED:-1}"
+
+if command -v shasum >/dev/null 2>&1; then
+  db_hash="$(printf '%s' "$DATABASE_URL" | shasum -a 256 | awk '{print $1}' | cut -c1-12)"
+  log "DATABASE_URL hash: ${db_hash}"
+fi
 
 if ! bun -e 'JSON.parse(process.env.SV_KEY_MATERIAL_JSON || "")' >/dev/null 2>&1; then
   candidate="${SV_KEY_MATERIAL_JSON%?}"
@@ -34,6 +41,11 @@ if [[ "$POLICY_WORKER_ENABLED" == "1" ]]; then
   log "Starting policy worker (POLICY_WORKER_ENABLED=1)"
   bun packages/api/src/policy/worker.ts &
   policy_worker_pid="$!"
+  # Fail fast if worker crashes on boot (commonly DB/env issues).
+  sleep 1
+  if ! kill -0 "$policy_worker_pid" >/dev/null 2>&1; then
+    die "Policy worker failed to start. Check DATABASE_URL/Postgres and run scripts/dev/start-policy-worker.sh for logs."
+  fi
   cleanup() {
     if [[ -n "${policy_worker_pid:-}" ]] && kill -0 "$policy_worker_pid" >/dev/null 2>&1; then
       kill "$policy_worker_pid" >/dev/null 2>&1 || true

@@ -102,6 +102,19 @@ function isFiniteNumber(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value);
 }
 
+function parseFiniteNumberLike(value: unknown): number | null {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === "string" && value.trim().length > 0) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+            return parsed;
+        }
+    }
+    return null;
+}
+
 function parseErrorMessage(body: Record<string, unknown> | null, fallback: string): string {
     const error = body?.error;
     if (!error || typeof error !== "object" || Array.isArray(error)) return fallback;
@@ -193,32 +206,35 @@ function parsePolicyConfigResponse(body: Record<string, unknown> | null): Policy
 }
 
 function parsePolicyRunSummary(raw: Record<string, unknown>): PolicyRunSummary | null {
-    if (!isFiniteNumber(raw.run_id)) return null;
+    const runId = parseFiniteNumberLike(raw.run_id);
+    if (runId === null) return null;
     if (!isString(raw.system_id)) return null;
     if (!isString(raw.policy_version)) return null;
     if (!isString(raw.policy_spec_sha256)) return null;
     if (!isString(raw.sv)) return null;
     if (!isString(raw.decision_bucket_ts)) return null;
-    if (!isFiniteNumber(raw.horizon_steps)) return null;
+    const horizonSteps = parseFiniteNumberLike(raw.horizon_steps);
+    if (horizonSteps === null) return null;
     if (!isString(raw.input_quality)) return null;
     if (typeof raw.no_op !== "boolean") return null;
     if (!(raw.no_op_reason === null || isString(raw.no_op_reason))) return null;
     if (!(raw.error_reason === null || isString(raw.error_reason))) return null;
-    if (!isFiniteNumber(raw.move_count)) return null;
+    const moveCount = parseFiniteNumberLike(raw.move_count);
+    if (moveCount === null) return null;
     if (!isString(raw.created_at)) return null;
     return {
-        run_id: raw.run_id,
+        run_id: runId,
         system_id: raw.system_id,
         policy_version: raw.policy_version,
         policy_spec_sha256: raw.policy_spec_sha256,
         sv: raw.sv,
         decision_bucket_ts: raw.decision_bucket_ts,
-        horizon_steps: raw.horizon_steps,
+        horizon_steps: horizonSteps,
         input_quality: raw.input_quality,
         no_op: raw.no_op,
         no_op_reason: raw.no_op_reason,
         error_reason: raw.error_reason,
-        move_count: raw.move_count,
+        move_count: moveCount,
         created_at: raw.created_at,
     };
 }
@@ -270,12 +286,15 @@ function parsePolicyMovesResponse(body: Record<string, unknown> | null): PolicyM
     const runRaw = body.run;
     if (!runRaw || typeof runRaw !== "object" || Array.isArray(runRaw)) return null;
     const run = runRaw as Record<string, unknown>;
-    if (!isFiniteNumber(run.run_id)) return null;
+    const runId = parseFiniteNumberLike(run.run_id);
+    if (runId === null) return null;
     if (!isString(run.policy_version)) return null;
     if (!isString(run.policy_spec_sha256)) return null;
     if (!isString(run.decision_bucket_ts)) return null;
-    if (!isFiniteNumber(run.horizon_steps)) return null;
-    if (!isFiniteNumber(body.top_n)) return null;
+    const horizonSteps = parseFiniteNumberLike(run.horizon_steps);
+    if (horizonSteps === null) return null;
+    const topN = parseFiniteNumberLike(body.top_n);
+    if (topN === null) return null;
     if (!Array.isArray(body.moves)) return null;
     const moves: PolicyMove[] = [];
     for (const moveRaw of body.moves) {
@@ -287,13 +306,13 @@ function parsePolicyMovesResponse(body: Record<string, unknown> | null): PolicyM
     return {
         status: "ready",
         run: {
-            run_id: run.run_id,
+            run_id: runId,
             policy_version: run.policy_version,
             policy_spec_sha256: run.policy_spec_sha256,
             decision_bucket_ts: run.decision_bucket_ts,
-            horizon_steps: run.horizon_steps,
+            horizon_steps: horizonSteps,
         },
-        top_n: body.top_n,
+        top_n: topN,
         moves,
     };
 }

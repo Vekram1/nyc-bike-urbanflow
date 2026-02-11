@@ -42,6 +42,7 @@ type EnvConfig = {
   tile_replay_swr_s: number;
   tile_compare_max_window_s: number;
   policy_retry_after_ms: number;
+  policy_pending_timeout_ms: number;
   policy_default_version: string;
   policy_available_versions: string[];
   policy_default_horizon_steps: number;
@@ -92,6 +93,16 @@ function loadConfig(): EnvConfig {
   if (!db_url) {
     throw new Error("Missing DATABASE_URL");
   }
+  const policyAvailableVersions = parseCsv(process.env.POLICY_AVAILABLE_VERSIONS, [
+    "rebal.greedy.v1",
+    "rebal.global.v1",
+  ]);
+  if (!policyAvailableVersions.includes("rebal.greedy.v1")) {
+    policyAvailableVersions.push("rebal.greedy.v1");
+  }
+  if (!policyAvailableVersions.includes("rebal.global.v1")) {
+    policyAvailableVersions.push("rebal.global.v1");
+  }
 
   return {
     port: parseIntEnv("API_PORT", 3000),
@@ -118,10 +129,11 @@ function loadConfig(): EnvConfig {
     tile_replay_swr_s: parseIntEnv("TILE_REPLAY_SWR_S", 60),
     tile_compare_max_window_s: parseIntEnv("TILE_COMPARE_MAX_WINDOW_S", 7 * 24 * 60 * 60),
     policy_retry_after_ms: parseIntEnv("POLICY_RETRY_AFTER_MS", 2000),
+    policy_pending_timeout_ms: parseIntEnv("POLICY_PENDING_TIMEOUT_MS", 15000),
     policy_default_version: process.env.POLICY_DEFAULT_VERSION?.trim() || "rebal.greedy.v1",
-    policy_available_versions: parseCsv(process.env.POLICY_AVAILABLE_VERSIONS, ["rebal.greedy.v1"]),
+    policy_available_versions: policyAvailableVersions,
     policy_default_horizon_steps: parseIntEnv("POLICY_DEFAULT_HORIZON_STEPS", 0),
-    policy_max_moves: parseIntEnv("POLICY_MAX_MOVES", 80),
+    policy_max_moves: parseIntEnv("POLICY_MAX_MOVES", 240),
     key_material_json: process.env.SV_KEY_MATERIAL_JSON?.trim() || "{}",
     network_degrade_level: parseOptionalIntEnv("NETWORK_DEGRADE_LEVEL"),
     replay_tile_cache_dir: process.env.REPLAY_TILE_CACHE_DIR?.trim() || null,
@@ -769,6 +781,7 @@ async function main(): Promise<void> {
         available_policy_versions: cfg.policy_available_versions,
         default_horizon_steps: cfg.policy_default_horizon_steps,
         retry_after_ms: cfg.policy_retry_after_ms,
+        pending_timeout_ms: cfg.policy_pending_timeout_ms,
         max_moves: cfg.policy_max_moves,
         budget_presets: parseBudgetPresets(process.env.POLICY_BUDGET_PRESETS_JSON),
       },

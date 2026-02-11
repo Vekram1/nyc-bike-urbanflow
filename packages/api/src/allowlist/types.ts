@@ -21,4 +21,5 @@ export type AllowlistRejection = {
 
 export type AllowlistStore = {
   isAllowed(query: AllowlistQuery): Promise<boolean>;
+  listAllowedValues?: (args: { kind: AllowlistQuery["kind"]; system_id?: string }) => Promise<string[]>;
 };

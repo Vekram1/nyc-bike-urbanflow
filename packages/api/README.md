@@ -117,10 +117,19 @@ Optional with defaults:
 - `TILE_REPLAY_SWR_S` default `60`
 - `TILE_COMPARE_MAX_WINDOW_S` default `604800` (7 days; max absolute `|T_bucket - T2_bucket|` for compare requests)
 - `POLICY_RETRY_AFTER_MS` default `2000`
+- `POLICY_PENDING_TIMEOUT_MS` default `15000` (return `policy_worker_unavailable` if same run key stays queued too long)
 - `POLICY_DEFAULT_VERSION` default `rebal.greedy.v1`
-- `POLICY_AVAILABLE_VERSIONS` default `rebal.greedy.v1`
+- `POLICY_AVAILABLE_VERSIONS` default `rebal.greedy.v1,rebal.global.v1`
 - `POLICY_DEFAULT_HORIZON_STEPS` default `0`
-- `POLICY_MAX_MOVES` default `80`
+- `POLICY_MAX_MOVES` default `240`
+- `POLICY_MAX_MOVES_PER_RUN` default `240` (worker-side move cap)
+- `POLICY_BIKE_MOVE_BUDGET_PER_STEP` default `240` (worker-side bike budget per run)
+- `POLICY_MAX_STATIONS_TOUCHED` default `200` (worker-side station-touch cap)
+- `POLICY_MAX_NEIGHBORS` default `12` (worker-side neighbor fanout)
+- `POLICY_NEIGHBOR_RADIUS_M` default `4000` (worker-side neighbor radius)
+- `POLICY_TARGET_ALPHA` default `0.45` (lower occupancy target bound)
+- `POLICY_TARGET_BETA` default `0.55` (upper occupancy target bound)
+- `POLICY_WORKER_CLAIM_ERROR_BACKOFF_MS` default `2000` (worker retry delay after queue claim/database errors)
 - `POLICY_BUDGET_PRESETS_JSON` default `[]`
 - `NETWORK_DEGRADE_LEVEL` default unset (when set to `0..3`, overrides `/api/time.network.degrade_level`)
 - `REPLAY_TILE_CACHE_DIR` default unset (when set, enables replay tile write-through cache on local disk)
@@ -185,6 +194,8 @@ Apply migrations in order:
 - `sql/migrations/0003_namespace_allowlist.sql`
 - ...
 - `sql/migrations/0017_allowlist_seed_defaults.sql`
+- `sql/migrations/0018_job_dlq_resolution.sql`
+- `sql/migrations/0019_allowlist_seed_global_policy.sql`
 
 Refresh serving aggregates (bounded window):
 - `scripts/rebuild_serving_aggregates.sql`

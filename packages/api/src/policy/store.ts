@@ -29,7 +29,7 @@ export type PolicyMove = {
 };
 
 type RunRow = {
-  run_id: number;
+  run_id: number | string;
   system_id: string;
   policy_version: string;
   policy_spec_sha256: string;
@@ -112,7 +112,7 @@ export class PgPolicyReadStore {
       return null;
     }
     return {
-      run_id: row.run_id,
+      run_id: Number(row.run_id),
       system_id: row.system_id,
       policy_version: row.policy_version,
       policy_spec_sha256: row.policy_spec_sha256,

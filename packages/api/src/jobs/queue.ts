@@ -91,9 +91,18 @@ export class PgJobQueue {
     await this.db.query(`DELETE FROM job_queue WHERE job_id = $1`, [job_id]);
   }
 
-  async getPendingByDedupeKey(args: { type: JobType; dedupe_key: string }): Promise<{ job_id: number } | null> {
-    const rows = await this.db.query<{ job_id: number }>(
-      `SELECT job_id
+  async getPendingByDedupeKey(args: {
+    type: JobType;
+    dedupe_key: string;
+  }): Promise<{ job_id: number; attempts: number; max_attempts: number; visible_at: Date; created_at: Date } | null> {
+    const rows = await this.db.query<{
+      job_id: number;
+      attempts: number;
+      max_attempts: number;
+      visible_at: string;
+      created_at: string;
+    }>(
+      `SELECT job_id, attempts, max_attempts, visible_at, created_at
        FROM job_queue
        WHERE type = $1
          AND dedupe_key = $2
@@ -101,7 +110,15 @@ export class PgJobQueue {
        LIMIT 1`,
       [args.type, args.dedupe_key]
     );
-    return rows.rows[0] ?? null;
+    const row = rows.rows[0];
+    if (!row) return null;
+    return {
+      job_id: row.job_id,
+      attempts: row.attempts,
+      max_attempts: row.max_attempts,
+      visible_at: new Date(row.visible_at),
+      created_at: new Date(row.created_at),
+    };
   }
 
   async cancelByDedupeKey(args: { type: JobType; dedupe_key: string }): Promise<boolean> {
