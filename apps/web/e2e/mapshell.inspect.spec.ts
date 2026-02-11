@@ -55,10 +55,12 @@ async function installOptimizeApiMocks(
     opts?: {
         timelineBucketSizeSeconds?: number;
         firstRunMismatch?: boolean;
+        pendingRunAttempts?: number;
     }
 ): Promise<{ getRunCalls: () => number; getTimelineBuckets: () => number[] }> {
     const bucketSizeSeconds = opts?.timelineBucketSizeSeconds ?? 300;
     const firstRunMismatch = opts?.firstRunMismatch ?? false;
+    const pendingRunAttempts = Math.max(0, opts?.pendingRunAttempts ?? 0);
     let runCalls = 0;
     const timelineBuckets: number[] = [];
 
@@ -117,6 +119,18 @@ async function installOptimizeApiMocks(
                         code: "view_snapshot_mismatch",
                         message: "snapshot mismatch",
                     },
+                }),
+            });
+            return;
+        }
+        if (runCalls <= pendingRunAttempts) {
+            await route.fulfill({
+                status: 202,
+                contentType: "application/json",
+                body: JSON.stringify({
+                    status: "pending",
+                    retry_after_ms: 10,
+                    cache_key: "e2e-policy",
                 }),
             });
             return;
@@ -1609,6 +1623,53 @@ test("return-live after optimize preview exits preview mode and resumes live pro
 
     await page.locator('[data-uf-id="scrubber-go-live"]').click();
 
+    await expect(page.locator('[data-uf-id="preview-pill"]')).toHaveCount(0);
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                mode: state.mode ?? "",
+                playing: Boolean(state.playing),
+            };
+        })
+        .toEqual({
+            mode: "live",
+            playing: true,
+        });
+});
+
+test("golden optimize journey runs live to preview to return-live flow", async ({ page }) => {
+    await installOptimizeApiMocks(page, {
+        timelineBucketSizeSeconds: 300,
+        pendingRunAttempts: 1,
+    });
+
+    await page.goto("/");
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                mode: state.mode ?? "",
+                playing: Boolean(state.playing),
+            };
+        })
+        .toEqual({
+            mode: "live",
+            playing: true,
+        });
+
+    await page.locator('[data-uf-id="policy-run-button"]').click();
+    await expect
+        .poll(async () => (await readState(page)).policyStatus ?? "")
+        .toBe("pending");
+
+    await expect
+        .poll(async () => (await readState(page)).policyStatus ?? "")
+        .toBe("ready");
+    await expect(page.locator('[data-uf-id="preview-pill"]')).toBeVisible();
+    await expect(page.locator('[data-uf-id="policy-user-summary"]')).toBeVisible();
+
+    await page.locator('[data-uf-id="scrubber-go-live"]').click();
     await expect(page.locator('[data-uf-id="preview-pill"]')).toHaveCount(0);
     await expect
         .poll(async () => {
