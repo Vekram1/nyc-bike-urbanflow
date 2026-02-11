@@ -53,6 +53,8 @@ type Props = {
         bikesMovedDelta: number;
         stationsImprovedDelta: number;
     } | null;
+    diagnosticsPayload?: string | null;
+    onExportDiagnostics?: () => Promise<boolean> | boolean;
     reducedMotion?: boolean;
     onToggleReducedMotion?: () => void;
     onTogglePlay: () => void;
@@ -95,6 +97,8 @@ export default function CommandStack({
     canCancelPolicy = false,
     onCancelPolicy,
     policyCompare = null,
+    diagnosticsPayload = null,
+    onExportDiagnostics,
     reducedMotion = false,
     onToggleReducedMotion,
     playbackView = "after",
@@ -117,6 +121,7 @@ export default function CommandStack({
     const [remoteResults, setRemoteResults] = useState<SearchResult[] | null>(null);
     const [loading, setLoading] = useState(false);
     const [remoteError, setRemoteError] = useState<string | null>(null);
+    const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
     const trimmedQuery = query.trim();
     const canSearch = trimmedQuery.length >= 2;
     const localResults = useMemo(() => {
@@ -225,6 +230,15 @@ export default function CommandStack({
         setQuery("");
         setRemoteResults(null);
         setRemoteError(null);
+    };
+    const handleExportDiagnostics = async () => {
+        if (!onExportDiagnostics) return;
+        const success = await onExportDiagnostics();
+        setDiagnosticsCopied(success);
+        if (!success) return;
+        window.setTimeout(() => {
+            setDiagnosticsCopied(false);
+        }, 1500);
     };
 
     const onSearchKeyDown: KeyboardEventHandler<HTMLInputElement> = (event) => {
@@ -536,6 +550,21 @@ export default function CommandStack({
                                     <div>view_snapshot_id: {policySummary.technical.viewSnapshotId}</div>
                                     <div>view_snapshot_sha256: {policySummary.technical.viewSnapshotSha256}</div>
                                 </div>
+                                {diagnosticsPayload && onExportDiagnostics ? (
+                                    <div style={{ marginTop: 8 }}>
+                                        <button
+                                            type="button"
+                                            style={smallBtnStyle}
+                                            onClick={() => {
+                                                void handleExportDiagnostics();
+                                            }}
+                                            data-uf-id="policy-export-diagnostics"
+                                            aria-label="Copy diagnostics payload"
+                                        >
+                                            {diagnosticsCopied ? "Copied" : "Copy Diagnostics"}
+                                        </button>
+                                    </div>
+                                ) : null}
                             </details>
                         </div>
                     ) : null}

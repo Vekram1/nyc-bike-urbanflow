@@ -133,6 +133,35 @@ type ActivePlaybackMove = {
     progress: number;
 };
 
+type DiagnosticsStationDelta = {
+    station_key: string;
+    delta: number;
+};
+
+type DiagnosticsPayload = {
+    generated_at: string;
+    system_id: string;
+    run_key: {
+        system_id: string;
+        sv_redacted: string;
+        decision_bucket_ts: number;
+        view_snapshot_id: string;
+        view_snapshot_sha256: string;
+        policy_version: string;
+        policy_spec_sha256: string;
+    };
+    policy_status: "idle" | "pending" | "ready" | "stale" | "error";
+    policy_run_id: number | null;
+    policy_moves_count: number;
+    policy_bikes_moved: number;
+    policy_strategy: "greedy" | "global";
+    playback_quality: PlaybackQuality;
+    playback_quality_reason: string;
+    optimization_session_mode: OptimizationSession["mode"];
+    policy_error: string | null;
+    top_station_deltas: DiagnosticsStationDelta[];
+};
+
 const POLICY_BUCKET_SECONDS = 300;
 const PREVIEW_STEP_MS = 180;
 const REDUCED_STEP_MS = 240;
@@ -196,6 +225,11 @@ function decidePlaybackProfile(args: {
         animateMoveMarker: true,
         reason: "budget_ok",
     };
+}
+
+function redactSvForDiagnostics(sv: string): string {
+    if (sv.length <= 8) return sv;
+    return `${sv.slice(0, 4)}...${sv.slice(-4)}`;
 }
 
 function formatSigned(value: number): string {
@@ -579,6 +613,63 @@ export default function MapShell() {
         () => new Date(currentRunKey.decisionBucketTs * 1000).toLocaleString(),
         [currentRunKey.decisionBucketTs]
     );
+    const diagnosticsPayload = useMemo<DiagnosticsPayload>(() => {
+        const topStationDeltas = Object.entries(policyImpactByStation)
+            .map(([stationKey, delta]) => ({
+                station_key: stationKey,
+                delta: Number(delta),
+            }))
+            .filter((entry) => Number.isFinite(entry.delta) && entry.delta !== 0)
+            .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+            .slice(0, 12);
+        return {
+            generated_at: new Date().toISOString(),
+            system_id: currentRunKey.systemId,
+            run_key: {
+                system_id: currentRunKey.systemId,
+                sv_redacted: redactSvForDiagnostics(currentRunKey.sv),
+                decision_bucket_ts: currentRunKey.decisionBucketTs,
+                view_snapshot_id: currentRunKey.viewSnapshotId,
+                view_snapshot_sha256: currentRunKey.viewSnapshotSha256,
+                policy_version: currentRunKey.policyVersion,
+                policy_spec_sha256: currentRunKey.policySpecSha256,
+            },
+            policy_status: effectivePolicyStatus,
+            policy_run_id: policyRunId,
+            policy_moves_count: policyMovesCount,
+            policy_bikes_moved: policyBikesMoved,
+            policy_strategy: policyStrategy,
+            playback_quality: playbackQuality,
+            playback_quality_reason: playbackQualityReason,
+            optimization_session_mode: optimizationSession.mode,
+            policy_error: policyError,
+            top_station_deltas: topStationDeltas,
+        };
+    }, [
+        currentRunKey,
+        effectivePolicyStatus,
+        optimizationSession.mode,
+        playbackQuality,
+        playbackQualityReason,
+        policyBikesMoved,
+        policyError,
+        policyImpactByStation,
+        policyMovesCount,
+        policyRunId,
+        policyStrategy,
+    ]);
+    const diagnosticsPayloadText = useMemo(
+        () => JSON.stringify(diagnosticsPayload, null, 2),
+        [diagnosticsPayload]
+    );
+    const handleExportDiagnostics = useCallback(async (): Promise<boolean> => {
+        try {
+            await navigator.clipboard.writeText(diagnosticsPayloadText);
+            return true;
+        } catch {
+            return false;
+        }
+    }, [diagnosticsPayloadText]);
     useEffect(() => {
         if (policyStatus === "pending") {
             setA11yAnnouncement("Optimization started. Computing preview on frozen data.");
@@ -1528,6 +1619,8 @@ export default function MapShell() {
                             canCancelPolicy={effectivePolicyStatus === "pending"}
                             onCancelPolicy={handleCancelPolicy}
                             policyCompare={policyCompare}
+                            diagnosticsPayload={diagnosticsPayloadText}
+                            onExportDiagnostics={handleExportDiagnostics}
                             reducedMotion={reducedMotion}
                             onToggleReducedMotion={() =>
                                 setReducedMotionOverride((current) =>
