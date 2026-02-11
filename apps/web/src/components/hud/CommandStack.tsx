@@ -343,7 +343,7 @@ export default function CommandStack({
                         data-uf-mode={mode}
                     >
                         <span style={{ fontSize: 12, opacity: 0.92 }}>
-                            {mode === "live" ? "Live Now" : "Go Live"}
+                            {previewMode ? "Return Live" : mode === "live" ? "Live Now" : "Go Live"}
                         </span>
                         <span>
                             <Keycap k="L" />
@@ -407,7 +407,7 @@ export default function CommandStack({
                         data-uf-id="policy-run-button"
                     >
                         <span style={{ fontSize: 12, opacity: 0.92 }}>
-                            {policyStatus === "pending" ? "Optimizing..." : "Optimize (Preview)"}
+                            {policyStatus === "pending" ? "Computing Preview..." : "Optimize (Preview)"}
                         </span>
                     </button>
                     {previewMode && onTogglePlaybackView ? (
@@ -432,7 +432,7 @@ export default function CommandStack({
                             data-uf-id="policy-cancel"
                             aria-label="Cancel policy run"
                         >
-                            <span style={{ fontSize: 12, opacity: 0.92 }}>Cancel Run</span>
+                            <span style={{ fontSize: 12, opacity: 0.92 }}>Cancel Preview</span>
                         </button>
                     ) : null}
                     <button
@@ -446,7 +446,7 @@ export default function CommandStack({
                         data-uf-enabled={policyImpactEnabled ? "true" : "false"}
                     >
                         <span style={{ fontSize: 12, opacity: 0.92 }}>
-                            {policyImpactEnabled ? "Impact On" : "Impact Off"}
+                            {policyImpactEnabled ? "Preview Overlay On" : "Preview Overlay Off"}
                         </span>
                     </button>
                     <div
@@ -472,7 +472,7 @@ export default function CommandStack({
                             aria-label="Sync view and rerun optimize"
                         >
                             <span style={{ fontSize: 12, opacity: 0.92 }}>
-                                Sync view
+                                Sync Snapshot
                             </span>
                         </button>
                     ) : null}
@@ -553,7 +553,7 @@ export default function CommandStack({
                             data-uf-id="policy-compare-cards"
                         >
                             <div>
-                                Compare {policyCompare.currentStrategy} vs {policyCompare.previousStrategy}
+                                Preview Compare: {policyCompare.currentStrategy} vs {policyCompare.previousStrategy}
                             </div>
                             <div>
                                 Bikes moved {formatSigned(policyCompare.bikesMovedDelta)}
@@ -697,11 +697,11 @@ function Row({ label, hint }: { label: string; hint: string }) {
 }
 
 function policyStatusLabel(status: Props["policyStatus"], moveCount: number): string {
-    if (status === "pending") return "Policy: Computing";
-    if (status === "ready") return `Policy: Ready (${moveCount} moves)`;
-    if (status === "stale") return "Policy: Stale";
-    if (status === "error") return "Policy: Error";
-    return "Policy: Idle";
+    if (status === "pending") return "Preview: Computing";
+    if (status === "ready") return `Preview: Ready (${moveCount} moves)`;
+    if (status === "stale") return "Preview: Stale";
+    if (status === "error") return "Preview: Error";
+    return "Preview: Idle";
 }
 
 function formatSigned(value: number): string {

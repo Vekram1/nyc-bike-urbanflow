@@ -542,7 +542,7 @@ export default function MapShell() {
             stationsImproved,
             shortageReducedLabel,
             bikesMoved: policyBikesMoved,
-            previewDisclaimer: "Preview only: this simulation does not change the real system.",
+            previewDisclaimer: "Preview only: this simulation does not dispatch bikes in the live system.",
             technical: {
                 sv: currentRunKey.sv,
                 policyVersion,
@@ -1467,7 +1467,7 @@ export default function MapShell() {
             ) : null}
             {optimizationSession.mode !== "live" ? (
                 <div className="uf-preview-pill uf-hud-pe-auto" data-uf-id="preview-pill">
-                    Frozen: {previewFrozenLabel} · {optimizationSession.mode === "computing" ? "Compute" : optimizationSession.mode === "playback" ? "Animate" : "Preview"} · {playbackQuality}
+                    Frozen Snapshot: {previewFrozenLabel} · {optimizationSession.mode === "computing" ? "Compute Preview" : optimizationSession.mode === "playback" ? "Animate Preview" : "Preview Ready"} · {playbackQuality}
                 </div>
             ) : null}
 
