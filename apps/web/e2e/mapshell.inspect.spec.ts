@@ -30,6 +30,8 @@ type UfE2EState = {
     policyMoveCount?: number;
     policyLastRunId?: number;
     policyLastError?: string;
+    optimizationSessionMode?: "live" | "frozen" | "computing" | "playback" | "error";
+    playbackQuality?: "full" | "reduced" | "summary";
 };
 
 type UfE2EActions = {
@@ -46,6 +48,148 @@ async function readState(page: import("@playwright/test").Page): Promise<UfE2ESt
         const state = (window as { __UF_E2E?: UfE2EState }).__UF_E2E;
         return state ?? {};
     });
+}
+
+async function installOptimizeApiMocks(
+    page: import("@playwright/test").Page,
+    opts?: {
+        timelineBucketSizeSeconds?: number;
+        firstRunMismatch?: boolean;
+    }
+): Promise<{ getRunCalls: () => number; getTimelineBuckets: () => number[] }> {
+    const bucketSizeSeconds = opts?.timelineBucketSizeSeconds ?? 300;
+    const firstRunMismatch = opts?.firstRunMismatch ?? false;
+    let runCalls = 0;
+    const timelineBuckets: number[] = [];
+
+    await page.route("**/api/time?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                server_now: "2026-02-09T18:00:00.000Z",
+                recommended_live_sv: "sv:e2e-policy",
+                network: {
+                    degrade_level: 0,
+                    client_should_throttle: false,
+                },
+            }),
+        });
+    });
+
+    await page.route("**/api/timeline?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                available_range: ["2026-02-09T16:00:00.000Z", "2026-02-09T18:00:00.000Z"],
+                bucket_size_seconds: bucketSizeSeconds,
+                live_edge_ts: "2026-02-09T18:00:00.000Z",
+            }),
+        });
+    });
+
+    await page.route("**/api/policy/config?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                default_policy_version: "rebal.greedy.v1",
+                available_policy_versions: ["rebal.greedy.v1", "rebal.global.v1"],
+                default_horizon_steps: 6,
+                max_moves: 100,
+            }),
+        });
+    });
+
+    await page.route("**/api/policy/run?*", async (route) => {
+        runCalls += 1;
+        const url = new URL(route.request().url());
+        const timelineBucket = Number(url.searchParams.get("timeline_bucket") ?? "0");
+        if (Number.isFinite(timelineBucket)) timelineBuckets.push(timelineBucket);
+
+        if (firstRunMismatch && runCalls === 1) {
+            await route.fulfill({
+                status: 400,
+                contentType: "application/json",
+                body: JSON.stringify({
+                    error: {
+                        code: "view_snapshot_mismatch",
+                        message: "snapshot mismatch",
+                    },
+                }),
+            });
+            return;
+        }
+
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                status: "ready",
+                run: {
+                    run_id: 200 + runCalls,
+                    system_id: "citibike-nyc",
+                    policy_version: "rebal.greedy.v1",
+                    policy_spec_sha256: "abc123",
+                    sv: "sv:e2e-policy",
+                    decision_bucket_ts: "2026-02-09T18:00:00.000Z",
+                    horizon_steps: 6,
+                    input_quality: "ok",
+                    no_op: false,
+                    no_op_reason: null,
+                    error_reason: null,
+                    move_count: 2,
+                    created_at: "2026-02-09T18:00:01.000Z",
+                },
+            }),
+        });
+    });
+
+    await page.route("**/api/policy/moves?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                status: "ready",
+                run: {
+                    run_id: 201,
+                    policy_version: "rebal.greedy.v1",
+                    policy_spec_sha256: "abc123",
+                    decision_bucket_ts: "2026-02-09T18:00:00.000Z",
+                    horizon_steps: 6,
+                },
+                top_n: 100,
+                moves: [
+                    {
+                        move_rank: 1,
+                        from_station_key: "station-a",
+                        to_station_key: "station-b",
+                        bikes_moved: 3,
+                        dist_m: 200,
+                        budget_exhausted: false,
+                        neighbor_exhausted: false,
+                        reason_codes: ["rebalance"],
+                    },
+                    {
+                        move_rank: 2,
+                        from_station_key: "station-c",
+                        to_station_key: "station-d",
+                        bikes_moved: 2,
+                        dist_m: 300,
+                        budget_exhausted: false,
+                        neighbor_exhausted: false,
+                        reason_codes: ["rebalance"],
+                    },
+                ],
+            }),
+        });
+    });
+
+    return {
+        getRunCalls: () => runCalls,
+        getTimelineBuckets: () => [...timelineBuckets],
+    };
 }
 
 test("MapShell mounts once and publishes e2e state", async ({ page }) => {
@@ -1393,5 +1537,89 @@ test("run greedy transitions pending to ready and enables policy impact overlay"
             moveCount: 2,
             runId: 101,
             impactEnabled: true,
+        });
+});
+
+test("snapshot mismatch shows Sync view and recovers to ready on rerun", async ({ page }) => {
+    const tracker = await installOptimizeApiMocks(page, {
+        timelineBucketSizeSeconds: 300,
+        firstRunMismatch: true,
+    });
+
+    await page.goto("/");
+
+    await page.locator('[data-uf-id="policy-run-button"]').click();
+    await expect
+        .poll(async () => (await readState(page)).policyStatus ?? "")
+        .toBe("error");
+    await expect(page.locator('[data-uf-id="policy-sync-view"]')).toBeVisible();
+
+    await page.locator('[data-uf-id="policy-sync-view"]').click();
+    await expect
+        .poll(async () => (await readState(page)).policyStatus ?? "")
+        .toBe("ready");
+    await expect(page.locator('[data-uf-id="policy-sync-view"]')).toHaveCount(0);
+    expect(tracker.getRunCalls()).toBeGreaterThanOrEqual(2);
+});
+
+test("optimize on replay with alternate timeline bucket size keeps preview controls working", async ({ page }) => {
+    const tracker = await installOptimizeApiMocks(page, {
+        timelineBucketSizeSeconds: 60,
+    });
+
+    await page.goto("/");
+
+    await page.locator('[data-uf-id="scrubber-step-back"]').click();
+    await expect
+        .poll(async () => (await readState(page)).mode ?? "")
+        .toBe("replay");
+
+    await page.locator('[data-uf-id="policy-run-button"]').click();
+    await expect
+        .poll(async () => (await readState(page)).policyStatus ?? "")
+        .toBe("ready");
+    await expect(page.locator('[data-uf-id="preview-pill"]')).toBeVisible();
+
+    const viewToggle = page.locator('[data-uf-id="preview-before-after-toggle"]');
+    await expect(viewToggle).toBeVisible();
+    await expect(viewToggle).toContainText("After");
+    await viewToggle.click();
+    await expect(viewToggle).toContainText("Before");
+
+    const state = await readState(page);
+    expect(state.optimizationSessionMode).toMatch(/^(frozen|playback)$/);
+    expect(state.playbackQuality).toMatch(/^(full|reduced|summary)$/);
+
+    const buckets = tracker.getTimelineBuckets();
+    expect(buckets.length).toBeGreaterThan(0);
+    expect(buckets[0] % 300).toBe(0);
+});
+
+test("return-live after optimize preview exits preview mode and resumes live progression", async ({ page }) => {
+    await installOptimizeApiMocks(page, {
+        timelineBucketSizeSeconds: 300,
+    });
+
+    await page.goto("/");
+    await page.locator('[data-uf-id="policy-run-button"]').click();
+    await expect
+        .poll(async () => (await readState(page)).policyStatus ?? "")
+        .toBe("ready");
+    await expect(page.locator('[data-uf-id="preview-pill"]')).toBeVisible();
+
+    await page.locator('[data-uf-id="scrubber-go-live"]').click();
+
+    await expect(page.locator('[data-uf-id="preview-pill"]')).toHaveCount(0);
+    await expect
+        .poll(async () => {
+            const state = await readState(page);
+            return {
+                mode: state.mode ?? "",
+                playing: Boolean(state.playing),
+            };
+        })
+        .toEqual({
+            mode: "live",
+            playing: true,
         });
 });

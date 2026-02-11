@@ -371,7 +371,6 @@ export default function CommandStack({
             </HUDCard>
             ) : null}
 
-            {!previewMode ? (
             <HUDCard>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 2 }}>
@@ -411,6 +410,20 @@ export default function CommandStack({
                             {policyStatus === "pending" ? "Optimizing..." : "Optimize (Preview)"}
                         </span>
                     </button>
+                    {previewMode && onTogglePlaybackView ? (
+                        <button
+                            type="button"
+                            style={rowBtnStyle}
+                            onClick={onTogglePlaybackView}
+                            aria-label="Toggle before and after preview"
+                            aria-pressed={playbackView === "after"}
+                            data-uf-id="preview-before-after-toggle"
+                        >
+                            <span style={{ fontSize: 12, opacity: 0.92 }}>
+                                {playbackView === "after" ? "View: After" : "View: Before"}
+                            </span>
+                        </button>
+                    ) : null}
                     {canCancelPolicy && onCancelPolicy ? (
                         <button
                             type="button"
@@ -565,7 +578,6 @@ export default function CommandStack({
                     </button>
                 </div>
             </HUDCard>
-            ) : null}
 
             {!previewMode ? (
             <HUDCard>
