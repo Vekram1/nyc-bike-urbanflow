@@ -56,6 +56,10 @@ export type StationPick = {
 type Props = {
     onStationPick?: (s: StationPick) => void;
     onStationsData?: (stations: StationPick[]) => void;
+    onStationsMeta?: (meta: {
+        viewSnapshotId: string | null;
+        viewSnapshotSha256: string | null;
+    }) => void;
     onTileFetchSampleMs?: (latencyMs: number) => void;
     sv: string;
     timelineBucket: number;
@@ -171,6 +175,7 @@ export default function MapView(props: Props) {
     const {
         onStationPick,
         onStationsData,
+        onStationsMeta,
         onTileFetchSampleMs,
         sv,
         timelineBucket,
@@ -557,6 +562,12 @@ export default function MapView(props: Props) {
                         .filter((station: StationPick | null): station is StationPick => station !== null);
                     onStationsData(stations);
                 }
+                onStationsMeta?.({
+                    viewSnapshotId: toText((json as { view_snapshot_id?: unknown }).view_snapshot_id),
+                    viewSnapshotSha256: toText(
+                        (json as { view_snapshot_sha256?: unknown }).view_snapshot_sha256
+                    ),
+                });
                 const availabilityBucketCounts: Record<string, number> = {};
                 for (const feature of json.features as Array<{ properties?: Record<string, unknown> }>) {
                     const props = feature.properties ?? {};
@@ -610,7 +621,7 @@ export default function MapView(props: Props) {
             }));
             console.error("[MapView] refresh_failed", { error: message });
         }
-    }, [freeze, onStationsData, onTileFetchSampleMs]);
+    }, [freeze, onStationsData, onStationsMeta, onTileFetchSampleMs]);
 
     // poll live GBFS (disabled when freeze=true)
     useEffect(() => {

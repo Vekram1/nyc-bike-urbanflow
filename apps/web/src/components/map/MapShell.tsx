@@ -380,6 +380,10 @@ export default function MapShell() {
     const isDevMode = process.env.NODE_ENV !== "production";
     const [selected, setSelected] = useState<StationPick | null>(null);
     const [stationIndex, setStationIndex] = useState<StationPick[]>([]);
+    const [stationFeedSnapshot, setStationFeedSnapshot] = useState<{
+        viewSnapshotId: string;
+        viewSnapshotSha256: string;
+    } | null>(null);
     const [densityResponse, setDensityResponse] = useState<{
         sv: string;
         points: Array<{ pct: number; intensity: number }>;
@@ -476,8 +480,13 @@ export default function MapShell() {
             displayTimeMs: timelineDisplayTimeMs,
             bucketSizeSeconds: POLICY_BUCKET_SECONDS,
             viewSnapshotId:
-                lockedContext?.viewSnapshotId ?? `${hud.sv}:${decisionBucketTs}:${stationIndex.length}`,
-            viewSnapshotSha256: lockedContext?.viewSnapshotSha256 ?? stationSnapshotSha,
+                lockedContext?.viewSnapshotId ??
+                stationFeedSnapshot?.viewSnapshotId ??
+                `${hud.sv}:${decisionBucketTs}:${stationIndex.length}`,
+            viewSnapshotSha256:
+                lockedContext?.viewSnapshotSha256 ??
+                stationFeedSnapshot?.viewSnapshotSha256 ??
+                stationSnapshotSha,
             mode: optimizeMode,
         });
         const runKey = buildPolicyRunKey({
@@ -500,6 +509,7 @@ export default function MapShell() {
         optimizeMode,
         policySpecSha256,
         policyVersion,
+        stationFeedSnapshot,
         stationIndex.length,
         stationSnapshotSha,
         timelineDisplayTimeMs,
@@ -966,6 +976,9 @@ export default function MapShell() {
         const requestRunKeySerialized = frozenRunKeySerialized;
         const requestPolicySpecSha = policySpecSha256;
         const canUseBackend = hud.sv && !hud.sv.startsWith("sv:local-");
+        const hasServerSnapshotPrecondition =
+            frozenRunKey.viewSnapshotId.startsWith("vs:") &&
+            frozenRunKey.viewSnapshotSha256.length === 64;
         try {
             if (isDevMode && demoPolicyMode) {
                 const demoMoves = computeDemoFixtureMoves(stationIndex);
@@ -987,7 +1000,7 @@ export default function MapShell() {
                         runKey: frozenRunKey,
                         maxAttempts: 8,
                         topN: 500,
-                        includeSnapshotPrecondition: true,
+                        includeSnapshotPrecondition: hasServerSnapshotPrecondition,
                         signal: abortController.signal,
                     });
                     if (result.status === "ready") {
@@ -1211,9 +1224,9 @@ export default function MapShell() {
         if (!selected) {
             hud.onInspectOpen();
             setInspectLockRunContext({
-                decisionBucketTs,
-                viewSnapshotId: `${hud.sv}:${decisionBucketTs}:${stationIndex.length}`,
-                viewSnapshotSha256: stationSnapshotSha,
+                decisionBucketTs: currentRunKey.decisionBucketTs,
+                viewSnapshotId: currentRunKey.viewSnapshotId,
+                viewSnapshotSha256: currentRunKey.viewSnapshotSha256,
             });
             setOptimizationSession((session) => ({
                 ...session,
@@ -1228,7 +1241,7 @@ export default function MapShell() {
             }));
         }
         setSelected(station);
-    }, [decisionBucketTs, hud, selected, stationIndex.length, stationSnapshotSha]);
+    }, [currentRunKey, hud, selected]);
 
     const closeInspect = useCallback((reason: "drawer_close_button" | "escape_key" = "drawer_close_button") => {
         if (!selected) return;
@@ -1590,6 +1603,13 @@ export default function MapShell() {
                 <MapView
                     onStationPick={openInspect}
                     onStationsData={setStationIndex}
+                    onStationsMeta={(meta) => {
+                        if (!meta.viewSnapshotId || !meta.viewSnapshotSha256) return;
+                        setStationFeedSnapshot({
+                            viewSnapshotId: meta.viewSnapshotId,
+                            viewSnapshotSha256: meta.viewSnapshotSha256,
+                        });
+                    }}
                     onTileFetchSampleMs={handleTileFetchSample}
                     sv={hud.sv}
                     timelineBucket={timelineBucket}
