@@ -22,6 +22,7 @@ Current optimization support:
 - `scripts/`: SQL/scripts for rebuild/ops tasks.
 - `PLAN.md`: product/architecture contract and invariants.
 - `AGENTS.md`: execution protocol for coding agents.
+- `docs/optimize_rollout_runbook.md`: optimize rollout stages, kill switches, rollback triggers, and observability dashboard spec.
 
 ## Two Ways To Run
 
