@@ -73,7 +73,9 @@ type Props = {
         bikesMoved: number;
         from: [number, number];
         to: [number, number];
-        progress: number;
+        startedAtMs: number;
+        durationMs: number;
+        routeCoords?: Array<[number, number]>;
     } | null;
     freeze?: boolean; // when true, stop refreshing GBFS + keep view deterministic
 };
@@ -81,6 +83,39 @@ type Props = {
 type SourceWithSetData = {
     setData: (data: unknown) => void;
 };
+
+function distance2d(a: [number, number], b: [number, number]): number {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+function pointAlongRoute(route: Array<[number, number]>, progress: number): [number, number] {
+    const clamped = Math.max(0, Math.min(1, progress));
+    if (route.length < 2) return route[0] ?? [0, 0];
+    const segmentLengths: number[] = [];
+    let total = 0;
+    for (let i = 0; i < route.length - 1; i += 1) {
+        const len = distance2d(route[i], route[i + 1]);
+        segmentLengths.push(len);
+        total += len;
+    }
+    if (total <= 0) return route[route.length - 1];
+    const target = total * clamped;
+    let acc = 0;
+    for (let i = 0; i < segmentLengths.length; i += 1) {
+        const len = segmentLengths[i];
+        const next = acc + len;
+        if (target <= next) {
+            const t = len > 0 ? (target - acc) / len : 0;
+            const from = route[i];
+            const to = route[i + 1];
+            return [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t];
+        }
+        acc = next;
+    }
+    return route[route.length - 1];
+}
 
 type UfE2EState = {
     mapViewMountCount?: number;
@@ -698,30 +733,50 @@ export default function MapView(props: Props) {
             (src as SourceWithSetData).setData({ type: "FeatureCollection", features: [] });
             return;
         }
-        const progress = Math.max(0, Math.min(1, move.progress));
-        const markerLon = move.from[0] + (move.to[0] - move.from[0]) * progress;
-        const markerLat = move.from[1] + (move.to[1] - move.from[1]) * progress;
-        (src as SourceWithSetData).setData({
-            type: "FeatureCollection",
-            features: [
-                {
-                    type: "Feature",
-                    properties: { kind: "line", bikes_moved: move.bikesMoved },
-                    geometry: {
-                        type: "LineString",
-                        coordinates: [move.from, move.to],
+
+        let raf = 0;
+        const route = Array.isArray(move.routeCoords) && move.routeCoords.length >= 2
+            ? move.routeCoords
+            : [move.from, move.to];
+        const lineCoords = route.length >= 2 ? route : [move.from, move.to];
+        const durationMs = Math.max(120, Number(move.durationMs) || 260);
+        const startedAt = Number.isFinite(move.startedAtMs) ? move.startedAtMs : performance.now();
+
+        const renderFrame = () => {
+            const now = performance.now();
+            const elapsed = Math.max(0, now - startedAt);
+            const progress = Math.max(0, Math.min(1, elapsed / durationMs));
+            const marker = pointAlongRoute(lineCoords, progress);
+            (src as SourceWithSetData).setData({
+                type: "FeatureCollection",
+                features: [
+                    {
+                        type: "Feature",
+                        properties: { kind: "line", bikes_moved: move.bikesMoved },
+                        geometry: {
+                            type: "LineString",
+                            coordinates: lineCoords,
+                        },
                     },
-                },
-                {
-                    type: "Feature",
-                    properties: { kind: "marker", bikes_moved: move.bikesMoved },
-                    geometry: {
-                        type: "Point",
-                        coordinates: [markerLon, markerLat],
+                    {
+                        type: "Feature",
+                        properties: { kind: "marker", bikes_moved: move.bikesMoved },
+                        geometry: {
+                            type: "Point",
+                            coordinates: marker,
+                        },
                     },
-                },
-            ],
-        });
+                ],
+            });
+            if (progress < 1) {
+                raf = window.requestAnimationFrame(renderFrame);
+            }
+        };
+
+        raf = window.requestAnimationFrame(renderFrame);
+        return () => {
+            if (raf) window.cancelAnimationFrame(raf);
+        };
     }, [activePolicyMove]);
 
     // Recompute station state/colors immediately on scrub/live token changes.

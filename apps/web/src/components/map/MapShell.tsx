@@ -131,7 +131,9 @@ type ActivePlaybackMove = {
     bikesMoved: number;
     from: [number, number];
     to: [number, number];
-    progress: number;
+    startedAtMs: number;
+    durationMs: number;
+    routeCoords?: Array<[number, number]>;
 };
 
 type DiagnosticsStationDelta = {
@@ -165,7 +167,6 @@ type DiagnosticsPayload = {
 
 const POLICY_BUCKET_SECONDS = 300;
 const PREVIEW_STEP_MS = 180;
-const REDUCED_STEP_MS = 240;
 const PERFORMANCE_DROP_FPS = 24;
 
 type PlaybackQuality = "full" | "reduced" | "summary";
@@ -213,9 +214,9 @@ function decidePlaybackProfile(args: {
     if (args.moveCount >= 240 || ((args.fps ?? 0) > 0 && (args.fps ?? 0) < 40)) {
         return {
             quality: "reduced",
-            stepMs: REDUCED_STEP_MS,
-            batchSize: 3,
-            animateMoveMarker: false,
+            stepMs: 260,
+            batchSize: 2,
+            animateMoveMarker: true,
             reason: args.moveCount >= 240 ? "move_volume_medium" : "fps_low",
         };
     }
@@ -430,6 +431,7 @@ export default function MapShell() {
         viewSnapshotSha256: string;
     } | null>(null);
     const stationIndexRef = useRef<StationPick[]>(stationIndex);
+    const osrmRouteCacheRef = useRef<Map<string, Array<[number, number]>>>(new Map());
     const reducedMotion =
         reducedMotionOverride === null ? prefersReducedMotion : reducedMotionOverride;
     useEffect(() => {
@@ -600,7 +602,6 @@ export default function MapShell() {
     }, [effectivePolicyImpactEnabled, policyImpactByStation, stationIndex]);
     const policySummary = useMemo(() => {
         if (effectivePolicyStatus !== "ready") return null;
-        if (policyMovesCount <= 0) return null;
         const strategyLabel = policyVersion.includes("global")
             ? "Global"
             : "Greedy";
@@ -635,7 +636,6 @@ export default function MapShell() {
         effectivePolicyStatus,
         policyBikesMoved,
         policyImpactSummary,
-        policyMovesCount,
         policySpecSha256,
         policyVersion,
     ]);
@@ -792,7 +792,12 @@ export default function MapShell() {
             setPolicySpecSha256(args.policySpecSha);
             setPolicyReadyRunKeySerialized(args.runKeySerialized);
             setPolicyStatus("ready");
-            setPolicyError(args.error);
+            setPolicyError(
+                args.error ??
+                    (moves.length <= 0
+                        ? "No bike moves recommended for this snapshot."
+                        : null)
+            );
             if (previewTimerRef.current !== null) {
                 window.clearInterval(previewTimerRef.current);
                 previewTimerRef.current = null;
@@ -902,14 +907,52 @@ export default function MapShell() {
                         Number.isFinite(toStation.lon) &&
                         Number.isFinite(toStation.lat)
                     ) {
+                        const from = [fromStation.lon as number, fromStation.lat as number] as [number, number];
+                        const to = [toStation.lon as number, toStation.lat as number] as [number, number];
+                        const routeKey = `${from[0]},${from[1]}|${to[0]},${to[1]}`;
+                        const cachedRoute = osrmRouteCacheRef.current.get(routeKey);
                         setActivePlaybackMove({
                             fromStationKey: firstMove.from_station_key,
                             toStationKey: firstMove.to_station_key,
                             bikesMoved: Math.max(0, Math.round(firstMove.bikes_moved)),
-                            from: [fromStation.lon as number, fromStation.lat as number],
-                            to: [toStation.lon as number, toStation.lat as number],
-                            progress: 0.5,
+                            from,
+                            to,
+                            startedAtMs: performance.now(),
+                            durationMs: Math.max(180, profile.stepMs - 20),
+                            routeCoords: cachedRoute,
                         });
+                        if (!cachedRoute) {
+                            fetch(
+                                `/api/osrm/route?from=${encodeURIComponent(`${from[0]},${from[1]}`)}&to=${encodeURIComponent(`${to[0]},${to[1]}`)}`,
+                                { cache: "force-cache" }
+                            )
+                                .then((res) => res.json().catch(() => null))
+                                .then((body) => {
+                                    const route = (body as { route?: unknown } | null)?.route;
+                                    if (!Array.isArray(route) || route.length < 2) return;
+                                    const parsed = route
+                                        .map((coord) => {
+                                            if (!Array.isArray(coord) || coord.length < 2) return null;
+                                            const lon = Number(coord[0]);
+                                            const lat = Number(coord[1]);
+                                            if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+                                            return [lon, lat] as [number, number];
+                                        })
+                                        .filter((coord): coord is [number, number] => coord !== null);
+                                    if (parsed.length < 2) return;
+                                    osrmRouteCacheRef.current.set(routeKey, parsed);
+                                    setActivePlaybackMove((current) =>
+                                        current &&
+                                        current.fromStationKey === firstMove.from_station_key &&
+                                        current.toStationKey === firstMove.to_station_key
+                                            ? { ...current, routeCoords: parsed }
+                                            : current
+                                    );
+                                })
+                                .catch(() => {
+                                    // Best-effort route enrichment only.
+                                });
+                        }
                     } else {
                         setActivePlaybackMove(null);
                     }
