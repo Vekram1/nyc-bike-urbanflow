@@ -358,7 +358,7 @@ export default function CommandStack({
                         onClick={onGoLive}
                         aria-label="Jump to live time"
                         title="Jump to live time"
-                        disabled={inspectLocked}
+                        disabled={!previewMode && inspectLocked}
                         data-uf-id="command-go-live"
                         data-uf-mode={mode}
                     >

@@ -195,10 +195,10 @@ function decidePlaybackProfile(args: {
     }
     if (args.moveCount >= 500) {
         return {
-            quality: "summary",
-            stepMs: PREVIEW_STEP_MS,
-            batchSize: args.moveCount,
-            animateMoveMarker: false,
+            quality: "reduced",
+            stepMs: 300,
+            batchSize: 4,
+            animateMoveMarker: true,
             reason: "move_volume_high",
         };
     }
@@ -1039,13 +1039,20 @@ export default function MapShell() {
             }
             try {
                 if (canUseBackend) {
-                    const result = await runPolicyForView({
-                        runKey: frozenRunKey,
-                        maxAttempts: 8,
-                        topN: 500,
-                        includeSnapshotPrecondition: hasServerSnapshotPrecondition,
-                        signal: abortController.signal,
-                    });
+                    const result = await Promise.race([
+                        runPolicyForView({
+                            runKey: frozenRunKey,
+                            maxAttempts: 8,
+                            topN: 500,
+                            includeSnapshotPrecondition: hasServerSnapshotPrecondition,
+                            signal: abortController.signal,
+                        }),
+                        new Promise<never>((_, reject) => {
+                            window.setTimeout(() => {
+                                reject(new Error("policy_run_timeout"));
+                            }, 15000);
+                        }),
+                    ]);
                     if (result.status === "ready") {
                         const activeSession = optimizationSessionRef.current;
                         if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
@@ -1100,6 +1107,8 @@ export default function MapShell() {
                     if (message === "view_snapshot_mismatch") {
                         setPolicyError("The map view changed while optimizing. Sync to the frozen view and try again.");
                         setPolicySyncViewNeeded(true);
+                    } else if (message === "policy_run_timeout") {
+                        setPolicyError("Policy run timed out. Check the policy worker and try again.");
                     } else {
                         setPolicyError(message);
                     }
@@ -1195,9 +1204,37 @@ export default function MapShell() {
         }));
         hud.goLive();
     }, [hud]);
+    const handleExitPreview = useCallback(() => {
+        if (policyAbortRef.current) {
+            policyAbortRef.current.abort();
+            policyAbortRef.current = null;
+        }
+        if (previewTimerRef.current !== null) {
+            window.clearInterval(previewTimerRef.current);
+            previewTimerRef.current = null;
+        }
+        setSelected(null);
+        hud.onInspectClose();
+        setInspectLockRunContext(null);
+        setPolicyStatus("idle");
+        setPolicyError(null);
+        setPolicySyncViewNeeded(false);
+        setPolicyImpactEnabled(false);
+        setActivePlaybackMove(null);
+        setPreviewPhase("idle");
+        setOptimizationSession((session) => ({
+            ...session,
+            mode: "live",
+            frozenRunKey: null,
+            activeRequestId: null,
+            playbackCursor: 0,
+        }));
+        hud.goLive();
+    }, [hud]);
     const handleTogglePlaybackView = useCallback(() => {
         setPlaybackView((current) => (current === "after" ? "before" : "after"));
     }, []);
+    const goLiveAction = optimizationSession.mode !== "live" ? handleExitPreview : handleGoLive;
 
     useEffect(() => {
         if (!hud.sv || hud.sv.startsWith("sv:local-")) return;
@@ -1371,6 +1408,11 @@ export default function MapShell() {
                 hotkeyLastIgnoredAt: new Date().toISOString(),
             }));
             if (e.code !== "Escape") return;
+            if (optimizationSessionRef.current.mode !== "live") {
+                e.preventDefault();
+                handleExitPreview();
+                return;
+            }
             if (!inspectOpen) return;
 
             e.preventDefault();
@@ -1379,7 +1421,7 @@ export default function MapShell() {
 
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [closeInspect, hud, inspectOpen]);
+    }, [closeInspect, handleExitPreview, hud, inspectOpen]);
 
     useEffect(() => {
         console.info("[MapShell] inspect_lock_changed", {
@@ -1703,7 +1745,7 @@ export default function MapShell() {
                             onStepBack={hud.stepBack}
                             onStepForward={hud.stepForward}
                             onSeek={hud.seekTo}
-                            onGoLive={handleGoLive}
+                            onGoLive={goLiveAction}
                         />
                     </section>
                 </div>
@@ -1748,7 +1790,7 @@ export default function MapShell() {
                             playbackView={playbackView}
                             onTogglePlaybackView={handleTogglePlaybackView}
                             onTogglePlay={hud.togglePlay}
-                            onGoLive={handleGoLive}
+                            onGoLive={goLiveAction}
                             onToggleLayer={hud.toggleLayer}
                             onToggleCompareMode={hud.toggleCompareMode}
                             onToggleSplitView={hud.toggleSplitView}
