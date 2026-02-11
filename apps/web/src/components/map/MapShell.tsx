@@ -415,7 +415,7 @@ export default function MapShell() {
     const [activePlaybackMove, setActivePlaybackMove] = useState<ActivePlaybackMove | null>(null);
     const [policySpecSha256, setPolicySpecSha256] = useState<string>("unknown");
     const [latestRunStats, setLatestRunStats] = useState<PolicyRunStats | null>(null);
-    const [previousRunStats, setPreviousRunStats] = useState<PolicyRunStats | null>(null);
+    const [, setPreviousRunStats] = useState<PolicyRunStats | null>(null);
     const [policyReadyRunKeySerialized, setPolicyReadyRunKeySerialized] = useState<string | null>(null);
     const [previewPhase, setPreviewPhase] = useState<"idle" | "frozen" | "computing" | "playback">("idle");
     const [optimizationSession, setOptimizationSession] =
@@ -433,7 +433,7 @@ export default function MapShell() {
     const fpsRef = useRef<number | null>(null);
     const hud = useHudControls();
     const fps = useFps();
-    const { p95: tileP95, spark, pushSample } = useRollingP95({ windowMs: 15_000 });
+    const { pushSample } = useRollingP95({ windowMs: 15_000 });
     const inspectAnchorTileKeyRef = useRef<string | null>(null);
     const inspectSessionIdRef = useRef(0);
     const [inspectLockRunContext, setInspectLockRunContext] = useState<{
@@ -652,16 +652,6 @@ export default function MapShell() {
         policySpecSha256,
         policyVersion,
     ]);
-    const policyCompare = useMemo(() => {
-        if (!latestRunStats || !previousRunStats) return null;
-        return {
-            currentStrategy: latestRunStats.strategy === "global" ? "Global" : "Greedy",
-            previousStrategy: previousRunStats.strategy === "global" ? "Global" : "Greedy",
-            bikesMovedDelta: latestRunStats.bikesMoved - previousRunStats.bikesMoved,
-            stationsImprovedDelta:
-                latestRunStats.improvedStations - previousRunStats.improvedStations,
-        };
-    }, [latestRunStats, previousRunStats]);
     const previewFrozenLabel = useMemo(
         () => new Date(activeRunKey.decisionBucketTs * 1000).toLocaleString(),
         [activeRunKey.decisionBucketTs]
@@ -1823,16 +1813,12 @@ export default function MapShell() {
                 </div>
 
                 <div className="uf-left-stack" data-uf-id="hud-controls">
-                    <nav aria-label="Playback and layer controls">
+                    <nav aria-label="Playback and policy controls">
                         <CommandStack
                             previewMode={optimizationSession.mode !== "live"}
                             playing={hud.playing}
                             inspectLocked={hud.inspectLocked}
-                            compareMode={hud.compareMode}
-                            splitView={hud.splitView}
-                            compareOffsetBuckets={hud.compareOffsetBuckets}
                             mode={hud.mode}
-                            layers={hud.layers}
                             searchStations={searchStations}
                             policyStatus={effectivePolicyStatus}
                             policyMovesCount={policyMovesCount}
@@ -1844,7 +1830,6 @@ export default function MapShell() {
                             onPolicyStrategyChange={handlePolicyStrategyChange}
                             canCancelPolicy={effectivePolicyStatus === "pending"}
                             onCancelPolicy={handleCancelPolicy}
-                            policyCompare={policyCompare}
                             diagnosticsPayload={diagnosticsPayloadText}
                             onExportDiagnostics={handleExportDiagnostics}
                             showDemoModeToggle={isDevMode}
@@ -1864,11 +1849,6 @@ export default function MapShell() {
                             onTogglePlaybackView={handleTogglePlaybackView}
                             onTogglePlay={hud.togglePlay}
                             onGoLive={goLiveAction}
-                            onToggleLayer={hud.toggleLayer}
-                            onToggleCompareMode={hud.toggleCompareMode}
-                            onToggleSplitView={hud.toggleSplitView}
-                            onCompareOffsetDown={hud.compareOffsetDown}
-                            onCompareOffsetUp={hud.compareOffsetUp}
                             onSearchPick={handleSearchPick}
                             onRunPolicy={handleRunPolicy}
                             onTogglePolicyImpact={handleTogglePolicyImpact}
@@ -1882,9 +1862,6 @@ export default function MapShell() {
                             activeStations={stats.activeStations}
                             empty={stats.empty}
                             full={stats.full}
-                            tileP95={tileP95}
-                            fps={fps}
-                            spark={spark}
                         />
                     </aside>
                 </div>

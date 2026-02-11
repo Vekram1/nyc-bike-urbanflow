@@ -5,17 +5,12 @@ import { useEffect, useMemo, useState, type KeyboardEventHandler } from "react";
 
 import HUDCard from "./HUDCard";
 import Keycap from "./Keycap";
-import type { LayerToggles } from "@/lib/hudTypes";
 
 type Props = {
     previewMode?: boolean;
     playing: boolean;
     inspectLocked: boolean;
-    compareMode: boolean;
-    splitView: boolean;
-    compareOffsetBuckets: number;
     mode: "live" | "replay";
-    layers: LayerToggles;
     searchStations: Array<{ stationKey: string; name: string }>;
     policyStatus: "idle" | "pending" | "ready" | "stale" | "error";
     policyMovesCount: number;
@@ -48,12 +43,6 @@ type Props = {
     onPolicyStrategyChange?: (strategy: "greedy" | "global") => void;
     canCancelPolicy?: boolean;
     onCancelPolicy?: () => void;
-    policyCompare?: {
-        currentStrategy: string;
-        previousStrategy: string;
-        bikesMovedDelta: number;
-        stationsImprovedDelta: number;
-    } | null;
     diagnosticsPayload?: string | null;
     onExportDiagnostics?: () => Promise<boolean> | boolean;
     showDemoModeToggle?: boolean;
@@ -64,11 +53,6 @@ type Props = {
     onTogglePlay: () => void;
     onTogglePlaybackView?: () => void;
     onGoLive: () => void;
-    onToggleLayer: (key: keyof LayerToggles) => void;
-    onToggleCompareMode: () => void;
-    onToggleSplitView: () => void;
-    onCompareOffsetDown: () => void;
-    onCompareOffsetUp: () => void;
     onSearchPick: (station: { stationKey: string; name: string }) => void;
     showSyncView?: boolean;
     onSyncView?: () => void;
@@ -85,11 +69,7 @@ export default function CommandStack({
     previewMode = false,
     playing,
     inspectLocked,
-    compareMode,
-    splitView,
-    compareOffsetBuckets,
     mode,
-    layers,
     searchStations,
     policyStatus,
     policyMovesCount,
@@ -101,7 +81,6 @@ export default function CommandStack({
     onPolicyStrategyChange,
     canCancelPolicy = false,
     onCancelPolicy,
-    policyCompare = null,
     diagnosticsPayload = null,
     onExportDiagnostics,
     showDemoModeToggle = false,
@@ -113,11 +92,6 @@ export default function CommandStack({
     onTogglePlay,
     onTogglePlaybackView,
     onGoLive,
-    onToggleLayer,
-    onToggleCompareMode,
-    onToggleSplitView,
-    onCompareOffsetDown,
-    onCompareOffsetUp,
     onSearchPick,
     showSyncView = false,
     onSyncView,
@@ -388,7 +362,6 @@ export default function CommandStack({
                         </button>
                     ) : null}
                     <Row label="Step" hint="← / →" />
-                    <Row label="Jump" hint="Home / End" />
                     <Row label="Speed" hint="- / +" />
                     {!previewMode ? <Row label="About" hint="?" /> : null}
                 </div>
@@ -403,7 +376,7 @@ export default function CommandStack({
                     <div style={{ display: "flex", gap: 8 }}>
                         <button
                             type="button"
-                            style={smallBtnStyle}
+                            style={strategyButtonStyle(policyStrategy === "greedy")}
                             onClick={() => onPolicyStrategyChange?.("greedy")}
                             disabled={policyStatus === "pending" || !greedyStrategyAvailable}
                             data-uf-id="policy-strategy-greedy"
@@ -413,7 +386,7 @@ export default function CommandStack({
                         </button>
                         <button
                             type="button"
-                            style={smallBtnStyle}
+                            style={strategyButtonStyle(policyStrategy === "global")}
                             onClick={() => onPolicyStrategyChange?.("global")}
                             disabled={policyStatus === "pending" || !globalStrategyAvailable}
                             data-uf-id="policy-strategy-global"
@@ -578,30 +551,6 @@ export default function CommandStack({
                             </details>
                         </div>
                     ) : null}
-                    {policyCompare ? (
-                        <div
-                            style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 4,
-                                fontSize: 11,
-                                opacity: 0.9,
-                                borderTop: "1px solid rgba(255,255,255,0.12)",
-                                paddingTop: 8,
-                            }}
-                            data-uf-id="policy-compare-cards"
-                        >
-                            <div>
-                                Preview Compare: {policyCompare.currentStrategy} vs {policyCompare.previousStrategy}
-                            </div>
-                            <div>
-                                Bikes moved {formatSigned(policyCompare.bikesMovedDelta)}
-                            </div>
-                            <div>
-                                Stations improved {formatSigned(policyCompare.stationsImprovedDelta)}
-                            </div>
-                        </div>
-                    ) : null}
                     <button
                         type="button"
                         style={rowBtnStyle}
@@ -630,109 +579,6 @@ export default function CommandStack({
                             </span>
                         </button>
                     ) : null}
-                </div>
-            </HUDCard>
-
-            {!previewMode ? (
-            <HUDCard>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 2 }}>
-                        Layers
-                    </div>
-                    <label style={toggleStyle}>
-                        <input
-                            type="checkbox"
-                            checked={layers.severity}
-                            onChange={() => onToggleLayer("severity")}
-                            aria-label="Toggle severity layer"
-                            data-uf-id="layer-toggle-severity"
-                        />
-                        <span>Severity</span>
-                    </label>
-                    <label style={toggleStyle}>
-                        <input
-                            type="checkbox"
-                            checked={layers.capacity}
-                            onChange={() => onToggleLayer("capacity")}
-                            aria-label="Toggle capacity layer"
-                            data-uf-id="layer-toggle-capacity"
-                        />
-                        <span>Capacity</span>
-                    </label>
-                    <label style={toggleStyle}>
-                        <input
-                            type="checkbox"
-                            checked={layers.labels}
-                            onChange={() => onToggleLayer("labels")}
-                            aria-label="Toggle station labels layer"
-                            data-uf-id="layer-toggle-labels"
-                        />
-                        <span>Stations (labels)</span>
-                    </label>
-                </div>
-            </HUDCard>
-            ) : null}
-
-            <HUDCard>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 2 }}>
-                        Compare
-                    </div>
-                    <button
-                        type="button"
-                        style={rowBtnStyle}
-                        onClick={onToggleCompareMode}
-                        disabled={inspectLocked}
-                        aria-label="Toggle compare mode"
-                        data-uf-id="compare-mode-toggle"
-                        data-uf-enabled={compareMode ? "true" : "false"}
-                    >
-                        <span style={{ fontSize: 12, opacity: 0.92 }} data-uf-id="compare-mode-state">
-                            {compareMode ? "Compare On" : "Compare Off"}
-                        </span>
-                    </button>
-                    <button
-                        type="button"
-                        style={rowBtnStyle}
-                        onClick={onToggleSplitView}
-                        disabled={inspectLocked || !compareMode}
-                        aria-label="Toggle split view"
-                        data-uf-id="compare-split-toggle"
-                        data-uf-enabled={splitView ? "true" : "false"}
-                    >
-                        <span style={{ fontSize: 12, opacity: 0.92 }} data-uf-id="compare-split-state">
-                            {splitView ? "Split On" : "Split Off"}
-                        </span>
-                    </button>
-                    <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                            type="button"
-                            style={smallBtnStyle}
-                            onClick={onCompareOffsetDown}
-                            disabled={inspectLocked}
-                            aria-label="Decrease compare offset"
-                            data-uf-id="compare-offset-down"
-                        >
-                            -
-                        </button>
-                        <div
-                            style={{ fontSize: 12, opacity: 0.9, alignSelf: "center" }}
-                            data-uf-id="compare-offset-value"
-                            data-uf-offset-buckets={String(compareOffsetBuckets)}
-                        >
-                            Offset {compareOffsetBuckets} buckets
-                        </div>
-                        <button
-                            type="button"
-                            style={smallBtnStyle}
-                            onClick={onCompareOffsetUp}
-                            disabled={inspectLocked}
-                            aria-label="Increase compare offset"
-                            data-uf-id="compare-offset-up"
-                        >
-                            +
-                        </button>
-                    </div>
                 </div>
             </HUDCard>
         </>
@@ -764,14 +610,6 @@ function formatSigned(value: number): string {
     return `${rounded >= 0 ? "+" : ""}${rounded.toFixed(1)}`;
 }
 
-const toggleStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    fontSize: 12,
-    opacity: 0.92,
-};
-
 const rowBtnStyle: React.CSSProperties = {
     border: "none",
     background: "transparent",
@@ -794,6 +632,17 @@ const smallBtnStyle: React.CSSProperties = {
     cursor: "pointer",
     fontSize: 12,
 };
+
+function strategyButtonStyle(active: boolean): React.CSSProperties {
+    if (!active) return smallBtnStyle;
+    return {
+        ...smallBtnStyle,
+        border: "1px solid rgba(14,165,233,0.95)",
+        background: "rgba(14,165,233,0.25)",
+        color: "rgba(255,255,255,0.98)",
+        fontWeight: 600,
+    };
+}
 
 const searchInputStyle: React.CSSProperties = {
     width: "100%",
