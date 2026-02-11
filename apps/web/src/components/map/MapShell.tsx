@@ -91,6 +91,8 @@ type UfE2EState = {
     optimizationActiveRequestId?: number;
     optimizationPlaybackCursor?: number;
     reducedMotion?: boolean;
+    playbackQuality?: PlaybackQuality;
+    playbackQualityReason?: string;
 };
 
 type UfE2EActions = {
@@ -133,6 +135,68 @@ type ActivePlaybackMove = {
 
 const POLICY_BUCKET_SECONDS = 300;
 const PREVIEW_STEP_MS = 180;
+const REDUCED_STEP_MS = 240;
+const PERFORMANCE_DROP_FPS = 24;
+
+type PlaybackQuality = "full" | "reduced" | "summary";
+
+type PlaybackProfile = {
+    quality: PlaybackQuality;
+    stepMs: number;
+    batchSize: number;
+    animateMoveMarker: boolean;
+    reason: string;
+};
+
+function decidePlaybackProfile(args: {
+    moveCount: number;
+    reducedMotion: boolean;
+    fps: number | null;
+}): PlaybackProfile {
+    if (args.reducedMotion) {
+        return {
+            quality: "summary",
+            stepMs: PREVIEW_STEP_MS,
+            batchSize: args.moveCount,
+            animateMoveMarker: false,
+            reason: "reduced_motion",
+        };
+    }
+    if (args.moveCount >= 500) {
+        return {
+            quality: "summary",
+            stepMs: PREVIEW_STEP_MS,
+            batchSize: args.moveCount,
+            animateMoveMarker: false,
+            reason: "move_volume_high",
+        };
+    }
+    if ((args.fps ?? 0) > 0 && (args.fps ?? 0) < PERFORMANCE_DROP_FPS) {
+        return {
+            quality: "summary",
+            stepMs: PREVIEW_STEP_MS,
+            batchSize: args.moveCount,
+            animateMoveMarker: false,
+            reason: "fps_critical",
+        };
+    }
+    if (args.moveCount >= 240 || ((args.fps ?? 0) > 0 && (args.fps ?? 0) < 40)) {
+        return {
+            quality: "reduced",
+            stepMs: REDUCED_STEP_MS,
+            batchSize: 3,
+            animateMoveMarker: false,
+            reason: args.moveCount >= 240 ? "move_volume_medium" : "fps_low",
+        };
+    }
+    return {
+        quality: "full",
+        stepMs: PREVIEW_STEP_MS,
+        batchSize: 1,
+        animateMoveMarker: true,
+        reason: "budget_ok",
+    };
+}
 
 function formatSigned(value: number): string {
     if (!Number.isFinite(value)) return "0.0";
@@ -279,11 +343,14 @@ export default function MapShell() {
     const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
     const [reducedMotionOverride, setReducedMotionOverride] = useState<boolean | null>(null);
     const [a11yAnnouncement, setA11yAnnouncement] = useState("");
+    const [playbackQuality, setPlaybackQuality] = useState<PlaybackQuality>("full");
+    const [playbackQualityReason, setPlaybackQualityReason] = useState("budget_ok");
     const lastDrawerStationRef = useRef<string | null>(null);
     const previewTimerRef = useRef<number | null>(null);
     const policyAbortRef = useRef<AbortController | null>(null);
     const nextPolicyRequestIdRef = useRef(0);
     const optimizationSessionRef = useRef<OptimizationSession>(optimizationSession);
+    const fpsRef = useRef<number | null>(null);
     const hud = useHudControls();
     const fps = useFps();
     const { p95: tileP95, spark, pushSample } = useRollingP95({ windowMs: 15_000 });
@@ -315,6 +382,9 @@ export default function MapShell() {
     useEffect(() => {
         stationIndexRef.current = stationIndex;
     }, [stationIndex]);
+    useEffect(() => {
+        fpsRef.current = fps;
+    }, [fps]);
 
     // “Inspect lock” v0: freeze live GBFS updates while drawer open
     const inspectOpen = !!selected;
@@ -515,6 +585,14 @@ export default function MapShell() {
             return;
         }
         if (optimizationSession.mode === "playback") {
+            if (playbackQuality === "reduced") {
+                setA11yAnnouncement("Optimization complete. Playback started in reduced quality mode.");
+                return;
+            }
+            if (playbackQuality === "summary") {
+                setA11yAnnouncement("Optimization complete. Using summary mode for performance.");
+                return;
+            }
             setA11yAnnouncement("Optimization complete. Playback started.");
             return;
         }
@@ -529,7 +607,7 @@ export default function MapShell() {
         if (policyStatus === "error" && policyError) {
             setA11yAnnouncement(`Optimization failed. ${policyError}`);
         }
-    }, [optimizationSession.mode, policyError, policyStatus, reducedMotion]);
+    }, [optimizationSession.mode, playbackQuality, policyError, policyStatus, reducedMotion]);
 
     useEffect(() => {
         let cancelled = false;
@@ -588,7 +666,15 @@ export default function MapShell() {
                 window.clearInterval(previewTimerRef.current);
                 previewTimerRef.current = null;
             }
-            if (!args.animate || reducedMotion || moves.length <= 0) {
+            const profile = decidePlaybackProfile({
+                moveCount: moves.length,
+                reducedMotion,
+                fps: fpsRef.current,
+            });
+            setPlaybackQuality(profile.quality);
+            setPlaybackQualityReason(profile.reason);
+
+            if (!args.animate || profile.quality === "summary" || moves.length <= 0) {
                 setPolicyImpactByStation(impact);
                 setPolicyImpactEnabled(moves.length > 0);
                 setActivePlaybackMove(null);
@@ -614,9 +700,33 @@ export default function MapShell() {
             const ordered = [...moves].sort((a, b) => a.move_rank - b.move_rank);
             const nextImpact: Record<string, number> = {};
             let idx = 0;
+            let lowFpsStreak = 0;
             previewTimerRef.current = window.setInterval(() => {
-                const move = ordered[idx];
-                if (!move) {
+                const currentFps = fpsRef.current;
+                if ((currentFps ?? 0) > 0 && (currentFps ?? 0) < PERFORMANCE_DROP_FPS) {
+                    lowFpsStreak += 1;
+                } else {
+                    lowFpsStreak = 0;
+                }
+                if (profile.quality === "full" && lowFpsStreak >= 3) {
+                    setPlaybackQuality("reduced");
+                    setPlaybackQualityReason("midplay_fps_drop");
+                    setActivePlaybackMove(null);
+                    profile.quality = "reduced";
+                    profile.batchSize = 3;
+                    profile.animateMoveMarker = false;
+                }
+                if (profile.quality === "reduced" && lowFpsStreak >= 6) {
+                    setPlaybackQuality("summary");
+                    setPlaybackQualityReason("midplay_fps_critical");
+                    const remaining = ordered.slice(idx);
+                    for (const move of remaining) {
+                        const delta = Number(move.bikes_moved);
+                        if (!Number.isFinite(delta) || delta <= 0) continue;
+                        nextImpact[move.from_station_key] = (nextImpact[move.from_station_key] ?? 0) - delta;
+                        nextImpact[move.to_station_key] = (nextImpact[move.to_station_key] ?? 0) + delta;
+                    }
+                    setPolicyImpactByStation({ ...nextImpact });
                     if (previewTimerRef.current !== null) {
                         window.clearInterval(previewTimerRef.current);
                         previewTimerRef.current = null;
@@ -631,40 +741,64 @@ export default function MapShell() {
                     setActivePlaybackMove(null);
                     return;
                 }
-                const currentStations = stationIndexRef.current;
-                const fromStation = currentStations.find((station) => station.station_id === move.from_station_key);
-                const toStation = currentStations.find((station) => station.station_id === move.to_station_key);
-                if (
-                    fromStation &&
-                    toStation &&
-                    Number.isFinite(fromStation.lon) &&
-                    Number.isFinite(fromStation.lat) &&
-                    Number.isFinite(toStation.lon) &&
-                    Number.isFinite(toStation.lat)
-                ) {
-                    setActivePlaybackMove({
-                        fromStationKey: move.from_station_key,
-                        toStationKey: move.to_station_key,
-                        bikesMoved: Math.max(0, Math.round(move.bikes_moved)),
-                        from: [fromStation.lon as number, fromStation.lat as number],
-                        to: [toStation.lon as number, toStation.lat as number],
-                        progress: 0.5,
-                    });
+
+                const batchEnd = Math.min(idx + profile.batchSize, ordered.length);
+                if (idx >= ordered.length) {
+                    if (previewTimerRef.current !== null) {
+                        window.clearInterval(previewTimerRef.current);
+                        previewTimerRef.current = null;
+                    }
+                    setPreviewPhase("frozen");
+                    setOptimizationSession((session) => ({
+                        ...session,
+                        mode: "frozen",
+                        activeRequestId: null,
+                        playbackCursor: ordered.length,
+                    }));
+                    setActivePlaybackMove(null);
+                    return;
+                }
+                const firstMove = ordered[idx];
+                if (profile.animateMoveMarker && firstMove) {
+                    const currentStations = stationIndexRef.current;
+                    const fromStation = currentStations.find((station) => station.station_id === firstMove.from_station_key);
+                    const toStation = currentStations.find((station) => station.station_id === firstMove.to_station_key);
+                    if (
+                        fromStation &&
+                        toStation &&
+                        Number.isFinite(fromStation.lon) &&
+                        Number.isFinite(fromStation.lat) &&
+                        Number.isFinite(toStation.lon) &&
+                        Number.isFinite(toStation.lat)
+                    ) {
+                        setActivePlaybackMove({
+                            fromStationKey: firstMove.from_station_key,
+                            toStationKey: firstMove.to_station_key,
+                            bikesMoved: Math.max(0, Math.round(firstMove.bikes_moved)),
+                            from: [fromStation.lon as number, fromStation.lat as number],
+                            to: [toStation.lon as number, toStation.lat as number],
+                            progress: 0.5,
+                        });
+                    } else {
+                        setActivePlaybackMove(null);
+                    }
                 } else {
                     setActivePlaybackMove(null);
                 }
-                const delta = Number(move.bikes_moved);
-                if (Number.isFinite(delta) && delta > 0) {
+                for (let current = idx; current < batchEnd; current += 1) {
+                    const move = ordered[current];
+                    const delta = Number(move.bikes_moved);
+                    if (!Number.isFinite(delta) || delta <= 0) continue;
                     nextImpact[move.from_station_key] = (nextImpact[move.from_station_key] ?? 0) - delta;
                     nextImpact[move.to_station_key] = (nextImpact[move.to_station_key] ?? 0) + delta;
-                    setPolicyImpactByStation({ ...nextImpact });
                 }
+                setPolicyImpactByStation({ ...nextImpact });
                 setOptimizationSession((session) => ({
                     ...session,
-                    playbackCursor: idx + 1,
+                    playbackCursor: batchEnd,
                 }));
-                idx += 1;
-            }, PREVIEW_STEP_MS);
+                idx = batchEnd;
+            }, profile.stepMs);
         },
         [latestRunStats, policyStrategy, reducedMotion]
     );
@@ -706,6 +840,8 @@ export default function MapShell() {
         setPolicyStatus("pending");
         setPolicyError(null);
         setPolicySyncViewNeeded(false);
+        setPlaybackQuality("full");
+        setPlaybackQualityReason("pending");
         const requestRunKeySerialized = frozenRunKeySerialized;
         const requestPolicySpecSha = policySpecSha256;
         const canUseBackend = hud.sv && !hud.sv.startsWith("sv:local-");
@@ -1195,6 +1331,8 @@ export default function MapShell() {
                 optimizationActiveRequestId: optimizationSession.activeRequestId ?? 0,
                 optimizationPlaybackCursor: optimizationSession.playbackCursor,
                 reducedMotion,
+                playbackQuality,
+                playbackQualityReason,
             };
         });
     }, [
@@ -1221,6 +1359,8 @@ export default function MapShell() {
         optimizationSession.mode,
         optimizationSession.playbackCursor,
         optimizationSession.sessionId,
+        playbackQuality,
+        playbackQualityReason,
         reducedMotion,
         selected?.station_id,
         tileRequestKey,
@@ -1327,7 +1467,7 @@ export default function MapShell() {
             ) : null}
             {optimizationSession.mode !== "live" ? (
                 <div className="uf-preview-pill uf-hud-pe-auto" data-uf-id="preview-pill">
-                    Frozen: {previewFrozenLabel} · {optimizationSession.mode === "computing" ? "Compute" : optimizationSession.mode === "playback" ? "Animate" : "Preview"}
+                    Frozen: {previewFrozenLabel} · {optimizationSession.mode === "computing" ? "Compute" : optimizationSession.mode === "playback" ? "Animate" : "Preview"} · {playbackQuality}
                 </div>
             ) : null}
 
