@@ -86,6 +86,62 @@ assert_http_status() {
   fi
 }
 
+assert_http_status_in() {
+  local url="$1"
+  shift
+  local got
+  got="$(curl -s -o /tmp/uf-smoke-body.json -w "%{http_code}" "$url")"
+  for expected in "$@"; do
+    if [[ "$got" == "$expected" ]]; then
+      return 0
+    fi
+  done
+
+  warn "Response body for $url:"
+  cat /tmp/uf-smoke-body.json || true
+  die "Expected one of [${*}] from $url, got $got"
+}
+
+json_get() {
+  local path="$1"
+  bun -e '
+    const fs = require("fs");
+    const path = (process.argv[1] || "").split(".").filter(Boolean);
+    const src = fs.readFileSync(0, "utf8");
+    let value = JSON.parse(src);
+    for (const key of path) {
+      value = value?.[key];
+    }
+    if (value === undefined || value === null) {
+      process.exit(2);
+    }
+    if (typeof value === "object") {
+      process.stdout.write(JSON.stringify(value));
+      process.exit(0);
+    }
+    process.stdout.write(String(value));
+  ' "$path"
+}
+
+build_bucket_ts() {
+  local bucket_size="$1"
+  local live_edge="$2"
+  bun -e '
+    const bucket = Number(process.argv[1] || "300");
+    const liveEdge = process.argv[2];
+    let ms = Date.now();
+    if (liveEdge) {
+      const parsed = Date.parse(liveEdge);
+      if (!Number.isNaN(parsed)) {
+        ms = parsed;
+      }
+    }
+    const seconds = Math.floor(ms / 1000);
+    const bucketed = Math.floor(seconds / bucket) * bucket;
+    process.stdout.write(String(bucketed));
+  ' "$bucket_size" "$live_edge"
+}
+
 log "Checking DB connectivity"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "select 1;" >/dev/null
 
@@ -131,6 +187,21 @@ log "Verifying API health endpoints"
 assert_http_status "200" "${API_ORIGIN}/api/time?system_id=${SYSTEM_ID}"
 assert_http_status "200" "${API_ORIGIN}/api/policy/config?v=1"
 
+log "Verifying policy run + moves endpoints"
+TIME_JSON="$(curl -fsS "${API_ORIGIN}/api/time?v=1&system_id=${SYSTEM_ID}")"
+SV_TOKEN="$(printf '%s' "$TIME_JSON" | json_get "recommended_live_sv")" || die "Missing recommended_live_sv from /api/time"
+TIMELINE_JSON="$(curl -fsS "${API_ORIGIN}/api/timeline?v=1&sv=${SV_TOKEN}")"
+BUCKET_SIZE="$(printf '%s' "$TIMELINE_JSON" | json_get "bucket_size_seconds" || true)"
+LIVE_EDGE_TS="$(printf '%s' "$TIMELINE_JSON" | json_get "live_edge_ts" || true)"
+if [[ -z "${BUCKET_SIZE:-}" ]]; then
+  BUCKET_SIZE="300"
+fi
+POLICY_T_BUCKET="$(build_bucket_ts "$BUCKET_SIZE" "$LIVE_EDGE_TS")"
+POLICY_RUN_URL="${API_ORIGIN}/api/policy/run?v=1&sv=${SV_TOKEN}&policy_version=rebal.greedy.v1&T_bucket=${POLICY_T_BUCKET}"
+POLICY_MOVES_URL="${API_ORIGIN}/api/policy/moves?v=1&sv=${SV_TOKEN}&policy_version=rebal.greedy.v1&T_bucket=${POLICY_T_BUCKET}&top_n=5"
+assert_http_status_in "$POLICY_RUN_URL" "200" "202"
+assert_http_status_in "$POLICY_MOVES_URL" "200" "202"
+
 if [[ "$WITH_WEB" -eq 1 ]]; then
   if [[ -z "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]]; then
     die "NEXT_PUBLIC_MAPBOX_TOKEN is required for web smoke. Set env or pass --skip-web."
@@ -149,6 +220,8 @@ if [[ "$WITH_WEB" -eq 1 ]]; then
   log "Verifying web proxy routes"
   assert_http_status "200" "${WEB_ORIGIN}/api/time?system_id=${SYSTEM_ID}"
   assert_http_status "200" "${WEB_ORIGIN}/api/policy/config?v=1"
+  assert_http_status_in "${WEB_ORIGIN}/api/policy/run?v=1&sv=${SV_TOKEN}&policy_version=rebal.greedy.v1&T_bucket=${POLICY_T_BUCKET}" "200" "202"
+  assert_http_status_in "${WEB_ORIGIN}/api/policy/moves?v=1&sv=${SV_TOKEN}&policy_version=rebal.greedy.v1&T_bucket=${POLICY_T_BUCKET}&top_n=5" "200" "202"
 fi
 
 log "Smoke checks passed"

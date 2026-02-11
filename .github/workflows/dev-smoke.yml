@@ -100,4 +100,4 @@ jobs:
       - name: Run deterministic smoke (fixtures + web proxy)
         run: |
           chmod +x scripts/dev/*.sh
-          scripts/dev/smoke.sh
+          scripts/dev/smoke.sh --require-ingest
