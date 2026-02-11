@@ -93,6 +93,7 @@ type UfE2EState = {
     reducedMotion?: boolean;
     playbackQuality?: PlaybackQuality;
     playbackQualityReason?: string;
+    demoPolicyMode?: boolean;
 };
 
 type UfE2EActions = {
@@ -314,6 +315,33 @@ function computeLocalGreedyFallbackMoves(stations: StationPick[], limit = 200): 
     return moves;
 }
 
+function computeDemoFixtureMoves(stations: StationPick[]): PolicyMove[] {
+    const ordered = [...stations].sort((a, b) => a.station_id.localeCompare(b.station_id));
+    if (ordered.length < 4) return [];
+    return [
+        {
+            move_rank: 1,
+            from_station_key: ordered[0].station_id,
+            to_station_key: ordered[1].station_id,
+            bikes_moved: 3,
+            dist_m: 240,
+            budget_exhausted: false,
+            neighbor_exhausted: false,
+            reason_codes: ["demo_fixture"],
+        },
+        {
+            move_rank: 2,
+            from_station_key: ordered[2].station_id,
+            to_station_key: ordered[3].station_id,
+            bikes_moved: 2,
+            dist_m: 310,
+            budget_exhausted: false,
+            neighbor_exhausted: false,
+            reason_codes: ["demo_fixture"],
+        },
+    ];
+}
+
 function updateUfE2E(update: (current: UfE2EState) => UfE2EState): void {
     if (typeof window === "undefined") return;
     const current = ((window as { __UF_E2E?: UfE2EState }).__UF_E2E ?? {}) as UfE2EState;
@@ -349,6 +377,7 @@ function buildStationSnapshotSha(stations: StationPick[]): string {
 }
 
 export default function MapShell() {
+    const isDevMode = process.env.NODE_ENV !== "production";
     const [selected, setSelected] = useState<StationPick | null>(null);
     const [stationIndex, setStationIndex] = useState<StationPick[]>([]);
     const [densityResponse, setDensityResponse] = useState<{
@@ -366,6 +395,7 @@ export default function MapShell() {
     const [policyImpactEnabled, setPolicyImpactEnabled] = useState(false);
     const [policyImpactByStation, setPolicyImpactByStation] = useState<Record<string, number>>({});
     const [playbackView, setPlaybackView] = useState<"before" | "after">("after");
+    const [demoPolicyMode, setDemoPolicyMode] = useState(false);
     const [activePlaybackMove, setActivePlaybackMove] = useState<ActivePlaybackMove | null>(null);
     const [policySpecSha256, setPolicySpecSha256] = useState<string>("unknown");
     const [latestRunStats, setLatestRunStats] = useState<PolicyRunStats | null>(null);
@@ -937,6 +967,20 @@ export default function MapShell() {
         const requestPolicySpecSha = policySpecSha256;
         const canUseBackend = hud.sv && !hud.sv.startsWith("sv:local-");
         try {
+            if (isDevMode && demoPolicyMode) {
+                const demoMoves = computeDemoFixtureMoves(stationIndex);
+                const activeSession = optimizationSessionRef.current;
+                if (!isActiveSessionRequest(activeSession, sessionId, requestId)) return;
+                if (requestRunKeySerialized !== currentRunKeyRef.current) return;
+                applyPolicyMoves(demoMoves, {
+                    runId: null,
+                    policySpecSha: requestPolicySpecSha,
+                    runKeySerialized: requestRunKeySerialized,
+                    error: "Using demo fixture preview data (dev mode)",
+                    animate: true,
+                });
+                return;
+            }
             try {
                 if (canUseBackend) {
                     const result = await runPolicyForView({
@@ -1032,7 +1076,9 @@ export default function MapShell() {
     }, [
         applyPolicyMoves,
         currentRunKey,
+        demoPolicyMode,
         hud,
+        isDevMode,
         policySpecSha256,
         stationIndex,
     ]);
@@ -1424,6 +1470,7 @@ export default function MapShell() {
                 reducedMotion,
                 playbackQuality,
                 playbackQualityReason,
+                demoPolicyMode,
             };
         });
     }, [
@@ -1452,6 +1499,7 @@ export default function MapShell() {
         optimizationSession.sessionId,
         playbackQuality,
         playbackQualityReason,
+        demoPolicyMode,
         reducedMotion,
         selected?.station_id,
         tileRequestKey,
@@ -1621,6 +1669,11 @@ export default function MapShell() {
                             policyCompare={policyCompare}
                             diagnosticsPayload={diagnosticsPayloadText}
                             onExportDiagnostics={handleExportDiagnostics}
+                            showDemoModeToggle={isDevMode}
+                            demoModeEnabled={demoPolicyMode}
+                            onToggleDemoMode={() => {
+                                setDemoPolicyMode((current) => !current);
+                            }}
                             reducedMotion={reducedMotion}
                             onToggleReducedMotion={() =>
                                 setReducedMotionOverride((current) =>

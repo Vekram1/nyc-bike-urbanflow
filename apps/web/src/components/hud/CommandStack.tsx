@@ -55,6 +55,9 @@ type Props = {
     } | null;
     diagnosticsPayload?: string | null;
     onExportDiagnostics?: () => Promise<boolean> | boolean;
+    showDemoModeToggle?: boolean;
+    demoModeEnabled?: boolean;
+    onToggleDemoMode?: () => void;
     reducedMotion?: boolean;
     onToggleReducedMotion?: () => void;
     onTogglePlay: () => void;
@@ -99,6 +102,9 @@ export default function CommandStack({
     policyCompare = null,
     diagnosticsPayload = null,
     onExportDiagnostics,
+    showDemoModeToggle = false,
+    demoModeEnabled = false,
+    onToggleDemoMode,
     reducedMotion = false,
     onToggleReducedMotion,
     playbackView = "after",
@@ -605,6 +611,21 @@ export default function CommandStack({
                             {reducedMotion ? "Reduced Motion On" : "Reduced Motion Off"}
                         </span>
                     </button>
+                    {showDemoModeToggle ? (
+                        <button
+                            type="button"
+                            style={rowBtnStyle}
+                            onClick={() => onToggleDemoMode?.()}
+                            disabled={!onToggleDemoMode}
+                            aria-label="Toggle demo policy data"
+                            aria-pressed={demoModeEnabled}
+                            data-uf-id="policy-demo-mode-toggle"
+                        >
+                            <span style={{ fontSize: 12, opacity: 0.92 }}>
+                                {demoModeEnabled ? "Demo Policy Data On" : "Demo Policy Data Off"}
+                            </span>
+                        </button>
+                    ) : null}
                 </div>
             </HUDCard>
 
