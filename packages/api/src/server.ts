@@ -133,7 +133,7 @@ function loadConfig(): EnvConfig {
     policy_default_version: process.env.POLICY_DEFAULT_VERSION?.trim() || "rebal.greedy.v1",
     policy_available_versions: policyAvailableVersions,
     policy_default_horizon_steps: parseIntEnv("POLICY_DEFAULT_HORIZON_STEPS", 0),
-    policy_max_moves: parseIntEnv("POLICY_MAX_MOVES", 240),
+    policy_max_moves: parseIntEnv("POLICY_MAX_MOVES", 1000),
     key_material_json: process.env.SV_KEY_MATERIAL_JSON?.trim() || "{}",
     network_degrade_level: parseOptionalIntEnv("NETWORK_DEGRADE_LEVEL"),
     replay_tile_cache_dir: process.env.REPLAY_TILE_CACHE_DIR?.trim() || null,

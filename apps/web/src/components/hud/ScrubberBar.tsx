@@ -1,7 +1,7 @@
 // apps/web/src/components/hud/ScrubberBar.tsx
 "use client";
 
-import { useId } from "react";
+import { useId, useMemo, useState } from "react";
 
 import HUDCard from "./HUDCard";
 import Keycap from "./Keycap";
@@ -13,7 +13,14 @@ type Props = {
     speed: number;
     progress: number;
     progressLabel: string;
-    densityMarks?: Array<{ pct: number; intensity: number }>;
+    densityMarks?: Array<{
+        pct: number;
+        intensity: number;
+        bucketTsMs: number;
+        emptyRate: number;
+        fullRate: number;
+        constrainedPct: number;
+    }>;
     onTogglePlay: () => void;
     onSpeedDown: () => void;
     onSpeedUp: () => void;
@@ -44,9 +51,59 @@ export default function ScrubberBar({
     const scrubberHelpId = useId();
     const clampedProgress = Math.min(1, Math.max(0, progress));
     const progressPercent = Math.round(clampedProgress * 100);
+    const [hoverMark, setHoverMark] = useState<{
+        pct: number;
+        timeLabel: string;
+        emptyLabel: string;
+        fullLabel: string;
+        constrainedLabel: string;
+    } | null>(null);
+    const sortedDensityMarks = useMemo(
+        () => [...densityMarks].sort((a, b) => a.pct - b.pct),
+        [densityMarks]
+    );
     const scrubberValueText = `${progressLabel}. Playback ${
         playing ? "playing" : "paused"
     }. Speed ${speed.toFixed(2)}x.${inspectLocked ? " Inspect lock is active." : ""}`;
+
+    const findNearestDensityMark = (pctRaw: number) => {
+        if (sortedDensityMarks.length === 0) return null;
+        const pct = Math.max(0, Math.min(1, pctRaw));
+        let nearest = sortedDensityMarks[0];
+        let nearestDistance = Math.abs(nearest.pct - pct);
+        for (let idx = 1; idx < sortedDensityMarks.length; idx += 1) {
+            const candidate = sortedDensityMarks[idx];
+            const distance = Math.abs(candidate.pct - pct);
+            if (distance < nearestDistance) {
+                nearest = candidate;
+                nearestDistance = distance;
+            }
+        }
+        return nearest;
+    };
+
+    const updateHoverMark = (target: HTMLButtonElement, clientX: number) => {
+        const rect = target.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const pctRaw = (clientX - rect.left) / rect.width;
+        const nearest = findNearestDensityMark(pctRaw);
+        if (!nearest) {
+            setHoverMark(null);
+            return;
+        }
+        setHoverMark({
+            pct: nearest.pct,
+            timeLabel: new Date(nearest.bucketTsMs).toLocaleString([], {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+            }),
+            emptyLabel: `${Math.round(nearest.emptyRate * 100)}%`,
+            fullLabel: `${Math.round(nearest.fullRate * 100)}%`,
+            constrainedLabel: `${Math.round(nearest.constrainedPct)}%`,
+        });
+    };
 
     const seekFromClientX = (target: HTMLButtonElement, clientX: number) => {
         const rect = target.getBoundingClientRect();
@@ -73,6 +130,20 @@ export default function ScrubberBar({
 
         window.addEventListener("pointermove", onPointerMove);
         window.addEventListener("pointerup", onPointerUp);
+    };
+
+    const onTrackPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+        updateHoverMark(e.currentTarget, e.clientX);
+    };
+    const onTrackPointerEnter = (e: React.PointerEvent<HTMLButtonElement>) => {
+        updateHoverMark(e.currentTarget, e.clientX);
+    };
+    const onTrackMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+        updateHoverMark(e.currentTarget, e.clientX);
+    };
+
+    const onTrackPointerLeave = () => {
+        setHoverMark(null);
     };
 
     return (
@@ -141,6 +212,10 @@ export default function ScrubberBar({
                     type="button"
                     onClick={onTrackClick}
                     onPointerDown={onTrackPointerDown}
+                    onPointerEnter={onTrackPointerEnter}
+                    onPointerMove={onTrackPointerMove}
+                    onMouseMove={onTrackMouseMove}
+                    onPointerLeave={onTrackPointerLeave}
                     style={trackButtonStyle}
                     title="Seek timeline position"
                     aria-label="Seek timeline position"
@@ -156,7 +231,35 @@ export default function ScrubberBar({
                     data-uf-progress-percent={String(progressPercent)}
                     data-uf-playing={playing ? "true" : "false"}
                     data-uf-inspect-locked={inspectLocked ? "true" : "false"}
-                >
+                    >
+                    {hoverMark ? (
+                        <div
+                            style={{
+                                position: "absolute",
+                                left: `${(hoverMark.pct * 100).toFixed(2)}%`,
+                                bottom: "calc(100% + 10px)",
+                                transform: "translateX(-50%)",
+                                borderRadius: 8,
+                                border: "1px solid rgba(255,255,255,0.20)",
+                                background: "rgba(6,12,18,0.95)",
+                                color: "rgba(230,237,243,0.95)",
+                                padding: "6px 8px",
+                                fontSize: 11,
+                                lineHeight: 1.35,
+                                minWidth: 150,
+                                textAlign: "left",
+                                pointerEvents: "none",
+                                zIndex: 4,
+                                boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
+                            }}
+                            data-uf-id="scrubber-constraint-tooltip"
+                        >
+                            <div style={{ fontWeight: 600 }}>{hoverMark.timeLabel}</div>
+                            <div>Constraint: {hoverMark.constrainedLabel}</div>
+                            <div>Empty: {hoverMark.emptyLabel}</div>
+                            <div>Full: {hoverMark.fullLabel}</div>
+                        </div>
+                    ) : null}
                     <div
                         style={{
                             position: "absolute",
@@ -176,7 +279,7 @@ export default function ScrubberBar({
                             background: "rgba(230,237,243,0.9)",
                         }}
                     />
-                    {densityMarks.map((mark, idx) => {
+                    {sortedDensityMarks.map((mark, idx) => {
                         const clampedPct = Math.max(0, Math.min(1, mark.pct));
                         const intensity = Math.max(0, Math.min(1, mark.intensity));
                         const height = 4 + Math.round(intensity * 8);

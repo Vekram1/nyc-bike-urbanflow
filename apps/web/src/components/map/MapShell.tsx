@@ -394,8 +394,14 @@ export default function MapShell() {
         viewSnapshotSha256: string;
     } | null>(null);
     const [densityResponse, setDensityResponse] = useState<{
-        sv: string;
-        points: Array<{ pct: number; intensity: number }>;
+        points: Array<{
+            pct: number;
+            intensity: number;
+            bucketTsMs: number;
+            emptyRate: number;
+            fullRate: number;
+            constrainedPct: number;
+        }>;
     } | null>(null);
     const [policyVersion, setPolicyVersion] = useState<string>("rebal.greedy.v1");
     const [policyStrategy, setPolicyStrategy] = useState<"greedy" | "global">("greedy");
@@ -789,10 +795,41 @@ export default function MapShell() {
                     : !version.includes("global")
             );
             if (!matchingVersion) return;
+            if (strategy === policyStrategy && matchingVersion === policyVersion) return;
+            if (policyAbortRef.current) {
+                policyAbortRef.current.abort();
+                policyAbortRef.current = null;
+            }
+            if (previewTimerRef.current !== null) {
+                window.clearInterval(previewTimerRef.current);
+                previewTimerRef.current = null;
+            }
             setPolicyStrategy(strategy);
             setPolicyVersion(matchingVersion);
+            setPolicyStatus("idle");
+            setPolicyError(null);
+            setPolicySyncViewNeeded(false);
+            setPolicyReadyRunKeySerialized(null);
+            setPolicyImpactEnabled(false);
+            setPolicyImpactByStation({});
+            setPolicyMovesCount(0);
+            setPolicyBikesMoved(0);
+            setActivePlaybackMove(null);
+            setPreviewPhase((current) => (current === "idle" ? "idle" : "frozen"));
+            setOptimizationSession((session) => ({
+                ...session,
+                mode: session.mode === "live" ? "live" : "frozen",
+                activeRequestId: null,
+                playbackCursor: 0,
+                frozenRunKey: session.frozenRunKey
+                    ? {
+                          ...session.frozenRunKey,
+                          policyVersion: matchingVersion,
+                      }
+                    : session.frozenRunKey,
+            }));
         },
-        [availablePolicyVersions]
+        [availablePolicyVersions, policyStrategy, policyVersion]
     );
 
     const applyPolicyMoves = useCallback(
@@ -1312,31 +1349,53 @@ export default function MapShell() {
                 const rangeEnd = Math.max(hud.rangeMinMs + 1, hud.rangeMaxMs);
                 const span = Math.max(1, rangeEnd - rangeStart);
                 const next = out.points
-                    .map((point): { pct: number; intensity: number } | null => {
+                    .map((point): {
+                        pct: number;
+                        intensity: number;
+                        bucketTsMs: number;
+                        emptyRate: number;
+                        fullRate: number;
+                        constrainedPct: number;
+                    } | null => {
                         const pointMs = Date.parse(point.bucket_ts);
                         if (!Number.isFinite(pointMs)) return null;
                         const pctRaw = (pointMs - rangeStart) / span;
                         if (pctRaw < 0 || pctRaw > 1) return null;
                         const risk = Math.max(0, Math.min(1, 1 - point.pct_serving_grade));
-                        const pressure = Math.max(point.empty_rate, point.full_rate);
-                        const intensity = Math.max(0, Math.min(1, risk * 0.6 + pressure * 0.4));
-                        return { pct: pctRaw, intensity };
+                        const emptyRate = Math.max(0, Math.min(1, point.empty_rate));
+                        const fullRate = Math.max(0, Math.min(1, point.full_rate));
+                        const constrainedRate = Math.max(0, Math.min(1, emptyRate + fullRate));
+                        const intensity = Math.max(0, Math.min(1, risk * 0.6 + constrainedRate * 0.4));
+                        return {
+                            pct: pctRaw,
+                            intensity,
+                            bucketTsMs: pointMs,
+                            emptyRate,
+                            fullRate,
+                            constrainedPct: constrainedRate * 100,
+                        };
                     })
-                    .filter((mark): mark is { pct: number; intensity: number } => mark !== null)
+                    .filter((mark): mark is {
+                        pct: number;
+                        intensity: number;
+                        bucketTsMs: number;
+                        emptyRate: number;
+                        fullRate: number;
+                        constrainedPct: number;
+                    } => mark !== null)
                     .sort((a, b) => a.pct - b.pct);
 
                 if (next.length > 120) {
                     const step = Math.ceil(next.length / 120);
                     setDensityResponse({
-                        sv: hud.sv,
                         points: next.filter((_, idx) => idx % step === 0),
                     });
                     return;
                 }
-                setDensityResponse({ sv: hud.sv, points: next });
+                setDensityResponse({ points: next });
             } catch {
                 if (cancelled) return;
-                setDensityResponse({ sv: hud.sv, points: [] });
+                setDensityResponse({ points: [] });
             }
         };
 
@@ -1350,7 +1409,7 @@ export default function MapShell() {
     }, [hud.rangeMaxMs, hud.rangeMinMs, hud.sv]);
     const densityMarks = useMemo(() => {
         if (!hud.sv || hud.sv.startsWith("sv:local-")) return [];
-        if (!densityResponse || densityResponse.sv !== hud.sv) return [];
+        if (!densityResponse) return [];
         return densityResponse.points;
     }, [densityResponse, hud.sv]);
     const tileRequestKey = JSON.stringify({
@@ -1765,7 +1824,7 @@ export default function MapShell() {
                     policyImpactEnabled={effectivePolicyImpactEnabled}
                     policyImpactByStation={policyImpactByStation}
                     activePolicyMove={activePlaybackMove}
-                    freeze={inspectOpen || optimizationSession.mode !== "live"}
+                    freeze={inspectOpen || optimizationSession.mode === "computing"}
                 />
             </div>
             {optimizationSession.mode !== "live" ? (
